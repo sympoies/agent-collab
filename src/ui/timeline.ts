@@ -57,7 +57,11 @@ function minutes(timestamp: string): number {
 
 export function buildRows(items: readonly TimelineItem[], options: RowOptions): Row[] {
   const messages = items.flatMap((item) => (item.kind === "message" ? [item.message] : []));
-  const byId = new Map(messages.map((message) => [message.id, message]));
+  const byId = new Map(
+    messages
+      .filter((message) => options.topic === null || message.topic === options.topic)
+      .map((message) => [message.id, message]),
+  );
   const answered = new Set(
     messages.flatMap((message) =>
       message.type === "answer" && message.replyTo !== null ? [message.replyTo] : [],

@@ -26,6 +26,11 @@ function systemTheme(): Theme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "night-owl" : "paper";
 }
 
+function bootstrappedTheme(): Theme | null {
+  const theme = document.documentElement.dataset.theme;
+  return theme === "night-owl" || theme === "paper" ? theme : null;
+}
+
 export function ThemeProvider({
   storage,
   children,
@@ -35,7 +40,7 @@ export function ThemeProvider({
 }) {
   const [initial] = useState(() => savedTheme(storage));
   const hasThemeChoice = useRef(initial !== null);
-  const [theme, setTheme] = useState<Theme>(() => initial ?? systemTheme());
+  const [theme, setTheme] = useState<Theme>(() => initial ?? bootstrappedTheme() ?? systemTheme());
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;

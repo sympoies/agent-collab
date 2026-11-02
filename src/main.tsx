@@ -17,31 +17,32 @@ import "./ui/styles.css";
 function safeBrowserStorage(): Pick<Storage, "getItem" | "setItem"> {
   const fallback = new Map<string, string>();
   let storage: Storage | null = null;
-  let unavailable = false;
   try {
     storage = window.localStorage;
   } catch {
-    unavailable = true;
+    // Storage can be unavailable in sandboxed or privacy-restricted contexts.
   }
 
   return {
     getItem(key) {
-      if (!unavailable && storage !== null) {
+      if (fallback.has(key)) return fallback.get(key) ?? null;
+      if (storage !== null) {
         try {
           return storage.getItem(key);
         } catch {
-          unavailable = true;
+          return fallback.get(key) ?? null;
         }
       }
       return fallback.get(key) ?? null;
     },
     setItem(key, value) {
-      if (!unavailable && storage !== null) {
+      if (storage !== null) {
         try {
           storage.setItem(key, value);
+          fallback.delete(key);
           return;
         } catch {
-          unavailable = true;
+          // Keep this key usable in memory without disabling other settings.
         }
       }
       fallback.set(key, value);

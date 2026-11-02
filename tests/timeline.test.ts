@@ -132,6 +132,19 @@ describe("buildRows", () => {
     expect(replies.map((view) => view.parent?.id ?? null)).toEqual([parentId, null]);
   });
 
+  it("does not resolve a loaded reply parent when the topic filter hides it", () => {
+    const parentId = "2026-10-01T0900-alice-agent-api-01";
+    const rows = buildRows(
+      [
+        item("2026-10-01T0900", "alice-agent", "api", { type: "question" }),
+        item("2026-10-01T0905", "bob-agent", "ops", { type: "answer", reply_to: parentId }),
+      ],
+      { ...OPTIONS, topic: "ops" },
+    );
+    const reply = rows.flatMap((row) => (row.kind === "group" ? row.messages : []))[0];
+    expect(reply?.parent).toBeNull();
+  });
+
   it("marks a request overdue only while no answer replies to it", () => {
     const open = "2026-10-01T0900-alice-agent-api-01";
     const rows = buildRows(

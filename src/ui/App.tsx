@@ -39,6 +39,11 @@ export function App({
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const pollerRef = useRef<Poller | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
+  const [mobileConversation, setMobileConversation] = useState(false);
+  const conversationHeading = useRef<HTMLHeadingElement | null>(null);
+  const lastTopicButton = useRef<HTMLButtonElement | null>(null);
+  const announcedMessages = useRef<Set<string>>(new Set());
+  const [arrivalAnnouncement, setArrivalAnnouncement] = useState("");
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<unknown>(null);
   const [readyRetryAt, setReadyRetryAt] = useState<Date | null>(null);
@@ -117,6 +122,28 @@ export function App({
       }),
     [snapshot.items, snapshot.fresh, selfNames, topic],
   );
+  useEffect(() => {
+    const arrivals = [...snapshot.fresh].filter((path) => !announcedMessages.current.has(path));
+    for (const path of snapshot.fresh) announcedMessages.current.add(path);
+    if (arrivals.length > 0) {
+      const total = announcedMessages.current.size;
+      setArrivalAnnouncement(
+        `${arrivals.length} new ${arrivals.length === 1 ? "message" : "messages"} arrived. ${total} new ${total === 1 ? "message" : "messages"} since opening this view.`,
+      );
+    }
+  }, [snapshot.fresh]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (mobileConversation) {
+        conversationHeading.current?.focus();
+      } else {
+        lastTopicButton.current?.focus();
+      }
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [mobileConversation]);
   const retryAt =
     error instanceof SourceError && error.kind === "rate-limited" ? error.retryAt : null;
   useEffect(() => {
@@ -142,6 +169,7 @@ export function App({
           <button
             type="button"
             disabled={busy || retryingAfterLimit}
+            aria-busy={busy}
             onClick={() => {
               run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
             }}
@@ -163,15 +191,20 @@ export function App({
           {describe(error)}
         </p>
       )}
-      <div className="workspace">
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {arrivalAnnouncement}
+      </p>
+      <div className="workspace" data-mobile-view={mobileConversation ? "conversation" : "topics"}>
         <aside className="topics-pane">
           <h2>Conversations</h2>
           <nav className="topics" aria-label="Topics">
             <button
               type="button"
               aria-pressed={topic === null}
-              onClick={() => {
+              onClick={(event) => {
                 setTopic(null);
+                lastTopicButton.current = event.currentTarget;
+                setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
               }}
             >
               All
@@ -181,8 +214,10 @@ export function App({
                 key={summary.topic}
                 type="button"
                 aria-pressed={topic === summary.topic}
-                onClick={() => {
+                onClick={(event) => {
                   setTopic(summary.topic);
+                  lastTopicButton.current = event.currentTarget;
+                  setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
                 }}
               >
                 <span>#{summary.topic}</span>
@@ -192,7 +227,19 @@ export function App({
             ))}
           </nav>
         </aside>
-        <main className="conversation" aria-label="Message timeline">
+        <main className="conversation" aria-labelledby="conversation-heading">
+          <button
+            type="button"
+            className="back-to-topics"
+            onClick={() => {
+              setMobileConversation(false);
+            }}
+          >
+            Back to conversations
+          </button>
+          <h2 id="conversation-heading" ref={conversationHeading} tabIndex={-1}>
+            {topic === null ? "All conversations" : `#${topic}`}
+          </h2>
           {snapshot.hasOlder && (
             <button
               type="button"
@@ -208,7 +255,11 @@ export function App({
           <ChatView rows={rows} />
         </main>
       </div>
-      <a className="jump-to-latest" href="#latest-message">
+      <a
+        className="jump-to-latest"
+        data-mobile-view={mobileConversation ? "conversation" : "topics"}
+        href="#latest-message"
+      >
         Jump to latest
       </a>
     </div>

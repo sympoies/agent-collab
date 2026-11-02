@@ -116,11 +116,13 @@ function longThread(): MessageFixture[] {
     makeMessage(
       "2026-10-09",
       "1000",
-      "alice-agent",
+      "alice-agent-with-an-extraordinarily-long-name-for-overflow-checks",
       "release",
       1,
       "info",
       "A separate topic for the conversation list.",
+      "bob-agent",
+      parent.id,
     ),
   );
   return result;
@@ -141,9 +143,30 @@ function json(route: Route, value: unknown, status = 200, headers: Record<string
 
 async function installApiStub(page: Page, mode: "long" | "empty" | "error") {
   const messages = mode === "long" ? longThread() : [];
+  const arrivalOne = makeMessage(
+    "2026-10-09",
+    "1030",
+    "bob-agent",
+    "api",
+    99,
+    "info",
+    "A new synthetic message arrives after refresh.",
+    "all",
+  );
+  const arrivalTwo = makeMessage(
+    "2026-10-09",
+    "1031",
+    "alice-agent",
+    "api",
+    30,
+    "info",
+    "A second synthetic message arrives after refresh.",
+    "all",
+  );
   const blobs = new Map<string, string>([["marker", "collab-protocol: 1\n"]]);
   const unhandled: string[] = [];
   let headCalls = 0;
+  let completedHeadCalls = 0;
 
   const handle = async (route: Route) => {
     const request = route.request();
@@ -159,22 +182,29 @@ async function installApiStub(page: Page, mode: "long" | "empty" | "error") {
       headCalls += 1;
       if (mode === "error") {
         await json(route, { message: "Synthetic provider error" }, 500);
+        completedHeadCalls += 1;
       } else {
-        await json(route, { object: { sha: headCalls > 1 ? "revision-2" : "revision-1" } }, 200, {
-          etag: headCalls > 1 ? '"revision-2"' : '"revision-1"',
+        const revision = Math.min(headCalls, 3);
+        await json(route, { object: { sha: `revision-${revision}` } }, 200, {
+          etag: `"revision-${revision}"`,
         });
+        completedHeadCalls += 1;
       }
       return;
     }
 
-    if (path.endsWith("/git/commits/revision-1") || path.endsWith("/git/commits/revision-2")) {
-      const version = path.endsWith("revision-2") ? "2" : "1";
+    if (
+      ["revision-1", "revision-2", "revision-3"].some((revision) =>
+        path.endsWith(`/git/commits/${revision}`),
+      )
+    ) {
+      const version = path.slice(path.lastIndexOf("-") + 1);
       await json(route, { tree: { sha: `root-${version}` } });
       return;
     }
 
-    if (path.endsWith("/git/trees/root-1") || path.endsWith("/git/trees/root-2")) {
-      const version = path.endsWith("root-2") ? "2" : "1";
+    if (["1", "2", "3"].some((version) => path.endsWith(`/git/trees/root-${version}`))) {
+      const version = path.slice(path.lastIndexOf("-") + 1);
       await json(route, {
         truncated: false,
         tree: [
@@ -185,24 +215,14 @@ async function installApiStub(page: Page, mode: "long" | "empty" | "error") {
       return;
     }
 
-    if (path.endsWith("/git/trees/inbox-1") || path.endsWith("/git/trees/inbox-2")) {
-      const version = path.endsWith("inbox-2") ? "2" : "1";
+    if (["1", "2", "3"].some((version) => path.endsWith(`/git/trees/inbox-${version}`))) {
+      const version = path.slice(path.lastIndexOf("-") + 1);
       const fixtureMessages =
-        version === "2" && mode === "long"
-          ? [
-              ...messages,
-              makeMessage(
-                "2026-10-09",
-                "1030",
-                "bob-agent",
-                "api",
-                99,
-                "info",
-                "A new synthetic message arrives after refresh.",
-                "all",
-              ),
-            ]
-          : messages;
+        mode !== "long" || version === "1"
+          ? messages
+          : version === "2"
+            ? [...messages, arrivalOne]
+            : [...messages, arrivalOne, arrivalTwo];
       const entries = fixtureMessages.map((message, index) => {
         const sha = `message-${version}-${String(index + 1)}`;
         blobs.set(sha, message.text);
@@ -227,9 +247,12 @@ async function installApiStub(page: Page, mode: "long" | "empty" | "error") {
   };
 
   await page.route("https://api.github.com/**", handle);
-  return () => {
-    expect(unhandled, "the app must make only fixture-backed API requests").toEqual([]);
-  };
+  return Object.assign(
+    () => {
+      expect(unhandled, "the app must make only fixture-backed API requests").toEqual([]);
+    },
+    { completedHeadCalls: () => completedHeadCalls },
+  );
 }
 
 async function openViewer(page: Page, mode: "long" | "empty" | "error") {
@@ -269,6 +292,14 @@ test("long chat adapts across themes and viewports", async ({ page, context }) =
   );
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night-owl");
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#011627");
+  const longSender = page.locator(".sender").last();
+  await expect(longSender).toHaveAttribute(
+    "title",
+    "alice-agent-with-an-extraordinarily-long-name-for-overflow-checks",
+  );
+  const senderBox = await longSender.boundingBox();
+  expect(senderBox).not.toBeNull();
+  expect((senderBox?.x ?? 0) + (senderBox?.width ?? 0)).toBeLessThanOrEqual(1280);
   await saveScreenshot(page, "desktop-night-owl.png");
 
   await page.getByRole("button", { name: "Use Paper theme" }).click();
@@ -279,21 +310,94 @@ test("long chat adapts across themes and viewports", async ({ page, context }) =
   ).resolves.toBe("paper");
   await saveScreenshot(page, "desktop-paper.png");
 
-  await page.getByRole("button", { name: "Refresh" }).click();
+  const refresh = page.getByRole("button", { name: "Refresh" });
+  const headsBeforeArrival = assertRequests.completedHeadCalls();
+  await refresh.click();
+  await expect.poll(() => assertRequests.completedHeadCalls()).toBe(headsBeforeArrival + 1);
+  await expect(refresh).toHaveAttribute("aria-busy", "false");
+  await expect(page.getByRole("status")).toHaveText(
+    "1 new message arrived. 1 new message since opening this view.",
+  );
   await expect(page.getByRole("separator", { name: "New messages" })).toBeVisible();
   await expect(page.getByText("A new synthetic message arrives after refresh.")).toBeVisible();
+  const liveRegion = page.locator('[aria-live="polite"][aria-atomic="true"]');
+  await liveRegion.evaluate((region) => {
+    region.setAttribute("data-mutation-count", "0");
+    new MutationObserver(() => {
+      const count = Number(region.getAttribute("data-mutation-count")) + 1;
+      region.setAttribute("data-mutation-count", String(count));
+    }).observe(region, { childList: true, characterData: true, subtree: true });
+  });
+  const mutationsBeforeUnchangedRefresh = Number(
+    await liveRegion.getAttribute("data-mutation-count"),
+  );
+  const headsBeforeSecondArrival = assertRequests.completedHeadCalls();
+  await refresh.click();
+  await expect.poll(() => assertRequests.completedHeadCalls()).toBe(headsBeforeSecondArrival + 1);
+  await expect(refresh).toHaveAttribute("aria-busy", "false");
+  await expect(liveRegion).toHaveAttribute(
+    "data-mutation-count",
+    String(mutationsBeforeUnchangedRefresh + 1),
+  );
+  await expect(liveRegion).toHaveText(
+    "1 new message arrived. 2 new messages since opening this view.",
+  );
+  await expect(page.getByText("A second synthetic message arrives after refresh.")).toBeVisible();
+  const mutationsBeforeUnchanged = Number(await liveRegion.getAttribute("data-mutation-count"));
+  const headsBeforeUnchanged = assertRequests.completedHeadCalls();
+  await refresh.click();
+  await expect.poll(() => assertRequests.completedHeadCalls()).toBe(headsBeforeUnchanged + 1);
+  await expect(refresh).toHaveAttribute("aria-busy", "false");
+  await expect(liveRegion).toHaveAttribute("data-mutation-count", String(mutationsBeforeUnchanged));
+  await expect(liveRegion).toHaveText(
+    "1 new message arrived. 2 new messages since opening this view.",
+  );
 
   await page.setViewportSize({ width: 390, height: 844 });
-  const columns = await page
-    .locator(".workspace")
-    .evaluate((node) => getComputedStyle(node).gridTemplateColumns.trim().split(/\s+/).length);
-  expect(columns).toBe(1);
-  const sidebar = await page.locator(".topics-pane").boundingBox();
-  const conversation = await page.locator(".conversation").boundingBox();
-  expect(sidebar).not.toBeNull();
-  expect(conversation).not.toBeNull();
-  expect(Math.abs((sidebar?.x ?? 0) - (conversation?.x ?? 0))).toBeLessThan(1);
+  await expect(page.locator(".topics-pane")).toBeVisible();
+  await expect(page.locator(".conversation")).toBeHidden();
+  await expect(page.getByRole("link", { name: "Jump to latest" })).toBeHidden();
+  await page.getByRole("button", { name: "#release" }).click();
+  await expect(page.locator(".topics-pane")).toBeHidden();
+  await expect(page.locator(".conversation")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Back to conversations" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Jump to latest" })).toBeVisible();
+  await expect(page.locator("#conversation-heading")).toBeFocused();
+  await expect(page.locator(".quote.missing")).toContainText("parent not shown");
+  await expect(page.locator(".quote[href]")).toHaveCount(0);
+  const phoneSender = page.locator(".sender").last();
+  const senderLayout = await phoneSender.evaluate((sender) => {
+    const conversation = sender.closest(".conversation") ?? document.querySelector(".conversation");
+    const senderBox = sender.getBoundingClientRect();
+    const conversationBox = conversation?.getBoundingClientRect();
+    const style = getComputedStyle(sender);
+    return {
+      clientWidth: sender.clientWidth,
+      scrollWidth: sender.scrollWidth,
+      whiteSpace: style.whiteSpace,
+      overflow: style.overflow,
+      textOverflow: style.textOverflow,
+      senderLeft: senderBox.left,
+      senderRight: senderBox.right,
+      conversationLeft: conversationBox?.left ?? 0,
+      conversationRight: conversationBox?.right ?? 0,
+    };
+  });
+  expect(senderLayout.scrollWidth).toBeGreaterThan(senderLayout.clientWidth);
+  expect(senderLayout.whiteSpace).toBe("nowrap");
+  expect(senderLayout.overflow).toBe("hidden");
+  expect(senderLayout.textOverflow).toBe("ellipsis");
+  expect(senderLayout.senderLeft).toBeGreaterThanOrEqual(senderLayout.conversationLeft);
+  expect(senderLayout.senderRight).toBeLessThanOrEqual(senderLayout.conversationRight);
+  await expect(phoneSender).toHaveAttribute(
+    "aria-label",
+    "alice-agent-with-an-extraordinarily-long-name-for-overflow-checks",
+  );
   await saveScreenshot(page, "phone-paper.png");
+  await page.getByRole("button", { name: "Back to conversations" }).click();
+  await expect(page.locator(".topics-pane")).toBeVisible();
+  await expect(page.locator(".conversation")).toBeHidden();
+  await expect(page.getByRole("button", { name: "#release" })).toBeFocused();
 
   await page.getByRole("button", { name: "Use Night Owl theme" }).click();
   await saveScreenshot(page, "phone-night-owl.png");
@@ -326,6 +430,11 @@ test("welcome screen exposes live-demo, saved-repository, and theme controls", a
   await expect(page.getByRole("button", { name: "Open saved repository" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open another repository" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Use Paper theme" })).toBeVisible();
+  await saveScreenshot(page, "welcome-night-owl.png");
+  await page.getByRole("button", { name: "Use Paper theme" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "paper");
+  await saveScreenshot(page, "welcome-paper.png");
+  await page.getByRole("button", { name: "Use Night Owl theme" }).click();
 
   await page.getByRole("button", { name: "Open saved repository" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
@@ -333,6 +442,8 @@ test("welcome screen exposes live-demo, saved-repository, and theme controls", a
   await page.getByRole("button", { name: "Open offline demo" }).click();
   await expect(page.getByRole("heading", { name: "Demo repository" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night-owl");
+  await expect(page.locator(".bubble").first()).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 test("keyboard focus, topic filtering, reduced motion, and unavailable storage work", async ({
@@ -373,7 +484,23 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
     localStorage.setItem("agent-collab-viewer.theme", "paper");
   });
   await preferencePage.emulateMedia({ colorScheme: "dark" });
-  await preferencePage.goto("/");
+  let appModuleRequested = () => {};
+  const appModuleRequest = new Promise<void>((resolveAppModule) => {
+    appModuleRequested = resolveAppModule;
+  });
+  let releaseAppModule = () => {};
+  const appModuleGate = new Promise<void>((resolveAppModule) => {
+    releaseAppModule = resolveAppModule;
+  });
+  await preferencePage.route("**/assets/index-*.js", async (route) => {
+    appModuleRequested();
+    await appModuleGate;
+    await route.continue();
+  });
+  await preferencePage.goto("/", { waitUntil: "commit" });
+  await appModuleRequest;
+  await expect(preferencePage.locator("html")).toHaveAttribute("data-theme", "paper");
+  releaseAppModule();
   await expect(preferencePage.locator("html")).toHaveAttribute("data-theme", "paper");
   await expect(preferencePage.getByRole("button", { name: "Open live demo" })).toBeVisible();
   await expect(preferencePage.getByRole("button", { name: "Use Night Owl theme" })).toBeVisible();
@@ -381,6 +508,16 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   await expect(preferencePage.getByRole("button", { name: "Use Night Owl theme" })).toBeVisible();
   await preferencePage.getByRole("button", { name: "Open offline demo" }).click();
   await expect(preferencePage.locator("html")).toHaveAttribute("data-theme", "paper");
+
+  const systemThemePage = await page.context().newPage();
+  await systemThemePage.addInitScript(() => {
+    localStorage.removeItem("agent-collab-viewer.theme");
+  });
+  await systemThemePage.emulateMedia({ colorScheme: "dark" });
+  await systemThemePage.goto("/");
+  await expect(systemThemePage.locator("html")).toHaveAttribute("data-theme", "night-owl");
+  await systemThemePage.emulateMedia({ colorScheme: "light" });
+  await expect(systemThemePage.locator("html")).toHaveAttribute("data-theme", "paper");
 
   const storagePage = await page.context().newPage();
   await storagePage.addInitScript(() => {
@@ -399,4 +536,22 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   await storagePage.getByRole("button", { name: "Use Paper theme" }).click();
   await storagePage.emulateMedia({ colorScheme: "light" });
   await expect(storagePage.locator("html")).toHaveAttribute("data-theme", "paper");
+
+  const writeFailurePage = await page.context().newPage();
+  await writeFailurePage.addInitScript(() => {
+    const original = Storage.prototype.setItem.bind(localStorage);
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (key === "agent-collab-viewer.theme") {
+        throw new DOMException("Theme preference is read-only", "QuotaExceededError");
+      }
+      original(key, value);
+    };
+  });
+  const assertWriteFailureRequests = await openViewer(writeFailurePage, "empty");
+  await writeFailurePage.getByRole("button", { name: /Use (Paper|Night Owl) theme/ }).click();
+  await writeFailurePage.getByRole("button", { name: "Settings" }).click();
+  await expect(
+    writeFailurePage.getByRole("textbox", { name: "Repository", exact: true }),
+  ).toHaveValue("alice-agent/fixture-repo");
+  assertWriteFailureRequests();
 });

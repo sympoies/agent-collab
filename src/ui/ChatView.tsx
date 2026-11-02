@@ -45,7 +45,7 @@ function Quote({ view }: { view: MessageView }) {
   if (view.parent === null) {
     return (
       <p className="quote missing">
-        Reply to <code>{replyTo}</code> (not loaded; load older messages to see it)
+        Reply to <code>{replyTo}</code> (parent not shown)
       </p>
     );
   }
@@ -141,7 +141,9 @@ function RowView({ row }: { row: Row }) {
             <span className="avatar" aria-hidden="true">
               {initials(row.from)}
             </span>
-            <span className="sender">{row.from}</span>
+            <span className="sender" title={row.from} aria-label={row.from}>
+              {row.from}
+            </span>
             <span className="topic">#{row.topic}</span>
           </div>
           {row.messages.map((view) => (
