@@ -95,6 +95,9 @@ export class GitHubSource implements MessageSource {
     this.config = config;
     this.fetchImpl = config.fetch ?? globalThis.fetch.bind(globalThis);
     this.now = config.now ?? (() => new Date());
+    if (!URL.canParse(config.apiBase) || new URL(config.apiBase).protocol !== "https:") {
+      throw new Error("The API endpoint must use https.");
+    }
     const base = config.apiBase.replace(/\/+$/, "");
     this.repoUrl = `${base}/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}`;
   }

@@ -50,18 +50,17 @@ export function App({ loader, title, selfNames }: AppProps) {
         setError(reason === null ? null : describe(reason));
       },
     });
-    let active = true;
-    loader
-      .open()
-      .catch((reason: unknown) => {
-        setError(describe(reason));
-      })
-      .finally(() => {
+    const onVisibility = () => {
+      poller.visibilityChanged();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    poller.start(() =>
+      loader.open().finally(() => {
         setBusy(false);
-        if (active) poller.start();
-      });
+      }),
+    );
     return () => {
-      active = false;
+      document.removeEventListener("visibilitychange", onVisibility);
       poller.stop();
     };
   }, [loader]);
