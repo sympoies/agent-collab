@@ -267,10 +267,12 @@ test("long chat adapts across themes and viewports", async ({ page, context }) =
     "#latest-message",
   );
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night-owl");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#011627");
   await saveScreenshot(page, "desktop-night-owl.png");
 
   await page.getByRole("button", { name: "Use Paper theme" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "paper");
+  await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#f4f3ed");
   await expect(
     page.evaluate(() => localStorage.getItem("agent-collab-viewer.theme")),
   ).resolves.toBe("paper");

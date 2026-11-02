@@ -39,6 +39,8 @@ export function ThemeProvider({
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeColor !== null) themeColor.content = theme === "night-owl" ? "#011627" : "#f4f3ed";
   }, [theme]);
 
   useEffect(() => {
