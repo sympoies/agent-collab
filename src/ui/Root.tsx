@@ -59,6 +59,7 @@ export function Root(props: RootProps) {
   const { createSource, createDemoSource, createLiveDemoSource } = props;
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
+  const navigation = useRef(0);
 
   const viewer = (
     source: MessageSource,
@@ -83,30 +84,38 @@ export function Root(props: RootProps) {
     viewer(createSource(settings, token), settings.repository, settings.selfNames, notice);
 
   const showSettings = async (back: ViewerScreen | null) => {
+    const operation = ++navigation.current;
     const settings = loadSettings(props.storage);
     const draft = settings === null ? DEFAULT_DRAFT : draftFromSettings(settings);
     const stored = await storedEndpoints(props);
+    if (operation !== navigation.current) return;
     setScreen({ kind: "settings", draft, storedEndpoints: stored, back });
   };
 
   const openSavedRepository = async () => {
+    const operation = ++navigation.current;
     try {
       const opened = await restore(props);
+      if (operation !== navigation.current) return;
       if (opened === null) await showSettings(null);
       else setScreen(open(opened));
     } catch {
+      if (operation !== navigation.current) return;
       await showSettings(null);
     }
   };
 
   const showLiveDemo = () => {
+    navigation.current += 1;
     openLiveDemo(createLiveDemoSource, (source) => {
       setScreen(viewer(source, "Live demo", [], null, LIVE_DEMO_POLL_INTERVAL_MS));
     });
   };
 
   const save = async (draft: SettingsDraft): Promise<DraftErrors | null> => {
+    const operation = ++navigation.current;
     const result = await apply(props, draft);
+    if (operation !== navigation.current) return null;
     if (!result.ok) return result.errors;
     setScreen(open(result.open, result.warning));
     return null;
@@ -142,13 +151,16 @@ export function Root(props: RootProps) {
             storedEndpoints={screen.storedEndpoints}
             onSave={save}
             onRemoveCredentials={async () => {
+              const operation = ++navigation.current;
               await removeCredentials(props);
+              if (operation !== navigation.current) return;
               await showSettings(null);
             }}
             onCancel={
               back === null
                 ? null
                 : () => {
+                    navigation.current += 1;
                     setScreen(back);
                   }
             }

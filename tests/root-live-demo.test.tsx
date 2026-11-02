@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { Secret } from "../src/credentials/secret";
 import { MemoryStore } from "../src/credentials/store";
 import { Root } from "../src/ui/Root";
 import type { MessageSource } from "../src/source/types";
@@ -75,6 +76,94 @@ describe("Root live demo", () => {
     expect(memoryDelete).not.toHaveBeenCalled();
     expect(encryptedSet).not.toHaveBeenCalled();
     expect(encryptedDelete).not.toHaveBeenCalled();
+
+    act(() => {
+      root.unmount();
+    });
+  });
+
+  it("keeps a later live-demo choice when saved-repository loading is still pending", async () => {
+    const values = new Map([
+      [
+        "agent-collab-viewer.settings",
+        JSON.stringify({
+          platform: "github",
+          endpoint: "https://api.github.com",
+          repository: "alice-org/collab",
+          branch: "",
+          selfNames: [],
+          credentialStorage: "memory",
+        }),
+      ],
+    ]);
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: vi.fn(),
+    };
+    const memory = new MemoryStore();
+    const encrypted = new MemoryStore();
+    let resolveCredential: (value: Secret | null) => void = () => undefined;
+    const pendingCredential = new Promise<Secret | null>((resolve) => {
+      resolveCredential = resolve;
+    });
+    const memoryGet = vi.spyOn(memory, "get").mockReturnValue(pendingCredential);
+    const source: MessageSource = {
+      head: vi.fn(() => Promise.resolve({ revision: "demo-revision", validator: null })),
+      listDirectory: vi.fn(() => Promise.resolve([])),
+      readFile: vi.fn(() => Promise.resolve("")),
+      rateLimit: () => null,
+    };
+    const createSource = vi.fn(() => source);
+    const createLiveDemoSource = vi.fn(() => source);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <Root
+          storage={storage}
+          stores={{ memory, "browser-encrypted": encrypted }}
+          createSource={createSource}
+          createDemoSource={() => source}
+          createLiveDemoSource={createLiveDemoSource}
+        />,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const saved = [...host.querySelectorAll("button")].find(
+      (button) => button.textContent === "Open saved repository",
+    );
+    expect(saved).toBeDefined();
+    await act(async () => {
+      saved?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(memoryGet).toHaveBeenCalledOnce();
+
+    const live = [...host.querySelectorAll("button")].find(
+      (button) => button.textContent === "Open live demo",
+    );
+    expect(live).toBeDefined();
+    await act(async () => {
+      live?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(host.textContent).toContain("Live demo");
+
+    await act(async () => {
+      resolveCredential(
+        new Secret(
+          JSON.stringify({ endpoint: "https://api.github.com", token: "test-token-not-real" }),
+        ),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(createLiveDemoSource).toHaveBeenCalledOnce();
+    expect(createSource).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("Live demo");
 
     act(() => {
       root.unmount();

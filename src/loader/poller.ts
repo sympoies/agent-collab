@@ -65,6 +65,11 @@ export interface PollerEnvironment {
   readonly onError?: (error: unknown) => void;
 }
 
+interface RetryOperation {
+  readonly key: string;
+  readonly run: () => Promise<unknown>;
+}
+
 export class Poller {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
@@ -74,7 +79,7 @@ export class Poller {
   private lastError: unknown = null;
   private lastRunAt = 0;
   private hasRun = false;
-  private retryOperation: (() => Promise<unknown>) | null = null;
+  private retryOperation: RetryOperation | null = null;
 
   constructor(
     private readonly tick: () => Promise<unknown>,
@@ -88,7 +93,7 @@ export class Poller {
   start(first: () => Promise<unknown> = () => Promise.resolve()): void {
     if (this.running) return;
     this.running = true;
-    void this.run(first);
+    void this.run(first, "open");
   }
 
   stop(): void {
@@ -99,11 +104,19 @@ export class Poller {
 
   /** Runs a user-requested refresh through the same error and scheduling path. */
   refreshNow(minimumIntervalMs = 0): Promise<boolean> {
-    return this.runOperation(this.retryOperation ?? this.tick, minimumIntervalMs);
+    return this.runOperation(
+      this.retryOperation?.run ?? this.tick,
+      minimumIntervalMs,
+      this.retryOperation?.key ?? "refresh",
+    );
   }
 
   /** Runs another user action through the poller's rate-limit and retry path. */
-  runOperation(operation: () => Promise<unknown>, minimumIntervalMs = 0): Promise<boolean> {
+  runOperation(
+    operation: () => Promise<unknown>,
+    minimumIntervalMs = 0,
+    operationKey = operation === this.tick ? "refresh" : "manual",
+  ): Promise<boolean> {
     if (this.inFlight) return Promise.resolve(false);
     if (
       this.lastError instanceof SourceError &&
@@ -119,7 +132,7 @@ export class Poller {
     this.running = true;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
-    return this.run(operation).then(() => true);
+    return this.run(operation, operationKey).then(() => true);
   }
 
   /** Reschedules for the current visibility; a page that became visible polls at once if due. */
@@ -150,13 +163,13 @@ export class Poller {
     }
     this.timer = setTimeout(
       () => {
-        void this.run(this.retryOperation ?? this.tick);
+        void this.run(this.retryOperation?.run ?? this.tick, this.retryOperation?.key ?? "refresh");
       },
       Math.max(0, this.lastRunAt + delay - Date.now()),
     );
   }
 
-  private async run(operation: () => Promise<unknown>): Promise<void> {
+  private async run(operation: () => Promise<unknown>, operationKey: string): Promise<void> {
     this.timer = null;
     this.inFlight = true;
     let error: unknown = null;
@@ -174,8 +187,8 @@ export class Poller {
     this.lastRunAt = Date.now();
     this.hasRun = true;
     if (error instanceof SourceError && error.kind === "rate-limited") {
-      this.retryOperation = operation;
-    } else if (error === null && this.retryOperation === operation) {
+      this.retryOperation = { key: operationKey, run: operation };
+    } else if (error === null && this.retryOperation?.key === operationKey) {
       this.retryOperation = null;
     }
     this.env.onError?.(error);

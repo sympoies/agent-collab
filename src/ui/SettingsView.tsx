@@ -172,13 +172,14 @@ export function SettingsView(props: SettingsViewProps) {
           Save and open
         </button>
         {props.onCancel !== null && (
-          <button type="button" onClick={props.onCancel}>
+          <button type="button" disabled={saving} onClick={props.onCancel}>
             Cancel
           </button>
         )}
         {anyStored && (
           <button
             type="button"
+            disabled={saving}
             onClick={() => {
               props.onRemoveCredentials().catch(() => {
                 setErrors({ token: "Could not remove the stored credentials." });
@@ -188,10 +189,10 @@ export function SettingsView(props: SettingsViewProps) {
             Remove stored credentials
           </button>
         )}
-        <button type="button" onClick={props.onOpenDemo}>
+        <button type="button" disabled={saving} onClick={props.onOpenDemo}>
           Open offline demo
         </button>
-        <button type="button" onClick={props.onOpenLiveDemo}>
+        <button type="button" disabled={saving} onClick={props.onOpenLiveDemo}>
           Open live demo
         </button>
       </div>

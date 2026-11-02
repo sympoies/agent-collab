@@ -150,6 +150,33 @@ describe("Poller", () => {
     poller.stop();
   });
 
+  it("retires a pending Load older retry after a manual recovery", async () => {
+    const retryAt = new Date(NOW.getTime() + MINUTE);
+    const loadOlder = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new SourceError("rate-limited", "", 403, retryAt))
+      .mockResolvedValue(undefined);
+    const tick = vi.fn(() => Promise.resolve());
+    const poller = new Poller(tick, {
+      visible: () => true,
+      visibleIntervalMs: 5 * MINUTE,
+      rateLimit: () => null,
+    });
+    const firstAction = () => loadOlder();
+    const manualAction = () => loadOlder();
+    poller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await poller.runOperation(firstAction, 0, "load-older");
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    await poller.runOperation(manualAction, 0, "load-older");
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(5 * MINUTE);
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+    expect(tick).toHaveBeenCalledOnce();
+    poller.stop();
+  });
+
   it("reports an error that needs the user and stops", async () => {
     const error = new SourceError("unauthorized", "", 401);
     const tick = vi.fn(() => Promise.reject(error));

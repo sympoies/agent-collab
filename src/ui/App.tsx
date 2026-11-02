@@ -46,13 +46,19 @@ export function App({
     setError(reason);
   };
 
-  const run = (operation: () => Promise<unknown>, minimumIntervalMs = 0) => {
+  const run = (
+    operation: () => Promise<unknown>,
+    minimumIntervalMs = 0,
+    operationKey = "manual",
+  ) => {
     setBusy(true);
     const poller = pollerRef.current;
     const result =
       poller === null
         ? operation().then(() => true)
-        : poller.runOperation(operation, minimumIntervalMs);
+        : operationKey === "refresh"
+          ? poller.refreshNow(minimumIntervalMs)
+          : poller.runOperation(operation, minimumIntervalMs, operationKey);
     result
       .then((ran) => {
         if (ran && poller === null) setError(null);
@@ -136,7 +142,7 @@ export function App({
           type="button"
           disabled={busy || retryingAfterLimit}
           onClick={() => {
-            run(() => loader.refresh(), pollIntervalMs ?? 0);
+            run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
           }}
         >
           Refresh
@@ -186,7 +192,7 @@ export function App({
             className="older"
             disabled={busy || retryingAfterLimit}
             onClick={() => {
-              run(() => loader.loadOlder());
+              run(() => loader.loadOlder(), 0, "load-older");
             }}
           >
             Load older messages
