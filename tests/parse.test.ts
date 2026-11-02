@@ -91,6 +91,11 @@ describe("parseMessageFile: valid messages", () => {
     expect(message(parseMessageFile(PATH, file({ needs: "無" }))).needs).toBeNull();
   });
 
+  it("ignores a leading byte order mark", () => {
+    const result = parseMessageFile(PATH, `\uFEFF${file()}`);
+    expect(result).toMatchObject({ kind: "message", message: { id: ID, issues: [] } });
+  });
+
   it("keeps inner blank lines but trims blank lines around the body", () => {
     const result = message(parseMessageFile(PATH, file({}, "\n\nfirst\n\nsecond\n\n")));
     expect(result.body).toEqual({ state: "plain", lines: ["first", "", "second"] });

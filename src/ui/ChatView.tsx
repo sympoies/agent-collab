@@ -58,8 +58,8 @@ function Bubble({ view }: { view: MessageView }) {
               {message.issues.length} {message.issues.length === 1 ? "issue" : "issues"}
             </summary>
             <ul>
-              {message.issues.map((issue) => (
-                <li key={issue}>{issue}</li>
+              {message.issues.map((issue, index) => (
+                <li key={`${String(index)}-${issue}`}>{issue}</li>
               ))}
             </ul>
           </details>
@@ -88,8 +88,8 @@ function Bubble({ view }: { view: MessageView }) {
       )}
       {message.refs.length > 0 && (
         <ul className="refs">
-          {message.refs.map((ref) => (
-            <li key={ref}>{ref}</li>
+          {message.refs.map((ref, index) => (
+            <li key={`${String(index)}-${ref}`}>{ref}</li>
           ))}
         </ul>
       )}
@@ -124,8 +124,8 @@ function RowView({ row }: { row: Row }) {
             <strong>Unreadable message file</strong> <code>{row.path}</code>
           </p>
           <ul>
-            {row.errors.map((error) => (
-              <li key={error}>{error}</li>
+            {row.errors.map((error, index) => (
+              <li key={`${String(index)}-${error}`}>{error}</li>
             ))}
           </ul>
           <details>
