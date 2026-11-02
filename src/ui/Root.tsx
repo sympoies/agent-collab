@@ -1,7 +1,7 @@
 // Switches between the settings screen and the viewer. Secrets go straight from
 // the credential store into the message source; they are never kept in React state.
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import type { Secret } from "../credentials/secret";
 import { Loader } from "../loader/loader";
@@ -45,7 +45,7 @@ interface ViewerScreen {
 }
 
 type Screen =
-  | { readonly kind: "starting" }
+  | { readonly kind: "welcome" }
   | {
       readonly kind: "settings";
       readonly draft: SettingsDraft;
@@ -57,7 +57,7 @@ type Screen =
 
 export function Root(props: RootProps) {
   const { createSource, createDemoSource, createLiveDemoSource } = props;
-  const [screen, setScreen] = useState<Screen>({ kind: "starting" });
+  const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
 
   const viewer = (
@@ -89,18 +89,21 @@ export function Root(props: RootProps) {
     setScreen({ kind: "settings", draft, storedEndpoints: stored, back });
   };
 
-  useEffect(() => {
-    // Any start-up failure (a blocked credential store, a source that cannot be
-    // created) falls through to the settings screen instead of a stuck screen.
-    restore(props)
-      .then(async (opened) => {
-        if (opened === null) await showSettings(null);
-        else setScreen(open(opened));
-      })
-      .catch(() => showSettings(null));
-    // Runs once at start-up; later changes go through the settings screen.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const openSavedRepository = async () => {
+    try {
+      const opened = await restore(props);
+      if (opened === null) await showSettings(null);
+      else setScreen(open(opened));
+    } catch {
+      await showSettings(null);
+    }
+  };
+
+  const showLiveDemo = () => {
+    openLiveDemo(createLiveDemoSource, (source) => {
+      setScreen(viewer(source, "Live demo", [], null, LIVE_DEMO_POLL_INTERVAL_MS));
+    });
+  };
 
   const save = async (draft: SettingsDraft): Promise<DraftErrors | null> => {
     const result = await apply(props, draft);
@@ -110,8 +113,26 @@ export function Root(props: RootProps) {
   };
 
   switch (screen.kind) {
-    case "starting":
-      return <p className="empty">Loading…</p>;
+    case "welcome":
+      return (
+        <div className="app settings">
+          <h1>Agent collaboration viewer</h1>
+          <button type="button" onClick={showLiveDemo}>
+            Open live demo
+          </button>
+          <button type="button" onClick={() => void openSavedRepository()}>
+            Open saved repository
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void showSettings(null);
+            }}
+          >
+            Open another repository
+          </button>
+        </div>
+      );
     case "settings": {
       const back = screen.back;
       return (
@@ -135,9 +156,7 @@ export function Root(props: RootProps) {
               setScreen(viewer(createDemoSource(), "Demo repository", ["alice-agent"]));
             }}
             onOpenLiveDemo={() => {
-              openLiveDemo(createLiveDemoSource, (source) => {
-                setScreen(viewer(source, "Live demo", [], null, LIVE_DEMO_POLL_INTERVAL_MS));
-              });
+              showLiveDemo();
             }}
           />
         </div>

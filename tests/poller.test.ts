@@ -121,6 +121,35 @@ describe("Poller", () => {
     poller.stop();
   });
 
+  it("allows a manual refresh to recover after a stopping open error", async () => {
+    const tick = vi.fn(() => Promise.resolve());
+    const poller = new Poller(tick, { visible: () => true, rateLimit: () => null });
+    poller.start(() => Promise.reject(new SourceError("unauthorized", "", 401)));
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30 * MINUTE);
+    expect(tick).not.toHaveBeenCalled();
+
+    await poller.refreshNow();
+    expect(tick).toHaveBeenCalledOnce();
+    poller.stop();
+  });
+
+  it("does not add a manual request before the anonymous poll interval", async () => {
+    const tick = vi.fn(() => Promise.resolve());
+    const poller = new Poller(tick, {
+      visible: () => true,
+      visibleIntervalMs: 5 * MINUTE,
+      rateLimit: () => null,
+    });
+    poller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await poller.refreshNow(5 * MINUTE)).toBe(false);
+    expect(tick).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5 * MINUTE);
+    expect(tick).toHaveBeenCalledOnce();
+    poller.stop();
+  });
+
   it("reports an error that needs the user and stops", async () => {
     const error = new SourceError("unauthorized", "", 401);
     const tick = vi.fn(() => Promise.reject(error));
@@ -163,12 +192,15 @@ describe("Poller", () => {
   it("waits until retryAt when opening is rate limited", async () => {
     const error = new SourceError("rate-limited", "", 403, new Date(NOW.getTime() + 20 * MINUTE));
     const tick = vi.fn(() => Promise.resolve());
+    const first = vi.fn().mockRejectedValueOnce(error).mockResolvedValue(undefined);
     const poller = new Poller(tick, { visible: () => true, rateLimit: () => null });
-    poller.start(() => Promise.reject(error));
+    poller.start(first);
     await vi.advanceTimersByTimeAsync(20 * MINUTE - 1);
+    expect(first).toHaveBeenCalledOnce();
     expect(tick).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    expect(tick).toHaveBeenCalledTimes(1);
+    expect(first).toHaveBeenCalledTimes(2);
+    expect(tick).not.toHaveBeenCalled();
   });
 
   it("keeps polling with backoff after a forbidden poll that follows a success", async () => {

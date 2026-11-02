@@ -73,6 +73,8 @@ export class Poller {
   private inFlight = false;
   private lastError: unknown = null;
   private lastRunAt = 0;
+  private hasRun = false;
+  private retryOperation: (() => Promise<unknown>) | null = null;
 
   constructor(
     private readonly tick: () => Promise<unknown>,
@@ -96,19 +98,28 @@ export class Poller {
   }
 
   /** Runs a user-requested refresh through the same error and scheduling path. */
-  refreshNow(): Promise<void> {
-    if (!this.running || this.inFlight) return Promise.resolve();
+  refreshNow(minimumIntervalMs = 0): Promise<boolean> {
+    return this.runOperation(this.retryOperation ?? this.tick, minimumIntervalMs);
+  }
+
+  /** Runs another user action through the poller's rate-limit and retry path. */
+  runOperation(operation: () => Promise<unknown>, minimumIntervalMs = 0): Promise<boolean> {
+    if (this.inFlight) return Promise.resolve(false);
     if (
       this.lastError instanceof SourceError &&
       this.lastError.kind === "rate-limited" &&
       this.lastError.retryAt !== null &&
       this.lastError.retryAt.getTime() > Date.now()
     ) {
-      return Promise.resolve();
+      return Promise.resolve(false);
     }
+    if (minimumIntervalMs > 0 && this.hasRun && Date.now() - this.lastRunAt < minimumIntervalMs) {
+      return Promise.resolve(false);
+    }
+    this.running = true;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
-    return this.run(this.tick);
+    return this.run(operation).then(() => true);
   }
 
   /** Reschedules for the current visibility; a page that became visible polls at once if due. */
@@ -139,7 +150,7 @@ export class Poller {
     }
     this.timer = setTimeout(
       () => {
-        void this.run(this.tick);
+        void this.run(this.retryOperation ?? this.tick);
       },
       Math.max(0, this.lastRunAt + delay - Date.now()),
     );
@@ -161,6 +172,12 @@ export class Poller {
     if (!this.running) return;
     this.lastError = error;
     this.lastRunAt = Date.now();
+    this.hasRun = true;
+    if (error instanceof SourceError && error.kind === "rate-limited") {
+      this.retryOperation = operation;
+    } else if (error === null && this.retryOperation === operation) {
+      this.retryOperation = null;
+    }
     this.env.onError?.(error);
     this.schedule();
   }

@@ -15,14 +15,16 @@ describe("Root live demo", () => {
     document.body.replaceChildren();
   });
 
-  it("opens the live source without writing settings or credentials", async () => {
+  it("opens the live source without reading or writing saved settings or credentials", async () => {
     const values = new Map<string, string>();
     const storage = {
-      getItem: (key: string) => values.get(key) ?? null,
+      getItem: vi.fn((key: string) => values.get(key) ?? null),
       setItem: vi.fn((key: string, value: string) => values.set(key, value)),
     };
     const memory = new MemoryStore();
     const encrypted = new MemoryStore();
+    const memoryGet = vi.spyOn(memory, "get");
+    const encryptedGet = vi.spyOn(encrypted, "get");
     const memorySet = vi.spyOn(memory, "set");
     const memoryDelete = vi.spyOn(memory, "delete");
     const encryptedSet = vi.spyOn(encrypted, "set");
@@ -50,6 +52,9 @@ describe("Root live demo", () => {
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
+    expect(storage.getItem).not.toHaveBeenCalled();
+    expect(memoryGet).not.toHaveBeenCalled();
+    expect(encryptedGet).not.toHaveBeenCalled();
 
     const button = [...host.querySelectorAll("button")].find(
       (candidate) => candidate.textContent === "Open live demo",
@@ -62,6 +67,9 @@ describe("Root live demo", () => {
 
     expect(createLiveDemoSource).toHaveBeenCalledOnce();
     expect(host.textContent).toContain("Live demo");
+    expect(storage.getItem).not.toHaveBeenCalled();
+    expect(memoryGet).not.toHaveBeenCalled();
+    expect(encryptedGet).not.toHaveBeenCalled();
     expect(storage.setItem).not.toHaveBeenCalled();
     expect(memorySet).not.toHaveBeenCalled();
     expect(memoryDelete).not.toHaveBeenCalled();

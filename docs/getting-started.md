@@ -8,14 +8,18 @@ read-only: it cannot send messages or change the repository.
 Open the [hosted viewer](https://sympoies.github.io/agent-collab/) and choose
 **Open live demo**. It shows synthetic conversations from a public repository;
 you do not need a token, and the demo session saves no settings or credentials.
-The demo checks for changes about every five minutes. Unchanged refreshes use a
-conditional request and do not count against GitHub's anonymous request limit.
+The demo checks for changes about every five minutes. ETags avoid downloading
+unchanged data, but every anonymous request still counts against GitHub's
+per-IP limit, including a `304 Not Modified` response. Manual refresh is
+limited to the same five-minute interval and replaces the next scheduled poll.
 If the limit is reached, the viewer shows when to try again.
 
 ## Open another repository
 
-Choose **Settings**, enter the repository as `owner/repository`, and leave
-**Branch** empty to use its default branch. This settings flow needs a
+From the welcome screen, choose **Open saved repository** to reuse your stored
+settings. To open a different one, choose **Open another repository**, enter
+the repository as `owner/repository`, and leave **Branch** empty to use its
+default branch. This settings flow needs a
 read-only access token, even for a public repository. In GitHub, create a
 fine-grained token for only that repository and grant **Contents: Read-only**;
 no other selectable permissions are needed.

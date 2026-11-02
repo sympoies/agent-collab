@@ -19,7 +19,7 @@ This public repository holds the collaboration method and its documentation, and
 - GitHub first (private repositories included); GitLab later. All platform differences sit behind one message-source interface that is built from the start, so UI and message parsing never see provider specifics.
 - First launch asks for the platform and endpoint, the repository to watch and a read-only access credential (a fine-grained token limited to one repository's contents is enough). A later version also takes a private key for decrypting encrypted messages; the access credential reads the repository, the private key decrypts message bodies.
 - Credentials and keys live in the device keychain in packaged builds. The web build keeps them in memory only, or in an encrypted browser store when the user explicitly chooses it. They are never logged or sent anywhere but the configured endpoint.
-- Updates come from polling with conditional requests (ETag), so an unchanged repository costs no rate limit. Notifications are local while the app is running.
+- Updates use ETags to avoid downloading unchanged data. Anonymous requests still count against GitHub's per-IP limit, so the live demo polls every five minutes and manual refresh uses the next scheduled request. Notifications are local while the app is running.
 
 ## Status
 

@@ -12,6 +12,7 @@ function localDate(now: Date): string {
 }
 
 function describe(error: unknown): string {
+  if (typeof error === "string") return error;
   if (error instanceof SetupError || error instanceof SourceError) return error.message;
   return "Unexpected error while loading messages.";
 }
@@ -45,11 +46,23 @@ export function App({
     setError(reason);
   };
 
-  const run = (operation: () => Promise<unknown>) => {
+  const run = (operation: () => Promise<unknown>, minimumIntervalMs = 0) => {
     setBusy(true);
-    operation()
-      .then(() => {
-        setError(null);
+    const poller = pollerRef.current;
+    const result =
+      poller === null
+        ? operation().then(() => true)
+        : poller.runOperation(operation, minimumIntervalMs);
+    result
+      .then((ran) => {
+        if (ran && poller === null) setError(null);
+        if (!ran) {
+          setError(
+            minimumIntervalMs > 0
+              ? "The live demo refreshes every five minutes. Wait for the next check before refreshing again."
+              : "A request is already running or waiting for the rate limit reset.",
+          );
+        }
       })
       .catch((reason: unknown) => {
         showError(reason);
@@ -123,15 +136,7 @@ export function App({
           type="button"
           disabled={busy || retryingAfterLimit}
           onClick={() => {
-            const poller = pollerRef.current;
-            if (poller === null) {
-              run(() => loader.refresh());
-              return;
-            }
-            setBusy(true);
-            void poller.refreshNow().finally(() => {
-              setBusy(false);
-            });
+            run(() => loader.refresh(), pollIntervalMs ?? 0);
           }}
         >
           Refresh
@@ -179,7 +184,7 @@ export function App({
           <button
             type="button"
             className="older"
-            disabled={busy}
+            disabled={busy || retryingAfterLimit}
             onClick={() => {
               run(() => loader.loadOlder());
             }}

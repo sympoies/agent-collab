@@ -108,8 +108,10 @@ repository-relative path.
 - **Only `head` is mutable.** Everything below a revision is addressed by
   content (tree and blob ids), so listings and file contents are cached in
   memory by object id for the session and never re-requested. A poll that finds
-  no change costs one conditional request, which the provider does not charge
-  against the rate limit when it answers `304 Not Modified`.
+  no change costs one conditional request. A `304 Not Modified` response avoids
+  transferring data, but GitHub exempts it from the primary rate limit only
+  when the request is correctly authorized with an `Authorization` header;
+  anonymous requests still count against the per-IP limit.
 - **Paging stays inside the source.** Directory order differs between
   providers (and messages sort by id, not by API order), so the loader needs
   the complete listing of one directory anyway. History paging happens one
@@ -372,8 +374,8 @@ Two different secrets with different purposes:
   token were written. Stored settings are checked again on load with the same
   endpoint and repository rules as the settings screen.
 - **Store failures.** A credential store that cannot be read (for example
-  blocked browser storage) counts as holding no token: start-up falls through
-  to the settings screen. Saving still succeeds when an old copy in the other
+  blocked browser storage) counts as holding no token: choosing a saved
+  repository falls through to the settings screen. Saving still succeeds when an old copy in the other
   store cannot be removed, and the viewer shows a warning; removing
   credentials tries every store and reports one it could not clear.
 - **Never exposed.**
@@ -392,14 +394,16 @@ Two different secrets with different purposes:
     so `connect-src` allows any `https:` origin; packaged builds narrow it to
     the configured endpoint. The dev server runs without it because hot
     reload uses inline scripts. No third-party scripts, fonts or analytics.
-- **In-memory lifetime.** The token is read from the store at start-up (or
-  entered), handed to the source, and held in the source's closure for the
+- **In-memory lifetime.** When a user chooses a saved repository, its token is
+  read from the store (or entered), handed to the source, and held in the source's closure for the
   app session. Changing the repository, removing the credential or signing
   out drops the source and the reference. A `401` stops polling and asks for a
   new credential instead of retrying.
-- **Public live demo.** The settings screen can open the configured public demo
-  repository anonymously. This session bypasses settings and credential stores;
-  it has no credential and saves no settings. Anonymous `401`/`404` errors say
+- **Public live demo.** The welcome and settings screens can open the configured
+  public demo repository anonymously. The app does not read saved settings or
+  credentials until the user chooses a saved repository or settings. The live
+  session bypasses both stores; it has no credential and saves no settings.
+  Anonymous `401`/`404` errors say
   the repository needs a token or does not exist.
 
 ## 7. Polling and notifications
@@ -410,10 +414,12 @@ Two different secrets with different purposes:
   files. A new month directory is picked up because `inbox/` itself changes.
 - **Interval.** 60 seconds while the window is visible, 5 minutes while
   hidden. Anonymous demo sessions use 5 minutes whether visible or hidden.
-  A manual refresh uses the same ETag conditional request: an unchanged
-  repository returns `304 Not Modified` without using the anonymous request
-  limit. A changed repository can require additional requests. The refresh
-  action is disabled until the reset time after a rate-limit response. Errors back off exponentially
+  Manual refresh is limited to that same five-minute interval and replaces the
+  next scheduled poll, so it cannot add another poll during the interval. Each
+  anonymous API request still counts against the per-IP limit, including a
+  `304 Not Modified`; ETags reduce transfer and avoid fetching unchanged
+  history. A changed repository can require additional requests. Refresh and
+  Load older wait until the reset time after a rate-limit response. Errors back off exponentially
   (doubling, capped at 15 minutes); `rate-limited` waits until `retryAt`; when
   the remaining budget drops below 10 % of the limit the interval stretches so
   the budget lasts until the reset. Opening the repository counts as the
