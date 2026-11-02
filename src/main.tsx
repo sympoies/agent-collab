@@ -13,6 +13,41 @@ import "./ui/styles.css";
 
 // Composition root: the only module that picks concrete providers and stores.
 
+function safeBrowserStorage(): Pick<Storage, "getItem" | "setItem"> {
+  const fallback = new Map<string, string>();
+  let storage: Storage | null = null;
+  let unavailable = false;
+  try {
+    storage = window.localStorage;
+  } catch {
+    unavailable = true;
+  }
+
+  return {
+    getItem(key) {
+      if (!unavailable && storage !== null) {
+        try {
+          return storage.getItem(key);
+        } catch {
+          unavailable = true;
+        }
+      }
+      return fallback.get(key) ?? null;
+    },
+    setItem(key, value) {
+      if (!unavailable && storage !== null) {
+        try {
+          storage.setItem(key, value);
+          return;
+        } catch {
+          unavailable = true;
+        }
+      }
+      fallback.set(key, value);
+    },
+  };
+}
+
 function createSource(settings: ViewerSettings, token: Secret): MessageSource {
   switch (settings.platform) {
     case "github": {
@@ -46,7 +81,7 @@ if (root === null) throw new Error("missing #root element");
 createRoot(root).render(
   <StrictMode>
     <Root
-      storage={window.localStorage}
+      storage={safeBrowserStorage()}
       stores={{
         memory: new MemoryStore(),
         "browser-encrypted": new BrowserEncryptedStore(indexedDbRecords()),

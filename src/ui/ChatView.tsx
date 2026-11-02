@@ -1,6 +1,6 @@
 // Chat timeline. Message text is always rendered as React text, never as HTML.
 
-import type { CSSProperties } from "react";
+import { Fragment, type CSSProperties } from "react";
 
 import type { Message } from "../message/types";
 import type { MessageView, Row } from "./timeline";
@@ -13,6 +13,25 @@ function senderHue(name: string): number {
 
 function senderStyle(name: string): CSSProperties {
   return { "--sender-hue": senderHue(name) } as CSSProperties;
+}
+
+function initials(name: string): string {
+  return name
+    .split("-")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function recipientLabel(to: readonly string[]): string {
+  if (to.length === 0 || (to.length === 1 && to[0] === "all")) return "everyone";
+  return to.join(", ");
+}
+
+function typeLabel(type: Message["type"]): string {
+  if (type === "decision-needed") return "decision";
+  return type ?? "unknown type";
 }
 
 function firstLine(message: Message): string {
@@ -49,9 +68,16 @@ function Bubble({ view }: { view: MessageView }) {
       data-fresh={view.fresh}
     >
       <header className="meta">
-        <time>{message.timestamp.slice(11)}</time>
-        <span className="badge">{message.type ?? "unknown type"}</span>
-        <span className="to">to {message.to.join(", ")}</span>
+        <time
+          tabIndex={0}
+          dateTime={message.timestamp.replace(" ", "T")}
+          title={message.timestamp}
+          aria-label={message.timestamp}
+        >
+          {message.timestamp.slice(11)}
+        </time>
+        <span className="badge">{typeLabel(message.type)}</span>
+        <span className="to">to {recipientLabel(message.to)}</span>
         {message.issues.length > 0 && (
           <details className="issues">
             <summary title="This message does not follow the protocol">
@@ -109,6 +135,9 @@ function RowView({ row }: { row: Row }) {
       return (
         <li className="group" data-align={row.align} style={senderStyle(row.from)}>
           <div className="group-header">
+            <span className="avatar" aria-hidden="true">
+              {initials(row.from)}
+            </span>
             <span className="sender">{row.from}</span>
             <span className="topic">#{row.topic}</span>
           </div>
@@ -156,11 +185,25 @@ function rowKey(row: Row, index: number): string {
 
 export function ChatView({ rows }: { rows: readonly Row[] }) {
   if (rows.length === 0) return <p className="empty">No messages yet.</p>;
+  const newMarkerIndex = rows.findIndex(
+    (row) => row.kind === "group" && row.messages.some((view) => view.fresh),
+  );
   return (
     <ol className="timeline">
-      {rows.map((row, index) => (
-        <RowView key={rowKey(row, index)} row={row} />
-      ))}
+      {rows.map((row, index) => {
+        const showNewMarker = index === newMarkerIndex;
+        return (
+          <Fragment key={rowKey(row, index)}>
+            {showNewMarker && (
+              <li className="new-marker" role="separator" aria-label="New messages">
+                <span>New messages</span>
+              </li>
+            )}
+            <RowView row={row} />
+          </Fragment>
+        );
+      })}
+      <li id="latest-message" className="latest-anchor" aria-hidden="true" />
     </ol>
   );
 }

@@ -83,9 +83,7 @@ export function App({
       visible: () => document.visibilityState === "visible",
       ...(pollIntervalMs === undefined ? {} : { visibleIntervalMs: pollIntervalMs }),
       rateLimit: () => loader.rateLimit(),
-      onError: (reason) => {
-        showError(reason);
-      },
+      onError: showError,
     });
     pollerRef.current = poller;
     const onVisibility = () => {
@@ -138,18 +136,20 @@ export function App({
     <div className="app">
       <header className="bar">
         <h1>{title}</h1>
-        <button
-          type="button"
-          disabled={busy || retryingAfterLimit}
-          onClick={() => {
-            run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
-          }}
-        >
-          Refresh
-        </button>
-        <button type="button" onClick={onOpenSettings}>
-          Settings
-        </button>
+        <div className="bar-actions">
+          <button
+            type="button"
+            disabled={busy || retryingAfterLimit}
+            onClick={() => {
+              run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
+            }}
+          >
+            Refresh
+          </button>
+          <button type="button" onClick={onOpenSettings}>
+            Settings
+          </button>
+        </div>
       </header>
       {notice !== null && (
         <p className="notice" role="status">
@@ -161,45 +161,54 @@ export function App({
           {describe(error)}
         </p>
       )}
-      <nav className="topics" aria-label="Topics">
-        <button
-          type="button"
-          aria-pressed={topic === null}
-          onClick={() => {
-            setTopic(null);
-          }}
-        >
-          All
-        </button>
-        {topics.map((summary) => (
-          <button
-            key={summary.topic}
-            type="button"
-            aria-pressed={topic === summary.topic}
-            onClick={() => {
-              setTopic(summary.topic);
-            }}
-          >
-            #{summary.topic} <span className="count">{summary.count}</span>
-            {summary.fresh > 0 && <span className="fresh">{summary.fresh} new</span>}
-          </button>
-        ))}
-      </nav>
-      <main>
-        {snapshot.hasOlder && (
-          <button
-            type="button"
-            className="older"
-            disabled={busy || retryingAfterLimit}
-            onClick={() => {
-              run(() => loader.loadOlder(), 0, "load-older");
-            }}
-          >
-            Load older messages
-          </button>
-        )}
-        <ChatView rows={rows} />
-      </main>
+      <div className="workspace">
+        <aside className="topics-pane">
+          <h2>Conversations</h2>
+          <nav className="topics" aria-label="Topics">
+            <button
+              type="button"
+              aria-pressed={topic === null}
+              onClick={() => {
+                setTopic(null);
+              }}
+            >
+              All
+            </button>
+            {topics.map((summary) => (
+              <button
+                key={summary.topic}
+                type="button"
+                aria-pressed={topic === summary.topic}
+                onClick={() => {
+                  setTopic(summary.topic);
+                }}
+              >
+                <span>#{summary.topic}</span>
+                <span className="count">{summary.count}</span>
+                {summary.fresh > 0 && <span className="fresh">{summary.fresh} new</span>}
+              </button>
+            ))}
+          </nav>
+        </aside>
+        <main className="conversation" aria-label="Message timeline">
+          {snapshot.hasOlder && (
+            <button
+              type="button"
+              className="older"
+              disabled={busy || retryingAfterLimit}
+              onClick={() => {
+                run(() => loader.loadOlder(), 0, "load-older");
+              }}
+            >
+              Load older messages
+            </button>
+          )}
+          <ChatView rows={rows} />
+        </main>
+      </div>
+      <a className="jump-to-latest" href="#latest-message">
+        Jump to latest
+      </a>
     </div>
   );
 }
