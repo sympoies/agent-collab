@@ -282,7 +282,9 @@ A malformed card shows the path and the errors; the raw text is available
 behind an expander and is rendered as text, never as HTML. Files in `inbox/`
 that are not `.md` (for example `.gitkeep`) are ignored. A file that fails to
 download produces an error card for that path; the rest of the timeline
-still renders, and every refresh downloads the file again until it succeeds.
+still renders. Refreshes download the file again with growing spacing (after
+1, 2, 4, ... refreshes, at most every 15) until it succeeds. A file that is
+still unavailable is not counted as new and not marked fresh.
 
 ### Loading and paging
 

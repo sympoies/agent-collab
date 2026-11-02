@@ -38,6 +38,8 @@ export class SetupError extends Error {
 const MARKER_FILE = ".agent-collab";
 const SUPPORTED_PROTOCOL = "collab-protocol: 1";
 const MONTH_RE = /^\d{4}-\d{2}$/;
+/** Most refreshes between two downloads of a file that keeps failing (about 15 minutes). */
+const MAX_RETRY_SPACING = 15;
 /** Errors that only affect one file; anything else aborts the operation. */
 const PER_FILE_ERRORS: ReadonlySet<SourceErrorKind> = new Set([
   "not-found",
@@ -81,6 +83,13 @@ async function mapLimit<T, R>(
   return results;
 }
 
+interface RetryState {
+  entry: DirectoryEntry;
+  attempts: number;
+  /** Refreshes left until the next download attempt. */
+  wait: number;
+}
+
 export class Loader {
   private readonly pageSize: number;
   private readonly concurrency: number;
@@ -93,8 +102,11 @@ export class Loader {
   private unlistedMonths: DirectoryEntry[] = [];
   /** Listed month folders and their object ids. */
   private readonly listedMonths = new Map<string, string>();
-  /** Files shown as unavailable, keyed by file name; refresh downloads them again. */
-  private readonly unavailable = new Map<string, DirectoryEntry>();
+  /**
+   * Files shown as unavailable, keyed by file name. Refresh downloads them
+   * again with growing spacing: after 1, 2, 4, ... refreshes, at most 15.
+   */
+  private readonly unavailable = new Map<string, RetryState>();
   private readonly fresh = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private snapshot: LoaderSnapshot = { items: [], hasOlder: false, fresh: new Set() };
@@ -171,11 +183,12 @@ export class Loader {
     return this.serialize(async () => {
       const head = await this.source.head(this.head);
       if (head === "not-modified") {
-        if (this.unavailable.size > 0)
-          this.publish(await this.readAll([...this.unavailable.values()]));
+        const retries = this.dueRetries();
+        if (retries.length > 0) this.publish(await this.readAll(retries));
         return 0;
       }
       const inbox = await this.listOrEmpty(head.revision, "inbox");
+      this.updateRetries(inbox);
       const found: DirectoryEntry[] = inbox.filter(
         (entry) => isMessageFile(entry) && !this.isKnown(entry.name),
       );
@@ -185,19 +198,19 @@ export class Loader {
         const unlisted = this.unlistedMonths.some((entry) => entry.name === month.name);
         if (unlisted || listedId === month.objectId) continue;
         const entries = await this.source.listDirectory(head.revision, month.path);
+        this.updateRetries(entries);
         found.push(...entries.filter((e) => isMessageFile(e) && !this.isKnown(e.name)));
         monthUpdates.set(month.name, month.objectId);
       }
-      const retries = [...this.unavailable.values()].filter(
-        (entry) => !found.some((e) => e.name === entry.name),
-      );
+      const retries = this.dueRetries();
       const added = await this.readAll(found);
       const recovered = await this.readAll(retries);
+      const arrived = added.filter((item) => item.kind !== "unavailable");
       for (const [name, objectId] of monthUpdates) this.listedMonths.set(name, objectId);
-      for (const item of added) this.fresh.add(itemPath(item));
+      for (const item of arrived) this.fresh.add(itemPath(item));
       this.head = head;
       this.publish([...added, ...recovered]);
-      return added.length;
+      return arrived.length;
     });
   }
 
@@ -237,7 +250,9 @@ export class Loader {
         return item;
       } catch (error) {
         if (error instanceof SourceError && PER_FILE_ERRORS.has(error.kind)) {
-          this.unavailable.set(entry.name, entry);
+          const attempts = (this.unavailable.get(entry.name)?.attempts ?? 0) + 1;
+          const wait = Math.min(2 ** (attempts - 1), MAX_RETRY_SPACING);
+          this.unavailable.set(entry.name, { entry, attempts, wait });
           return { kind: "unavailable", path: entry.path, error: error.kind };
         }
         throw error;
@@ -254,11 +269,26 @@ export class Loader {
     }
   }
 
+  /** Counts one refresh down for every unavailable file; returns the files due again. */
+  private dueRetries(): DirectoryEntry[] {
+    const due: DirectoryEntry[] = [];
+    for (const state of this.unavailable.values()) {
+      state.wait -= 1;
+      if (state.wait <= 0) due.push(state.entry);
+    }
+    return due;
+  }
+
+  /** Keeps the newest listed entry of an unavailable file for its next attempt. */
+  private updateRetries(entries: readonly DirectoryEntry[]): void {
+    for (const entry of entries) {
+      const state = this.unavailable.get(entry.name);
+      if (state !== undefined) state.entry = entry;
+    }
+  }
+
   private isKnown(name: string): boolean {
-    return (
-      (this.items.has(name) && !this.unavailable.has(name)) ||
-      this.pending.some((entry) => entry.name === name)
-    );
+    return this.items.has(name) || this.pending.some((entry) => entry.name === name);
   }
 
   private publish(added: readonly TimelineItem[]): void {
