@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import { SetupError, type Loader } from "../loader/loader";
+import { Poller } from "../loader/poller";
 import { SourceError } from "../source/types";
 import { ChatView } from "./ChatView";
 import { buildRows, topicSummaries } from "./timeline";
@@ -42,6 +43,14 @@ export function App({ loader, title, selfNames }: AppProps) {
   };
 
   useEffect(() => {
+    const poller = new Poller(() => loader.refresh(), {
+      visible: () => document.visibilityState === "visible",
+      rateLimit: () => loader.rateLimit(),
+      onError: (reason) => {
+        setError(reason === null ? null : describe(reason));
+      },
+    });
+    let active = true;
     loader
       .open()
       .catch((reason: unknown) => {
@@ -49,7 +58,12 @@ export function App({ loader, title, selfNames }: AppProps) {
       })
       .finally(() => {
         setBusy(false);
+        if (active) poller.start();
       });
+    return () => {
+      active = false;
+      poller.stop();
+    };
   }, [loader]);
 
   const topics = useMemo(
