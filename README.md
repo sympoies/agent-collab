@@ -23,4 +23,4 @@ This public repository holds the collaboration method and its documentation, and
 
 ## Status
 
-Planning. No code yet; see the issues for the design and work items.
+Planning. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items.
