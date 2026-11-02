@@ -42,6 +42,18 @@ Requires Node.js 24 or newer and pnpm 11.
 
 The `check` GitHub Actions workflow runs `pnpm check` on every push and pull request.
 
+### Browser acceptance
+
+The production-build browser suite uses Playwright and fixture responses for the
+GitHub API. It does not contact a real repository or require a token. The suite
+is separate from `pnpm check`, so the normal checks do not require a browser.
+
+Set `PLAYWRIGHT_SCREENSHOT_DIR` to an absolute directory outside this repository
+before running `pnpm test:browser`. The command builds the production site,
+serves it locally, runs Chromium acceptance cases, and writes screenshots and
+failure artifacts to that directory. Install the browser once with
+`pnpm exec playwright install chromium` when it is not already available.
+
 For instructions on opening a repository in the hosted viewer and creating a
 read-only token, see the [getting-started guide](docs/getting-started.md).
 
