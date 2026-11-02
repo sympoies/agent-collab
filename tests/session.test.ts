@@ -48,6 +48,15 @@ describe("settings session", () => {
     expect(result.ok && result.open.token.reveal()).toBe(TOKEN);
   });
 
+  it("requires a new token when the endpoint changes", async () => {
+    const d = deps();
+    await apply(d, draft());
+    expect(
+      await apply(d, draft({ token: "", endpoint: "https://github.example.com/api/v3" })),
+    ).toEqual({ ok: false, errors: { token: "Enter the token for this endpoint." } });
+    expect((await restore(d))?.settings.endpoint).toBe("https://api.github.com");
+  });
+
   it("keeps secrets in exactly the chosen store", async () => {
     const d = deps();
     await apply(d, draft({ credentialStorage: "browser-encrypted" }));

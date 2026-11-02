@@ -35,7 +35,7 @@ describe("validateDraft", () => {
   it("accepts a GitHub repository and wraps the secrets", () => {
     const result = validateDraft(
       draft({ selfNames: "alice-agent, alice", branch: "main", privateKey: "AGE-SECRET-KEY-1ABC" }),
-      { tokenStored: false },
+      { tokenStored: false, savedEndpoint: null },
     );
     expect(result).toEqual({
       ok: true,
@@ -54,13 +54,17 @@ describe("validateDraft", () => {
   });
 
   it("keeps a stored token when the token field is left empty", () => {
-    const result = validateDraft(draft({ token: "" }), { tokenStored: true });
+    const result = validateDraft(draft({ token: "" }), {
+      tokenStored: true,
+      savedEndpoint: "https://api.github.com",
+    });
     expect(result).toMatchObject({ ok: true, token: null, privateKey: null });
   });
 
   it("removes a trailing slash from the endpoint", () => {
     const result = validateDraft(draft({ endpoint: "https://github.example.com/api/v3/" }), {
       tokenStored: false,
+      savedEndpoint: null,
     });
     expect(result).toMatchObject({
       ok: true,
@@ -123,7 +127,10 @@ describe("validateDraft", () => {
       { privateKey: "Use an age identity starting with AGE-SECRET-KEY-1." },
     ],
   ])("rejects %s", (_name, overrides, errors) => {
-    expect(validateDraft(draft(overrides), { tokenStored: false })).toEqual({ ok: false, errors });
+    expect(validateDraft(draft(overrides), { tokenStored: false, savedEndpoint: null })).toEqual({
+      ok: false,
+      errors,
+    });
   });
 });
 

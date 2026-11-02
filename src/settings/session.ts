@@ -45,6 +45,7 @@ export async function apply(
   const store = deps.stores[draft.credentialStorage];
   const result = validateDraft(draft, {
     tokenStored: await tokenStored(deps, draft.credentialStorage),
+    savedEndpoint: loadSettings(deps.storage)?.endpoint ?? null,
   });
   if (!result.ok) return result;
   for (const [kind, other] of Object.entries(deps.stores)) {

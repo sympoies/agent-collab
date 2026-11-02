@@ -344,9 +344,14 @@ Two different secrets with different purposes:
      be entered again after reload.
   2. **Encrypted in this browser**: the token is encrypted with AES-GCM under a
      non-extractable WebCrypto key; key and ciphertext stay in IndexedDB for
-     this origin. This prevents plain-text copies (profile sync, storage dumps,
-     backups) but does not protect against script running in the same origin
-     or someone with the unlocked browser profile. The warning says so.
+     this origin. This avoids a plain-text token in site storage (for example
+     when site data is inspected or exported), but the browser keeps the key in
+     the same profile, so a copy of the profile can decrypt it, and script in
+     the same origin or someone with the unlocked profile can use it. The
+     warning says so.
+- **Endpoint binding.** A stored token is only reused for the endpoint it was
+  saved with; changing the endpoint requires entering a token again, so a
+  mistyped or different host never receives the stored token.
 - **Never exposed.**
   - Secrets are wrapped in a `Secret` type whose `toString`, `toJSON` and
     inspection return `[redacted]`; only the HTTP layer reads the raw value to

@@ -50,9 +50,9 @@ export type ValidationResult =
 export const STORAGE_WARNINGS: Readonly<Record<CredentialStorage, string>> = {
   memory: "The token stays in memory for this tab only. You will enter it again after a reload.",
   "browser-encrypted":
-    "The token is encrypted with a key that cannot leave this browser and stored for this site. " +
-    "This prevents plain-text copies, but scripts on this site and anyone using this browser " +
-    "profile can still use it.",
+    "The token is encrypted and stored for this site in this browser profile. This avoids a " +
+    "plain-text token in site storage, but a copy of this browser profile, scripts on this " +
+    "site, or anyone using this profile can still use it.",
 };
 
 export const DEFAULT_DRAFT: SettingsDraft = {
@@ -95,10 +95,14 @@ function normalizeEndpoint(value: string, errors: DraftErrors): string {
   return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
 }
 
-export function validateDraft(
-  draft: SettingsDraft,
-  context: { readonly tokenStored: boolean },
-): ValidationResult {
+export interface DraftContext {
+  /** A token is stored in the chosen credential store. */
+  readonly tokenStored: boolean;
+  /** Endpoint the stored token was saved for; a stored token is only reused for it. */
+  readonly savedEndpoint: string | null;
+}
+
+export function validateDraft(draft: SettingsDraft, context: DraftContext): ValidationResult {
   const errors: DraftErrors = {};
   if (draft.platform !== "github") errors.platform = "GitLab support is not available yet.";
   const endpoint = normalizeEndpoint(draft.endpoint, errors);
@@ -112,7 +116,9 @@ export function validateDraft(
   }
   const token = draft.token.trim();
   if (token === "" && !context.tokenStored) errors.token = "Enter a read-only access token.";
-  else if (/\s/.test(token)) errors.token = "A token has no spaces.";
+  else if (token === "" && endpoint !== context.savedEndpoint) {
+    errors.token = "Enter the token for this endpoint.";
+  } else if (/\s/.test(token)) errors.token = "A token has no spaces.";
   const privateKey = draft.privateKey.trim();
   if (privateKey !== "" && !privateKey.startsWith("AGE-SECRET-KEY-1")) {
     errors.privateKey = "Use an age identity starting with AGE-SECRET-KEY-1.";
