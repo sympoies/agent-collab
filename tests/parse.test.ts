@@ -151,6 +151,10 @@ describe("parseMessageFile: fatal problems produce a malformed file", () => {
     expect(errors(parseMessageFile(PATH, file({ [key]: "" })))).toContain(`${key} is empty`);
   });
 
+  it("rejects recipients that name nobody", () => {
+    expect(errors(parseMessageFile(PATH, file({ to: " , " })))).toContain("to is empty");
+  });
+
   it("rejects an id that does not follow the id pattern", () => {
     expect(errors(parseMessageFile(PATH, file({ id: "hello" })))).toContain(
       "id must look like YYYY-MM-DDTHHMM-<from>-<topic>-<NN>: hello",

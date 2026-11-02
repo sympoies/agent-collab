@@ -43,7 +43,9 @@ describe("ChatView with the demo repository", () => {
 
   it("renders a reply with a quote of its parent", async () => {
     const html = await render();
-    expect(html).toContain('class="quote"');
+    expect(html).toContain(
+      '<a class="quote" href="#msg-2026-10-08T0905-alice-agent-api-01"><span class="quote-from">alice-agent</span> Please review the field draft in refs.</a>',
+    );
   });
 
   it("renders message text as text, never as markup", async () => {

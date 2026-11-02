@@ -113,26 +113,37 @@ export class Loader {
     return () => this.listeners.delete(listener);
   };
 
-  /** Check the marker and load the newest page. Repeated calls share the first attempt. */
+  /** Check the marker and load the newest page. Concurrent calls share one attempt. */
   open(): Promise<void> {
     this.opening ??= this.serialize(async () => {
-      const head = await this.source.head(null);
-      if (head === "not-modified") throw new SourceError("unexpected", "");
-      const root = await this.source.listDirectory(head.revision, "");
-      const marker = root.find((entry) => entry.kind === "file" && entry.name === MARKER_FILE);
-      if (marker === undefined) {
-        throw new SetupError(`not a collaboration repository (no ${MARKER_FILE} marker)`);
+      try {
+        const head = await this.source.head(null);
+        if (head === "not-modified") throw new SourceError("unexpected", "");
+        const root = await this.source.listDirectory(head.revision, "");
+        const marker = root.find((entry) => entry.kind === "file" && entry.name === MARKER_FILE);
+        if (marker === undefined) {
+          throw new SetupError(`not a collaboration repository (no ${MARKER_FILE} marker)`);
+        }
+        const text = await this.source.readFile(marker);
+        const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
+        if (firstLine !== SUPPORTED_PROTOCOL) {
+          throw new SetupError(`unsupported collaboration protocol: ${firstLine}`);
+        }
+        const hasInbox = root.some((entry) => entry.kind === "directory" && entry.name === "inbox");
+        const inbox = hasInbox ? await this.source.listDirectory(head.revision, "inbox") : [];
+        this.head = head;
+        this.pending = inbox.filter(isMessageFile).sort(newestFirst);
+        this.unlistedMonths = inbox.filter(isMonth).sort(newestFirst);
+        await this.loadPage();
+      } catch (error) {
+        // Start over on the next attempt.
+        this.head = null;
+        this.pending = [];
+        this.unlistedMonths = [];
+        this.listedMonths.clear();
+        this.opening = null;
+        throw error;
       }
-      const firstLine = (await this.source.readFile(marker)).split(/\r?\n/, 1)[0]?.trim() ?? "";
-      if (firstLine !== SUPPORTED_PROTOCOL) {
-        throw new SetupError(`unsupported collaboration protocol: ${firstLine}`);
-      }
-      const hasInbox = root.some((entry) => entry.kind === "directory" && entry.name === "inbox");
-      const inbox = hasInbox ? await this.source.listDirectory(head.revision, "inbox") : [];
-      this.head = head;
-      this.pending = inbox.filter(isMessageFile).sort(newestFirst);
-      this.unlistedMonths = inbox.filter(isMonth).sort(newestFirst);
-      await this.loadPage();
     });
     return this.opening;
   }
@@ -142,8 +153,9 @@ export class Loader {
     return this.serialize(() => this.loadPage());
   }
 
-  /** Poll for changes; resolves to the number of new items. */
+  /** Poll for changes; resolves to the number of new items. Opens first if open has not succeeded. */
   refresh(): Promise<number> {
+    if (this.head === null) return this.open().then(() => 0);
     return this.serialize(async () => {
       const head = await this.source.head(this.head);
       if (head === "not-modified") return 0;
@@ -171,25 +183,25 @@ export class Loader {
 
   private async loadPage(): Promise<void> {
     const batch: DirectoryEntry[] = [];
-    while (batch.length < this.pageSize) {
-      const candidate = this.pending[0];
-      const nextMonth = this.unlistedMonths[0];
-      if (
-        candidate !== undefined &&
-        (nextMonth === undefined || candidate.name.slice(0, 7) > nextMonth.name)
-      ) {
-        batch.push(candidate);
-        this.pending.shift();
-      } else if (nextMonth !== undefined && this.head !== null) {
-        const entries = await this.source.listDirectory(this.head.revision, nextMonth.path);
-        this.unlistedMonths.shift();
-        this.listedMonths.set(nextMonth.name, nextMonth.objectId);
-        this.pending = [...this.pending, ...entries.filter(isMessageFile)].sort(newestFirst);
-      } else {
-        break;
-      }
-    }
     try {
+      while (batch.length < this.pageSize) {
+        const candidate = this.pending[0];
+        const nextMonth = this.unlistedMonths[0];
+        if (
+          candidate !== undefined &&
+          (nextMonth === undefined || candidate.name.slice(0, 7) > nextMonth.name)
+        ) {
+          batch.push(candidate);
+          this.pending.shift();
+        } else if (nextMonth !== undefined && this.head !== null) {
+          const entries = await this.source.listDirectory(this.head.revision, nextMonth.path);
+          this.unlistedMonths.shift();
+          this.listedMonths.set(nextMonth.name, nextMonth.objectId);
+          this.pending = [...this.pending, ...entries.filter(isMessageFile)].sort(newestFirst);
+        } else {
+          break;
+        }
+      }
       this.publish(await this.readAll(batch));
     } catch (error) {
       this.pending = [...batch, ...this.pending].sort(newestFirst);

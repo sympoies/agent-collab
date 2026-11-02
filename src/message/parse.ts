@@ -99,7 +99,7 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
   for (const key of PLACEMENT_FIELDS) {
     const value = fields.get(key);
     if (value === undefined) errors.push(`missing front matter key: ${key}`);
-    else if (value === "") errors.push(`${key} is empty`);
+    else if (splitList(value).length === 0) errors.push(`${key} is empty`);
   }
   const id = fields.get("id") ?? "";
   const idMatch = ID_RE.exec(id);

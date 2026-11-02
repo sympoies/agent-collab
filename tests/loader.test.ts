@@ -170,6 +170,48 @@ describe("Loader.refresh", () => {
   });
 });
 
+describe("Loader recovery", () => {
+  it("retries open after a failure", async () => {
+    const source = new FixtureSource(repo([monthly("2026-10", 1, 1)]));
+    source.failListings(["inbox"]);
+    const loader = new Loader(source);
+    await expect(loader.open()).rejects.toMatchObject({ kind: "unreachable" });
+    source.failListings([]);
+    await loader.open();
+    expect(paths(loader.getSnapshot().items)).toEqual([monthly("2026-10", 1, 1)]);
+  });
+
+  it("opens instead of refreshing when open has not succeeded", async () => {
+    const source = new FixtureSource(repo([monthly("2026-10", 1, 1)], "collab-protocol: 2\n"));
+    const loader = new Loader(source);
+    await expect(loader.open()).rejects.toBeInstanceOf(SetupError);
+    await expect(loader.refresh()).rejects.toBeInstanceOf(SetupError);
+    expect(loader.getSnapshot().items).toEqual([]);
+  });
+
+  it("keeps entries taken for a page when listing an older month fails", async () => {
+    const source = new FixtureSource(
+      repo([
+        monthly("2026-08", 1, 1),
+        flat("2026-09", 1, 1),
+        monthly("2026-10", 1, 1),
+        monthly("2026-10", 2, 1),
+      ]),
+    );
+    const loader = await opened(source, 2);
+    source.failListings(["inbox/2026-08"]);
+    await expect(loader.loadOlder()).rejects.toMatchObject({ kind: "unreachable" });
+    source.failListings([]);
+    await loader.loadOlder();
+    expect(paths(loader.getSnapshot().items)).toEqual([
+      monthly("2026-08", 1, 1),
+      flat("2026-09", 1, 1),
+      monthly("2026-10", 1, 1),
+      monthly("2026-10", 2, 1),
+    ]);
+  });
+});
+
 describe("Loader tolerance", () => {
   it("keeps malformed files in the timeline", async () => {
     const files = repo([monthly("2026-10", 1, 1)]);

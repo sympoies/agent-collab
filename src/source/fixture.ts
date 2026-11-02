@@ -21,6 +21,7 @@ export class FixtureSource implements MessageSource {
   private files = new Map<string, string>();
   private revision = 0;
   private failing = new Set<string>();
+  private failingListings = new Set<string>();
 
   constructor(files: Readonly<Record<string, string>>) {
     this.commit(files);
@@ -37,6 +38,11 @@ export class FixtureSource implements MessageSource {
     this.failing = new Set(paths);
   }
 
+  /** Make listDirectory fail with an "unreachable" error for these directory paths. */
+  failListings(paths: readonly string[]): void {
+    this.failingListings = new Set(paths);
+  }
+
   head(previous: Head | null): Promise<Head | "not-modified"> {
     const revision = `r${this.revision}`;
     if (previous?.validator === revision) return Promise.resolve("not-modified");
@@ -46,6 +52,9 @@ export class FixtureSource implements MessageSource {
   /** Lists the current content; fixtures keep no history, so the revision is not used. */
   listDirectory(_revision: string, path: string): Promise<readonly DirectoryEntry[]> {
     this.listings.push(path);
+    if (this.failingListings.has(path)) {
+      return Promise.reject(new SourceError("unreachable", path));
+    }
     const prefix = path === "" ? "" : `${path}/`;
     const children = new Map<string, DirectoryEntry>();
     for (const [filePath, content] of this.files) {
