@@ -131,7 +131,9 @@ button {
 }
 
 button:disabled {
-  opacity: 0.6;
+  opacity: 1;
+  color: var(--muted);
+  background: var(--card);
   cursor: default;
 }
 
@@ -372,7 +374,32 @@ button[aria-pressed="true"] {
 }
 
 .meta time {
+  position: relative;
+  display: inline-flex;
   border-radius: 3px;
+}
+
+.time-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 4;
+  display: none;
+  width: max-content;
+  max-width: min(280px, 80vw);
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--floating);
+  color: var(--text);
+  box-shadow: 0 2px 8px #0003;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.meta time:hover .time-tooltip,
+.meta time:focus-visible .time-tooltip {
+  display: block;
 }
 
 .badge,

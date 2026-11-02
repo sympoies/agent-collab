@@ -155,17 +155,14 @@ describe("buildRows", () => {
     expect(overdue).toEqual([open]);
   });
 
-  it("flags fresh messages", () => {
+  it("starts a new sender group at the unread boundary", () => {
     const fresh = item("2026-10-01T0901", "alice-agent", "api");
     const rows = buildRows([item("2026-10-01T0900", "alice-agent", "api"), fresh], {
       ...OPTIONS,
       fresh: new Set([fresh.kind === "message" ? fresh.message.path : ""]),
     });
-    const group = rows.find((row) => row.kind === "group");
-    expect(group?.kind === "group" ? group.messages.map((view) => view.fresh) : []).toEqual([
-      false,
-      true,
-    ]);
+    const groups = rows.filter((row) => row.kind === "group");
+    expect(groups.map((row) => row.messages.map((view) => view.fresh))).toEqual([[false], [true]]);
   });
 
   it("keys groups by file path so two files with one id stay distinct", () => {

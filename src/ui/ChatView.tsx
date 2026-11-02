@@ -75,6 +75,9 @@ function Bubble({ view }: { view: MessageView }) {
           aria-label={message.timestamp}
         >
           {message.timestamp.slice(11)}
+          <span className="time-tooltip" aria-hidden="true">
+            {message.timestamp}
+          </span>
         </time>
         <span className="badge">{typeLabel(message.type)}</span>
         <span className="to">to {recipientLabel(message.to)}</span>

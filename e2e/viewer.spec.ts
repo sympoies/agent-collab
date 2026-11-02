@@ -342,7 +342,22 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
     "true",
   );
   await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
+  const timestamp = page.locator("time").first();
+  await timestamp.focus();
+  await expect(timestamp.locator(".time-tooltip")).toBeVisible();
+  await expect(timestamp.locator(".time-tooltip")).toHaveText("2026-10-09 10:00");
   assertRequests();
+
+  const preferencePage = await page.context().newPage();
+  await preferencePage.addInitScript(() => {
+    localStorage.setItem("agent-collab-viewer.theme", "paper");
+  });
+  await preferencePage.emulateMedia({ colorScheme: "dark" });
+  await preferencePage.goto("/");
+  await expect(preferencePage.locator("html")).toHaveAttribute("data-theme", "paper");
+  await expect(preferencePage.getByRole("button", { name: "Use Night Owl theme" })).toBeVisible();
+  await preferencePage.getByRole("button", { name: "Open demo repository" }).click();
+  await expect(preferencePage.locator("html")).toHaveAttribute("data-theme", "paper");
 
   const storagePage = await page.context().newPage();
   await storagePage.addInitScript(() => {

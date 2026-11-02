@@ -9,6 +9,7 @@ import { FixtureSource } from "./source/fixture";
 import { GitHubSource } from "./source/github";
 import type { MessageSource } from "./source/types";
 import { Root } from "./ui/Root";
+import { ThemeProvider } from "./ui/ThemeProvider";
 import "./ui/styles.css";
 
 // Composition root: the only module that picks concrete providers and stores.
@@ -77,18 +78,21 @@ function createLiveDemoSource(): MessageSource {
 
 const root = document.getElementById("root");
 if (root === null) throw new Error("missing #root element");
+const storage = safeBrowserStorage();
 
 createRoot(root).render(
   <StrictMode>
-    <Root
-      storage={safeBrowserStorage()}
-      stores={{
-        memory: new MemoryStore(),
-        "browser-encrypted": new BrowserEncryptedStore(indexedDbRecords()),
-      }}
-      createSource={createSource}
-      createDemoSource={() => new FixtureSource(demoFiles)}
-      createLiveDemoSource={createLiveDemoSource}
-    />
+    <ThemeProvider storage={storage}>
+      <Root
+        storage={storage}
+        stores={{
+          memory: new MemoryStore(),
+          "browser-encrypted": new BrowserEncryptedStore(indexedDbRecords()),
+        }}
+        createSource={createSource}
+        createDemoSource={() => new FixtureSource(demoFiles)}
+        createLiveDemoSource={createLiveDemoSource}
+      />
+    </ThemeProvider>
   </StrictMode>,
 );

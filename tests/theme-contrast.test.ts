@@ -34,6 +34,21 @@ function contrast(foreground: string, background: string): number {
   return ((lighter ?? 0) + 0.05) / ((darker ?? 0) + 0.05);
 }
 
+function disabledButtonRule(): string {
+  return css.match(/button:disabled\s*\{([^}]*)\}/)?.[1] ?? "";
+}
+
+function composite(foreground: string, background: string, opacity: number): string {
+  const channels = [1, 3, 5].map((offset) => {
+    const front = Number.parseInt(foreground.slice(offset, offset + 2), 16);
+    const back = Number.parseInt(background.slice(offset, offset + 2), 16);
+    return Math.round(front * opacity + back * (1 - opacity))
+      .toString(16)
+      .padStart(2, "0");
+  });
+  return `#${channels.join("")}`;
+}
+
 describe("theme text contrast", () => {
   for (const theme of ["night-owl", "paper"] as const) {
     it(`${theme} keeps each text token at WCAG AA on its named surfaces`, () => {
@@ -80,6 +95,22 @@ describe("theme text contrast", () => {
           `${theme} ${foreground} on ${background}`,
         ).toBeGreaterThanOrEqual(4.5);
       }
+    });
+
+    it(`${theme} keeps disabled-button text at WCAG AA after compositing`, () => {
+      const tokens = declarations(theme);
+      const rule = disabledButtonRule();
+      const foreground = rule.match(/color:\s*var\((--[a-z-]+)\)/)?.[1] ?? "--text";
+      const background = rule.match(/background:\s*var\((--[a-z-]+)\)/)?.[1] ?? "--card";
+      const opacity = Number(rule.match(/opacity:\s*([0-9.]+)/)?.[1] ?? "1");
+      const surface = tokens.get("--toolbar") ?? "";
+      const renderedText = composite(tokens.get(foreground) ?? "", surface, opacity);
+      const renderedBackground = composite(tokens.get(background) ?? "", surface, opacity);
+
+      expect(
+        contrast(renderedText, renderedBackground),
+        `${theme} disabled ${foreground} on ${background} composited over --toolbar at ${opacity}`,
+      ).toBeGreaterThanOrEqual(4.5);
     });
   }
 });

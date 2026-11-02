@@ -66,7 +66,13 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
 
   const rows: Row[] = [];
   let day: string | null = null;
-  let group: { from: string; topic: string; last: number; messages: MessageView[] } | null = null;
+  let group: {
+    from: string;
+    topic: string;
+    last: number;
+    fresh: boolean;
+    messages: MessageView[];
+  } | null = null;
 
   for (const item of items) {
     if (item.kind !== "message") {
@@ -101,13 +107,20 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
       group !== null &&
       group.from === message.from &&
       group.topic === message.topic &&
+      group.fresh === view.fresh &&
       at - group.last <= GROUP_WINDOW_MINUTES
     ) {
       group.messages.push(view);
       group.last = at;
       continue;
     }
-    group = { from: message.from, topic: message.topic, last: at, messages: [view] };
+    group = {
+      from: message.from,
+      topic: message.topic,
+      last: at,
+      fresh: view.fresh,
+      messages: [view],
+    };
     rows.push({
       kind: "group",
       key: message.path,

@@ -4,6 +4,7 @@ import { SetupError, type Loader } from "../loader/loader";
 import { Poller } from "../loader/poller";
 import { SourceError } from "../source/types";
 import { ChatView } from "./ChatView";
+import { ThemeToggle } from "./ThemeProvider";
 import { buildRows, topicSummaries } from "./timeline";
 
 function localDate(now: Date): string {
@@ -137,6 +138,7 @@ export function App({
       <header className="bar">
         <h1>{title}</h1>
         <div className="bar-actions">
+          <ThemeToggle />
           <button
             type="button"
             disabled={busy || retryingAfterLimit}
