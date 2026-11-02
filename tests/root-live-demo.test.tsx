@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Secret } from "../src/credentials/secret";
 import { MemoryStore } from "../src/credentials/store";
 import { Root } from "../src/ui/Root";
+import { ThemeProvider } from "../src/ui/ThemeProvider";
 import type { MessageSource } from "../src/source/types";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -43,13 +44,15 @@ describe("Root live demo", () => {
 
     await act(async () => {
       root.render(
-        <Root
-          storage={storage}
-          stores={{ memory, "browser-encrypted": encrypted }}
-          createSource={() => source}
-          createDemoSource={() => source}
-          createLiveDemoSource={createLiveDemoSource}
-        />,
+        <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+          <Root
+            storage={storage}
+            stores={{ memory, "browser-encrypted": encrypted }}
+            createSource={() => source}
+            createDemoSource={() => source}
+            createLiveDemoSource={createLiveDemoSource}
+          />
+        </ThemeProvider>,
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
@@ -121,13 +124,15 @@ describe("Root live demo", () => {
 
     await act(async () => {
       root.render(
-        <Root
-          storage={storage}
-          stores={{ memory, "browser-encrypted": encrypted }}
-          createSource={createSource}
-          createDemoSource={() => source}
-          createLiveDemoSource={createLiveDemoSource}
-        />,
+        <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+          <Root
+            storage={storage}
+            stores={{ memory, "browser-encrypted": encrypted }}
+            createSource={createSource}
+            createDemoSource={() => source}
+            createLiveDemoSource={createLiveDemoSource}
+          />
+        </ThemeProvider>,
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });

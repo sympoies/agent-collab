@@ -235,6 +235,7 @@ async function installApiStub(page: Page, mode: "long" | "empty" | "error") {
 async function openViewer(page: Page, mode: "long" | "empty" | "error") {
   const assertRequests = await installApiStub(page, mode);
   await page.goto("/");
+  await page.getByRole("button", { name: "Open another repository" }).click();
   await page
     .getByRole("textbox", { name: "Repository", exact: true })
     .fill("alice-agent/fixture-repo");
@@ -317,6 +318,23 @@ test("empty repositories and provider errors have clear states", async ({ page }
   assertErrorRequests();
 });
 
+test("welcome screen exposes live-demo, saved-repository, and theme controls", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Agent collaboration viewer" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open live demo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open saved repository" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open another repository" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use Paper theme" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Open saved repository" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Use Paper theme" })).toBeVisible();
+  await page.getByRole("button", { name: "Open offline demo" }).click();
+  await expect(page.getByRole("heading", { name: "Demo repository" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "night-owl");
+});
+
 test("keyboard focus, topic filtering, reduced motion, and unavailable storage work", async ({
   page,
 }) => {
@@ -357,8 +375,11 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   await preferencePage.emulateMedia({ colorScheme: "dark" });
   await preferencePage.goto("/");
   await expect(preferencePage.locator("html")).toHaveAttribute("data-theme", "paper");
+  await expect(preferencePage.getByRole("button", { name: "Open live demo" })).toBeVisible();
   await expect(preferencePage.getByRole("button", { name: "Use Night Owl theme" })).toBeVisible();
-  await preferencePage.getByRole("button", { name: "Open demo repository" }).click();
+  await preferencePage.getByRole("button", { name: "Open another repository" }).click();
+  await expect(preferencePage.getByRole("button", { name: "Use Night Owl theme" })).toBeVisible();
+  await preferencePage.getByRole("button", { name: "Open offline demo" }).click();
   await expect(preferencePage.locator("html")).toHaveAttribute("data-theme", "paper");
 
   const storagePage = await page.context().newPage();
@@ -372,7 +393,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   });
   await storagePage.emulateMedia({ colorScheme: "dark" });
   await storagePage.goto("/");
-  await storagePage.getByRole("button", { name: "Open demo repository" }).click();
+  await storagePage.getByRole("button", { name: "Open another repository" }).click();
+  await storagePage.getByRole("button", { name: "Open offline demo" }).click();
   await expect(storagePage.locator("html")).toHaveAttribute("data-theme", "night-owl");
   await storagePage.getByRole("button", { name: "Use Paper theme" }).click();
   await storagePage.emulateMedia({ colorScheme: "light" });
