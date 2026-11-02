@@ -93,6 +93,12 @@ describe("parseMessageFile: valid messages", () => {
     expect(result.issues).toEqual([]);
   });
 
+  it("treats all in a named recipient list as broadcast", () => {
+    const result = message(parseMessageFile(PATH, file({ to: "bob-agent, all" })));
+    expect(result.to).toEqual([]);
+    expect(result.issues).toEqual([]);
+  });
+
   it.each([
     ["any", "any"],
     ["all", "all"],
@@ -107,7 +113,7 @@ describe("parseMessageFile: valid messages", () => {
   it("ignores a replies requirement on non-question messages", () => {
     const result = message(parseMessageFile(PATH, file({ type: "info", replies: "all" })));
     expect(result.replies).toBeNull();
-    expect(result.issues).toEqual([]);
+    expect(result.issues).toContain("replies applies only to question messages");
   });
 
   it("accepts an empty-body acknowledgment without a body validation issue", () => {

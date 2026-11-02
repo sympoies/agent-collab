@@ -39,6 +39,7 @@ describe("Loader.open", () => {
     const marker = `${MARKER}participants: alice-agent,bob-agent,carol-agent\nformer-participants: carol-agent\n`;
     const loader = await opened(new FixtureSource(repo([], marker)));
     expect(loader.getSnapshot()).toMatchObject({
+      rosterKnown: true,
       participants: ["alice-agent", "bob-agent", "carol-agent"],
       formerParticipants: ["carol-agent"],
     });
@@ -90,6 +91,91 @@ describe("Loader.open", () => {
       eligibleAnswerers: [],
       answerers: [],
     });
+  });
+
+  it("marks the roster unknown when a changed marker cannot be read", async () => {
+    const marker = `${MARKER}participants: alice-agent,bob-agent\n`;
+    const source = new FixtureSource(repo([], marker));
+    const loader = await opened(source);
+    source.commit(repo([], `${marker}former-participants: bob-agent\n`));
+    source.failReads([".agent-collab"]);
+
+    await expect(loader.refresh()).rejects.toMatchObject({ kind: "unexpected" });
+    expect(loader.getSnapshot()).toMatchObject({ rosterKnown: false, participants: [] });
+  });
+
+  it("reuses parsed marker data when its blob id is unchanged", async () => {
+    const marker = `${MARKER}participants: alice-agent,bob-agent\n`;
+    const initial = repo([monthly("2026-10", 1, 1)], marker);
+    const source = new FixtureSource(initial);
+    const loader = await opened(source);
+    expect(source.reads.filter((path) => path === ".agent-collab")).toHaveLength(1);
+
+    source.commit({ ...initial, [monthly("2026-10", 1, 2)]: "new revision" });
+    await loader.refresh();
+    expect(source.reads.filter((path) => path === ".agent-collab")).toHaveLength(1);
+  });
+
+  it("reports topics with listed but not yet loaded message files", async () => {
+    const questionId = "2026-10-01T0902-alice-agent-api-01";
+    const answerId = "2026-10-01T0901-bob-agent-api-01";
+    const files = {
+      ...repo([], `${MARKER}participants: alice-agent,bob-agent\n`),
+      [`inbox/2026-10/${questionId}.md`]: messageText(questionId, "alice-agent", "api", {
+        to: "",
+        type: "question",
+      }),
+      [`inbox/2026-10/${answerId}.md`]: messageText(answerId, "bob-agent", "api", {
+        to: "alice-agent",
+        type: "answer",
+        reply_to: questionId,
+      }),
+    };
+    const loader = new Loader(new FixtureSource(files), { pageSize: 1 });
+    await loader.open();
+    const snapshot = loader.getSnapshot();
+    expect(snapshot.incompleteTopics).toEqual(["api"]);
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+        incompleteTopics: snapshot.incompleteTopics,
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null });
+  });
+
+  it("marks a question topic incomplete when one of its files is unavailable", async () => {
+    const questionId = "2026-10-01T0901-alice-agent-api-01";
+    const answerId = "2026-10-01T0902-bob-agent-api-01";
+    const questionPath = `inbox/2026-10/${questionId}.md`;
+    const answerPath = `inbox/2026-10/${answerId}.md`;
+    const source = new FixtureSource({
+      ...repo([], `${MARKER}participants: alice-agent,bob-agent\n`),
+      [questionPath]: messageText(questionId, "alice-agent", "api", {
+        to: "",
+        type: "question",
+      }),
+      [answerPath]: messageText(answerId, "bob-agent", "api", {
+        to: "alice-agent",
+        type: "answer",
+        reply_to: questionId,
+      }),
+    });
+    source.failReads([answerPath]);
+    const loader = await opened(source);
+    const snapshot = loader.getSnapshot();
+    expect(snapshot.incompleteTopics).toEqual(["api"]);
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+        incompleteTopics: snapshot.incompleteTopics,
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null });
   });
 
   it("orders the first page oldest to newest across flat and monthly files", async () => {

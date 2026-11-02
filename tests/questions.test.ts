@@ -179,4 +179,73 @@ describe("deriveQuestionStates", () => {
       [second.id, "answered"],
     ]);
   });
+
+  it.each([
+    ["any", ["bob-agent", "carol-agent"], { answered: 1, target: 1 }],
+    ["2", ["bob-agent", "carol-agent", "erin-agent"], { answered: 2, target: 2 }],
+  ] as const)("caps replies=%s progress at its target", (replies, answerers, progress) => {
+    const question = parsed(1, "alice-agent", "question", { replies });
+    const participants = ["alice-agent", "bob-agent", "carol-agent", "erin-agent"];
+    const answers = answerers.map((from, index) =>
+      parsed(index + 2, from, "answer", { reply_to: question.id }),
+    );
+    expect(
+      deriveQuestionStates([question, ...answers], participants, ["dana-agent"])[0],
+    ).toMatchObject({
+      progress,
+      answerers,
+      state: "answered",
+    });
+  });
+
+  it("does not make an unlisted, nonparticipant a named answerer", () => {
+    const question = parsed(1, "alice-agent", "question", { to: "bob-agent, zed-agent" });
+    const answer = parsed(2, "zed-agent", "answer", { reply_to: question.id });
+    expect(derive([question, answer])[0]).toMatchObject({
+      eligibleAnswerers: ["bob-agent"],
+      answerers: [],
+      progress: { answered: 0, target: 1 },
+      state: "open",
+    });
+  });
+
+  it("returns unknown without a loaded roster and no states for a known empty roster", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any" });
+    expect(
+      deriveQuestionStates([question], PARTICIPANTS, [], { rosterKnown: false })[0],
+    ).toMatchObject({
+      state: "unknown",
+      progress: null,
+      conclusion: null,
+      conclusionText: null,
+    });
+    expect(deriveQuestionStates([question], [], [], { rosterKnown: true })).toEqual([]);
+  });
+
+  it("marks only questions in incomplete topics as unknown", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any" });
+    const answer = parsed(2, "bob-agent", "answer", { reply_to: question.id });
+    expect(
+      deriveQuestionStates([question, answer], PARTICIPANTS, [], {
+        rosterKnown: true,
+        incompleteTopics: ["api"],
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null, conclusion: null });
+    expect(
+      deriveQuestionStates([question, answer], PARTICIPANTS, [], {
+        rosterKnown: true,
+        incompleteTopics: ["ops"],
+      })[0],
+    ).toMatchObject({ state: "answered", progress: { answered: 1, target: 1 } });
+  });
+
+  it("does not conclude a question from a non-sender info reply", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any" });
+    const note = parsed(2, "bob-agent", "info", { reply_to: question.id }, "A note");
+    expect(derive([question, note])[0]).toMatchObject({
+      state: "open",
+      conclusion: null,
+      conclusionText: null,
+    });
+  });
 });

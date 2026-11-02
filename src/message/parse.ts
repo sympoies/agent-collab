@@ -161,7 +161,8 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
     if (!NAME_RE.test(value)) issues.push(`${key} must be lowercase [a-z0-9-]: ${value}`);
   }
   const toValue = get("to");
-  const to = toValue === "" || toValue === "all" ? [] : splitList(toValue);
+  const recipients = splitList(toValue);
+  const to = toValue === "" || recipients.includes("all") ? [] : recipients;
   for (const name of to) {
     if (!NAME_RE.test(name)) issues.push(`to entry must be lowercase [a-z0-9-]: ${name}`);
   }
@@ -180,7 +181,9 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
 
   const repliesValue = get("replies");
   let replies: "any" | "all" | number | null = null;
-  if (type === "question" && fields.has("replies")) {
+  if (fields.has("replies") && type !== "question") {
+    issues.push("replies applies only to question messages");
+  } else if (type === "question" && fields.has("replies")) {
     if (repliesValue === "any" || repliesValue === "all") {
       replies = repliesValue;
     } else if (/^[1-9]\d*$/.test(repliesValue) && Number.isSafeInteger(Number(repliesValue))) {
