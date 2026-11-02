@@ -92,7 +92,7 @@ react without parsing provider messages:
 | Kind | Meaning | UI reaction |
 | --- | --- | --- |
 | `unauthorized` | credential missing, expired or revoked (401) | open settings |
-| `forbidden` | credential lacks access to the repository (403 without rate-limit signal) | open settings |
+| `forbidden` | credential lacks access to the repository (403 without rate-limit signal) | open settings when the first request fails; after a successful request, retry with backoff |
 | `not-found` | repository, branch or path does not exist (404) | settings / empty state |
 | `rate-limited` | primary or secondary limit hit; carries `retryAt` | pause polling until `retryAt` |
 | `unreachable` | network error, DNS, TLS, VPN down, CORS rejection | offline banner, retry with backoff |
@@ -131,6 +131,11 @@ All calls go to the configured API base (default `https://api.github.com`):
 - Headers: `Authorization: Bearer <token>`, `X-GitHub-Api-Version` pinned,
   `Accept` as above. Requests use `cache: "no-store"` so the browser HTTP
   cache never stores private content; the source sets `If-None-Match` itself.
+  The API base must be an `https:` URL; the source refuses anything else.
+- Requests use `redirect: "error"`, so the token is never sent on to another
+  location. A renamed or transferred repository answers with a redirect and
+  therefore shows as `unreachable`; the user updates the repository in
+  settings.
 - The Git database endpoints were chosen over the Contents API because the
   Contents API truncates directories at 1,000 entries, which a flat inbox can
   exceed, and its file responses embed `download_url` values with temporary
@@ -380,7 +385,11 @@ Two different secrets with different purposes:
   hidden; a manual refresh is always available. Errors back off exponentially
   (doubling, capped at 15 minutes); `rate-limited` waits until `retryAt`; when
   the remaining budget drops below 10 % of the limit the interval stretches so
-  the budget lasts until the reset.
+  the budget lasts until the reset. Opening the repository counts as the
+  first poll: an open error that needs the user stops polling, and a
+  rate-limited open waits for `retryAt`. When the window becomes visible the
+  schedule is recomputed at once, so a poll that is due under the visible
+  interval runs immediately.
 - **Notifications.** Local only, while the app runs: the Web Notifications API
   (permission requested from a user action) in the browser and the Tauri
   notification plugin in packaged builds. A notification names the sender and

@@ -8,6 +8,7 @@ import {
   type DirectoryEntry,
   type Head,
   type MessageSource,
+  type RateLimit,
   type SourceErrorKind,
 } from "../source/types";
 
@@ -126,6 +127,11 @@ export class Loader {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   };
+
+  /** Rate-limit state reported by the source. */
+  rateLimit(): RateLimit | null {
+    return this.source.rateLimit();
+  }
 
   /** Check the marker and load the newest page. Concurrent calls share one attempt. */
   open(): Promise<void> {
