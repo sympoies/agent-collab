@@ -4,7 +4,7 @@ import { useState, type ReactNode, type SubmitEvent } from "react";
 
 import {
   savedForm,
-  STORAGE_WARNINGS,
+  storageWarning,
   type CredentialStorage,
   type DraftErrors,
   type SettingsDraft,
@@ -28,6 +28,7 @@ export function SettingsView(props: SettingsViewProps) {
   const storedFor = props.storedEndpoints[draft.credentialStorage];
   const stored = storedFor !== null && storedFor === savedForm(draft.endpoint);
   const anyStored = Object.values(props.storedEndpoints).some((endpoint) => endpoint !== null);
+  const hostname = typeof window === "undefined" ? "" : window.location.hostname;
 
   const update = (field: keyof SettingsDraft) => (value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -163,7 +164,7 @@ export function SettingsView(props: SettingsViewProps) {
             {kind === "memory" ? "In memory only" : "Encrypted in this browser"}
           </label>
         ))}
-        <small className="warning">{STORAGE_WARNINGS[draft.credentialStorage]}</small>
+        <small className="warning">{storageWarning(draft.credentialStorage, hostname)}</small>
       </fieldset>
       <div className="actions">
         <button type="submit" disabled={saving}>

@@ -49,8 +49,19 @@ export const STORAGE_WARNINGS: Readonly<Record<CredentialStorage, string>> = {
   "browser-encrypted":
     "The token is encrypted and stored for this site in this browser profile. This avoids a " +
     "plain-text token in site storage, but a copy of this browser profile, scripts on this " +
-    "site, or anyone using this profile can still use it.",
+    "site, or anyone using this profile can still use it. Sites sharing this origin can access " +
+    "both the encrypted token and its key.",
 };
+
+export function storageWarning(storage: CredentialStorage, hostname: string): string {
+  const warning = STORAGE_WARNINGS[storage];
+  if (storage !== "browser-encrypted" || !hostname.endsWith(".github.io")) return warning;
+  return (
+    `${warning} Sibling GitHub Pages projects under the same account share this origin and can ` +
+    "access the saved token and key. Prefer In memory only. A dedicated custom domain removes " +
+    "this sibling-project exposure."
+  );
+}
 
 export const DEFAULT_DRAFT: SettingsDraft = {
   platform: "github",
