@@ -33,10 +33,10 @@ function fakeStorage(initial: Record<string, string> = {}) {
 
 describe("validateDraft", () => {
   it("accepts a GitHub repository and wraps the secrets", () => {
-    const result = validateDraft(
-      draft({ selfNames: "alice-agent, alice", branch: "main", privateKey: "AGE-SECRET-KEY-1ABC" }),
-      { tokenStored: false, savedEndpoint: null },
-    );
+    const result = validateDraft(draft({ selfNames: "alice-agent, alice", branch: "main" }), {
+      tokenStored: false,
+      savedEndpoint: null,
+    });
     expect(result).toEqual({
       ok: true,
       settings: {
@@ -48,7 +48,6 @@ describe("validateDraft", () => {
         credentialStorage: "memory",
       },
       token: new Secret(TOKEN),
-      privateKey: new Secret("AGE-SECRET-KEY-1ABC"),
     });
     if (result.ok) expect(result.token?.reveal()).toBe(TOKEN);
   });
@@ -58,7 +57,7 @@ describe("validateDraft", () => {
       tokenStored: true,
       savedEndpoint: "https://api.github.com",
     });
-    expect(result).toMatchObject({ ok: true, token: null, privateKey: null });
+    expect(result).toMatchObject({ ok: true, token: null });
   });
 
   it("removes a trailing slash from the endpoint", () => {
@@ -121,11 +120,6 @@ describe("validateDraft", () => {
     ],
     ["a missing token", { token: "" }, { token: "Enter a read-only access token." }],
     ["a token with spaces", { token: "two words" }, { token: "A token has no spaces." }],
-    [
-      "a private key in the wrong format",
-      { privateKey: "ssh-ed25519 AAAA" },
-      { privateKey: "Use an age identity starting with AGE-SECRET-KEY-1." },
-    ],
   ])("rejects %s", (_name, overrides, errors) => {
     expect(validateDraft(draft(overrides), { tokenStored: false, savedEndpoint: null })).toEqual({
       ok: false,
@@ -160,6 +154,17 @@ describe("settings persistence", () => {
     ).toBeNull();
   });
 
+  it.each([
+    ["a plain HTTP endpoint", { endpoint: "http://api.github.example" }],
+    ["an endpoint with a query", { endpoint: "https://api.github.example/?access_token=x" }],
+    ["an endpoint with credentials", { endpoint: "https://user:pass@api.github.example" }],
+    ["a repository with a path", { repository: "a/b/c" }],
+    ["a repository without owner", { repository: "collab" }],
+  ])("rejects stored settings with %s", (_name, overrides) => {
+    const stored = JSON.stringify({ ...settings, ...overrides });
+    expect(loadSettings(fakeStorage({ "agent-collab-viewer.settings": stored }))).toBeNull();
+  });
+
   it("turns settings back into a draft without secrets", () => {
     expect(draftFromSettings(settings)).toEqual({
       platform: "github",
@@ -169,7 +174,6 @@ describe("settings persistence", () => {
       selfNames: "alice-agent",
       credentialStorage: "browser-encrypted",
       token: "",
-      privateKey: "",
     });
   });
 

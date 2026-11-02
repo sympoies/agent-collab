@@ -3,7 +3,8 @@
 
 import { Secret } from "./secret";
 
-export type SecretName = "access-token" | "private-key";
+/** The decryption slice adds "private-key"; until then no private key is stored. */
+export type SecretName = "access-token";
 
 export interface CredentialStore {
   get(name: SecretName): Promise<Secret | null>;
@@ -127,7 +128,11 @@ export function indexedDbRecords(database = "agent-collab-viewer"): RecordStore 
       req.onupgradeneeded = () => {
         req.result.createObjectStore(STORE);
       };
-      return request(req);
+      return request(req).catch((error: unknown) => {
+        // Let the next operation try again instead of caching the failure.
+        db = null;
+        throw error;
+      });
     })();
     return db;
   };

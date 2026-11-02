@@ -1,7 +1,7 @@
 // Applies the settings screen to storage: non-secret settings to local storage,
-// secrets to exactly one credential store.
+// the token to exactly one credential store, bound to the endpoint it is for.
 
-import type { Secret } from "../credentials/secret";
+import { Secret } from "../credentials/secret";
 import type { CredentialStore } from "../credentials/store";
 import {
   loadSettings,
@@ -23,47 +23,98 @@ export interface OpenSettings {
   readonly token: Secret;
 }
 
+interface StoredToken {
+  readonly endpoint: string;
+  readonly token: Secret;
+}
+
+/**
+ * The stored record carries the endpoint with the token, so a token is never
+ * handed to another endpoint, whatever the order of storage writes.
+ */
+function tokenRecord(endpoint: string, token: Secret): Secret {
+  return new Secret(JSON.stringify({ endpoint, token: token.reveal() }));
+}
+
+/** The stored token, or null when missing, unreadable or the store fails. */
+async function readToken(store: CredentialStore): Promise<StoredToken | null> {
+  try {
+    const record = await store.get("access-token");
+    if (record === null) return null;
+    const value: unknown = JSON.parse(record.reveal());
+    if (typeof value !== "object" || value === null) return null;
+    const { endpoint, token } = value as Record<string, unknown>;
+    if (typeof endpoint !== "string" || typeof token !== "string") return null;
+    return { endpoint, token: new Secret(token) };
+  } catch {
+    return null;
+  }
+}
+
 /** Saved settings and their token, or null when setup is incomplete. */
 export async function restore(deps: SettingsDeps): Promise<OpenSettings | null> {
   const settings = loadSettings(deps.storage);
   if (settings === null) return null;
-  const token = await deps.stores[settings.credentialStorage].get("access-token");
-  return token === null ? null : { settings, token };
+  const stored = await readToken(deps.stores[settings.credentialStorage]);
+  if (stored?.endpoint !== settings.endpoint) return null;
+  return { settings, token: stored.token };
 }
 
-export async function tokenStored(
+/** Which stores hold a token for `endpoint`. */
+export async function storedTokens(
   deps: SettingsDeps,
-  storage: CredentialStorage,
-): Promise<boolean> {
-  return (await deps.stores[storage].get("access-token")) !== null;
+  endpoint: string,
+): Promise<Record<CredentialStorage, boolean>> {
+  const [memory, encrypted] = await Promise.all([
+    readToken(deps.stores.memory),
+    readToken(deps.stores["browser-encrypted"]),
+  ]);
+  return {
+    memory: memory?.endpoint === endpoint,
+    "browser-encrypted": encrypted?.endpoint === endpoint,
+  };
 }
 
 export async function apply(
   deps: SettingsDeps,
   draft: SettingsDraft,
-): Promise<{ ok: true; open: OpenSettings } | { ok: false; errors: DraftErrors }> {
+): Promise<
+  { ok: true; open: OpenSettings; warning: string | null } | { ok: false; errors: DraftErrors }
+> {
   const store = deps.stores[draft.credentialStorage];
+  const stored = await readToken(store);
   const result = validateDraft(draft, {
-    tokenStored: await tokenStored(deps, draft.credentialStorage),
-    savedEndpoint: loadSettings(deps.storage)?.endpoint ?? null,
+    tokenStored: stored !== null,
+    savedEndpoint: stored?.endpoint ?? null,
   });
   if (!result.ok) return result;
+  const token = result.token ?? stored?.token;
+  if (token === undefined)
+    return { ok: false, errors: { token: "Enter a read-only access token." } };
+  let warning: string | null = null;
   for (const [kind, other] of Object.entries(deps.stores)) {
-    if (kind !== draft.credentialStorage) await clear(other);
+    if (kind !== draft.credentialStorage && !(await clear(other))) {
+      warning = "Saved, but an old copy of the token could not be removed from this browser.";
+    }
   }
-  if (result.token !== null) await store.set("access-token", result.token);
-  if (result.privateKey !== null) await store.set("private-key", result.privateKey);
+  if (result.token !== null) {
+    await store.set("access-token", tokenRecord(result.settings.endpoint, result.token));
+  }
   saveSettings(deps.storage, result.settings);
-  const token = await store.get("access-token");
-  if (token === null) return { ok: false, errors: { token: "Enter a read-only access token." } };
-  return { ok: true, open: { settings: result.settings, token } };
+  return { ok: true, open: { settings: result.settings, token }, warning };
 }
 
+/** Clears every store; rejects after trying all of them if one could not be cleared. */
 export async function removeCredentials(deps: SettingsDeps): Promise<void> {
-  for (const store of Object.values(deps.stores)) await clear(store);
+  const cleared = await Promise.all(Object.values(deps.stores).map(clear));
+  if (cleared.includes(false)) throw new Error("Stored credentials could not be removed.");
 }
 
-async function clear(store: CredentialStore): Promise<void> {
-  await store.delete("access-token");
-  await store.delete("private-key");
+async function clear(store: CredentialStore): Promise<boolean> {
+  try {
+    await store.delete("access-token");
+    return true;
+  } catch {
+    return false;
+  }
 }

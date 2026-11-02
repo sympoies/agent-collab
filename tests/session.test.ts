@@ -1,25 +1,42 @@
 import { describe, expect, it } from "vitest";
 
-import { Secret } from "../src/credentials/secret";
-import { MemoryStore } from "../src/credentials/store";
+import type { Secret } from "../src/credentials/secret";
+import { MemoryStore, type CredentialStore } from "../src/credentials/store";
 import { DEFAULT_DRAFT, type SettingsDraft } from "../src/settings/model";
-import { apply, removeCredentials, restore } from "../src/settings/session";
+import { apply, removeCredentials, restore, storedTokens } from "../src/settings/session";
 
 const TOKEN = "test-token-not-real";
+const OTHER_TOKEN = "other-token-not-real";
+const ENTERPRISE = "https://github.example.com/api/v3";
 
 function deps() {
   const data = new Map<string, string>();
+  let failWrites = false;
   return {
     data,
+    failWrites: () => {
+      failWrites = true;
+    },
     storage: {
       getItem: (key: string) => data.get(key) ?? null,
       setItem: (key: string, value: string) => {
+        if (failWrites) throw new Error("quota exceeded");
         data.set(key, value);
       },
     },
-    stores: { memory: new MemoryStore(), "browser-encrypted": new MemoryStore() },
+    stores: {
+      memory: new MemoryStore() as CredentialStore,
+      "browser-encrypted": new MemoryStore() as CredentialStore,
+    },
   };
 }
+
+/** A store whose every operation rejects, like a blocked IndexedDB. */
+const broken: CredentialStore = {
+  get: () => Promise.reject(new Error("storage blocked")),
+  set: () => Promise.reject(new Error("storage blocked")),
+  delete: () => Promise.reject(new Error("storage blocked")),
+};
 
 const draft = (overrides: Partial<SettingsDraft> = {}): SettingsDraft => ({
   ...DEFAULT_DRAFT,
@@ -28,17 +45,19 @@ const draft = (overrides: Partial<SettingsDraft> = {}): SettingsDraft => ({
   ...overrides,
 });
 
+const reveal = (secret: Secret | null | undefined) => secret?.reveal();
+
 describe("settings session", () => {
   it("saves settings without secrets and restores them with the token", async () => {
     const d = deps();
-    const result = await apply(d, draft({ privateKey: "AGE-SECRET-KEY-1ABC" }));
+    const result = await apply(d, draft());
     expect(result).toMatchObject({
       ok: true,
       open: { settings: { repository: "alice-org/collab" } },
+      warning: null,
     });
     expect([...d.data.values()].join("")).not.toContain(TOKEN);
-    expect([...d.data.values()].join("")).not.toContain("AGE-SECRET-KEY");
-    expect((await restore(d))?.token.reveal()).toBe(TOKEN);
+    expect(reveal((await restore(d))?.token)).toBe(TOKEN);
   });
 
   it("keeps the stored token when the field is left empty", async () => {
@@ -51,10 +70,21 @@ describe("settings session", () => {
   it("requires a new token when the endpoint changes", async () => {
     const d = deps();
     await apply(d, draft());
-    expect(
-      await apply(d, draft({ token: "", endpoint: "https://github.example.com/api/v3" })),
-    ).toEqual({ ok: false, errors: { token: "Enter the token for this endpoint." } });
+    expect(await apply(d, draft({ token: "", endpoint: ENTERPRISE }))).toEqual({
+      ok: false,
+      errors: { token: "Enter the token for this endpoint." },
+    });
     expect((await restore(d))?.settings.endpoint).toBe("https://api.github.com");
+  });
+
+  it("never restores a token for an endpoint it was not saved with", async () => {
+    const d = deps();
+    await apply(d, draft());
+    d.failWrites();
+    await expect(apply(d, draft({ token: OTHER_TOKEN, endpoint: ENTERPRISE }))).rejects.toThrow(
+      "quota exceeded",
+    );
+    expect(await restore(d)).toBeNull();
   });
 
   it("keeps secrets in exactly the chosen store", async () => {
@@ -62,7 +92,10 @@ describe("settings session", () => {
     await apply(d, draft({ credentialStorage: "browser-encrypted" }));
     await apply(d, draft({ credentialStorage: "memory" }));
     expect(await d.stores["browser-encrypted"].get("access-token")).toBeNull();
-    expect((await d.stores.memory.get("access-token"))?.reveal()).toBe(TOKEN);
+    expect(await storedTokens(d, "https://api.github.com")).toEqual({
+      memory: true,
+      "browser-encrypted": false,
+    });
   });
 
   it("requires a new token when switching stores", async () => {
@@ -84,9 +117,40 @@ describe("settings session", () => {
   it("needs setup again after the credentials are removed", async () => {
     const d = deps();
     await apply(d, draft());
-    await d.stores.memory.set("private-key", new Secret("AGE-SECRET-KEY-1ABC"));
     await removeCredentials(d);
     expect(await restore(d)).toBeNull();
-    expect(await d.stores.memory.get("private-key")).toBeNull();
+  });
+});
+
+describe("settings session with a failing credential store", () => {
+  it("falls back to setup when the store cannot be read", async () => {
+    const d = deps();
+    await apply(d, draft({ credentialStorage: "browser-encrypted" }));
+    d.stores["browser-encrypted"] = broken;
+    expect(await restore(d)).toBeNull();
+    expect(await storedTokens(d, "https://api.github.com")).toEqual({
+      memory: false,
+      "browser-encrypted": false,
+    });
+  });
+
+  it("saves and warns when the old copy cannot be removed", async () => {
+    const d = deps();
+    d.stores["browser-encrypted"] = broken;
+    const result = await apply(d, draft({ credentialStorage: "memory" }));
+    expect(result).toMatchObject({
+      ok: true,
+      warning: "Saved, but an old copy of the token could not be removed from this browser.",
+    });
+    expect(reveal((await restore(d))?.token)).toBe(TOKEN);
+  });
+
+  it("removes what it can and reports a store it could not clear", async () => {
+    const d = deps();
+    await apply(d, draft({ credentialStorage: "browser-encrypted" }));
+    const encrypted = d.stores["browser-encrypted"];
+    d.stores.memory = broken;
+    await expect(removeCredentials(d)).rejects.toThrow("could not be removed");
+    expect(await encrypted.get("access-token")).toBeNull();
   });
 });

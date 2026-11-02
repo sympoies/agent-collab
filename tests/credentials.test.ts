@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Secret } from "../src/credentials/secret";
 import {
   BrowserEncryptedStore,
+  indexedDbRecords,
   MemoryStore,
   TauriKeychainStore,
   unavailableKeychain,
@@ -50,15 +51,13 @@ const stores: [string, () => CredentialStore][] = [
 ];
 
 describe.each(stores)("%s credential store", (_kind, create) => {
-  it("stores, reads and deletes each secret separately", async () => {
+  it("stores, reads and deletes the token", async () => {
     const store = create();
     expect(await store.get("access-token")).toBeNull();
     await store.set("access-token", new Secret(TOKEN));
-    await store.set("private-key", new Secret("AGE-SECRET-KEY-1ABC"));
     expect((await store.get("access-token"))?.reveal()).toBe(TOKEN);
     await store.delete("access-token");
     expect(await store.get("access-token")).toBeNull();
-    expect((await store.get("private-key"))?.reveal()).toBe("AGE-SECRET-KEY-1ABC");
   });
 });
 
@@ -96,5 +95,24 @@ describe("TauriKeychainStore", () => {
   it("reports that the keychain is unavailable until the packaging slice", async () => {
     const store = new TauriKeychainStore(unavailableKeychain);
     await expect(store.get("access-token")).rejects.toThrow("keychain is not available");
+  });
+});
+
+describe("indexedDbRecords", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("opens the database again after a failed attempt", async () => {
+    const open = vi.fn(() => {
+      const request = { onerror: null as (() => void) | null, onupgradeneeded: null };
+      queueMicrotask(() => request.onerror?.());
+      return request;
+    });
+    vi.stubGlobal("indexedDB", { open });
+    const records = indexedDbRecords("test-db");
+    await expect(records.get("key")).rejects.toThrow("browser storage request failed");
+    await expect(records.get("key")).rejects.toThrow("browser storage request failed");
+    expect(open).toHaveBeenCalledTimes(2);
   });
 });

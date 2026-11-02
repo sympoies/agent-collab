@@ -1,5 +1,5 @@
 // Settings screen model (docs/design.md, section 6). Settings hold only
-// non-secret values; the token and private key go to a CredentialStore.
+// non-secret values; the token goes to a CredentialStore.
 
 import { Secret } from "../credentials/secret";
 
@@ -31,7 +31,6 @@ export interface SettingsDraft {
   readonly selfNames: string;
   readonly credentialStorage: CredentialStorage;
   readonly token: string;
-  readonly privateKey: string;
 }
 
 export type DraftErrors = Partial<Record<keyof SettingsDraft, string>>;
@@ -42,8 +41,6 @@ export type ValidationResult =
       readonly settings: ViewerSettings;
       /** New token, or null to keep the stored one. */
       readonly token: Secret | null;
-      /** New private key, or null to keep the stored one (if any). */
-      readonly privateKey: Secret | null;
     }
   | { readonly ok: false; readonly errors: DraftErrors };
 
@@ -63,7 +60,6 @@ export const DEFAULT_DRAFT: SettingsDraft = {
   selfNames: "",
   credentialStorage: "memory",
   token: "",
-  privateKey: "",
 };
 
 const NAME_RE = /^[a-z0-9-]+$/;
@@ -119,10 +115,6 @@ export function validateDraft(draft: SettingsDraft, context: DraftContext): Vali
   else if (token === "" && endpoint !== context.savedEndpoint) {
     errors.token = "Enter the token for this endpoint.";
   } else if (/\s/.test(token)) errors.token = "A token has no spaces.";
-  const privateKey = draft.privateKey.trim();
-  if (privateKey !== "" && !privateKey.startsWith("AGE-SECRET-KEY-1")) {
-    errors.privateKey = "Use an age identity starting with AGE-SECRET-KEY-1.";
-  }
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   return {
     ok: true,
@@ -135,7 +127,6 @@ export function validateDraft(draft: SettingsDraft, context: DraftContext): Vali
       credentialStorage: draft.credentialStorage,
     },
     token: token === "" ? null : new Secret(token),
-    privateKey: privateKey === "" ? null : new Secret(privateKey),
   };
 }
 
@@ -148,7 +139,6 @@ export function draftFromSettings(settings: ViewerSettings): SettingsDraft {
     selfNames: settings.selfNames.join(", "),
     credentialStorage: settings.credentialStorage,
     token: "",
-    privateKey: "",
   };
 }
 
@@ -166,11 +156,21 @@ function isSettings(value: unknown): value is ViewerSettings {
   );
 }
 
+/** Stored settings pass the same endpoint and repository rules as the settings screen. */
+function isValid(settings: ViewerSettings): boolean {
+  const errors: DraftErrors = {};
+  return (
+    normalizeEndpoint(settings.endpoint, errors) === settings.endpoint &&
+    errors.endpoint === undefined &&
+    REPOSITORY_RE.test(settings.repository)
+  );
+}
+
 /** Reads non-secret settings; null when missing, invalid or storage is blocked. */
 export function loadSettings(storage: Pick<Storage, "getItem">): ViewerSettings | null {
   try {
     const value: unknown = JSON.parse(storage.getItem(SETTINGS_KEY) ?? "null");
-    return isSettings(value) ? value : null;
+    return isSettings(value) && isValid(value) ? value : null;
   } catch {
     return null;
   }

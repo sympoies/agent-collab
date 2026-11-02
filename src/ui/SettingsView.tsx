@@ -11,8 +11,8 @@ import {
 
 export interface SettingsViewProps {
   readonly initial: SettingsDraft;
-  /** A token is already stored; leaving the field empty keeps it. */
-  readonly tokenStored: boolean;
+  /** Stores that hold a token for the saved endpoint; leaving the field empty keeps it. */
+  readonly tokenStored: Readonly<Record<CredentialStorage, boolean>>;
   /** Validates and saves; resolves to field errors, or null on success. */
   readonly onSave: (draft: SettingsDraft) => Promise<DraftErrors | null>;
   readonly onRemoveCredentials: () => Promise<void>;
@@ -24,6 +24,8 @@ export function SettingsView(props: SettingsViewProps) {
   const [draft, setDraft] = useState(props.initial);
   const [errors, setErrors] = useState<DraftErrors>({});
   const [saving, setSaving] = useState(false);
+  const stored = props.tokenStored[draft.credentialStorage];
+  const anyStored = Object.values(props.tokenStored).includes(true);
 
   const update = (field: keyof SettingsDraft) => (value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -132,7 +134,7 @@ export function SettingsView(props: SettingsViewProps) {
           type="password"
           autoComplete="off"
           spellCheck={false}
-          placeholder={props.tokenStored ? "stored; leave empty to keep it" : ""}
+          placeholder={stored ? "stored; leave empty to keep it" : ""}
           value={draft.token}
           onChange={(event) => {
             update("token")(event.target.value);
@@ -140,20 +142,10 @@ export function SettingsView(props: SettingsViewProps) {
         />,
         "A fine-grained token for this one repository with Contents: read-only.",
       )}
-      {field(
-        "privateKey",
-        "Private key (optional)",
-        <input
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          value={draft.privateKey}
-          onChange={(event) => {
-            update("privateKey")(event.target.value);
-          }}
-        />,
-        "An age identity for encrypted messages. Decryption arrives in a later version.",
-      )}
+      <p className="note">
+        Encrypted messages show as locked. Private keys are not accepted until decryption is
+        available.
+      </p>
       <fieldset className="field">
         <legend>Keep credentials</legend>
         {(["memory", "browser-encrypted"] as const).map((kind: CredentialStorage) => (
@@ -180,11 +172,13 @@ export function SettingsView(props: SettingsViewProps) {
             Cancel
           </button>
         )}
-        {props.tokenStored && (
+        {anyStored && (
           <button
             type="button"
             onClick={() => {
-              void props.onRemoveCredentials();
+              props.onRemoveCredentials().catch(() => {
+                setErrors({ token: "Could not remove the stored credentials." });
+              });
             }}
           >
             Remove stored credentials

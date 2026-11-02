@@ -325,8 +325,8 @@ first release.
   later slice.
 - **Body.** Plain text with preserved line breaks. No Markdown-to-HTML and no
   `innerHTML`: message text cannot inject markup.
-- **States.** `locked` bodies show a lock placeholder ("Encrypted message, add
-  a private key in settings to read it"); malformed files show the malformed
+- **States.** `locked` bodies show a lock placeholder ("Encrypted message.
+  This version cannot decrypt it yet"); malformed files show the malformed
   card; messages with `issues` show a warning marker with the list.
 
 ## 6. Credentials
@@ -336,7 +336,7 @@ Two different secrets with different purposes:
 | Secret | Purpose | Required |
 | --- | --- | --- |
 | Access credential | read the repository through the provider API | yes |
-| Private key | decrypt encrypted message bodies (age identity) | no (_later_) |
+| Private key | decrypt encrypted message bodies (age identity) | no (_later_; the settings screen does not accept or store one until a decryptor exists) |
 
 - **Scope.** GitHub: a fine-grained personal access token with access to
   "Only select repositories" (exactly the collaboration repository) and the
@@ -357,9 +357,22 @@ Two different secrets with different purposes:
      the same profile, so a copy of the profile can decrypt it, and script in
      the same origin or someone with the unlocked profile can use it. The
      warning says so.
-- **Endpoint binding.** A stored token is only reused for the endpoint it was
-  saved with; changing the endpoint requires entering a token again, so a
-  mistyped or different host never receives the stored token.
+
+     The key is created on the first save. Two tabs saving for the first time
+     at the same moment can each create a key; the later write wins and the
+     token saved by the other tab can no longer be decrypted. It then reads as
+     missing and the settings screen asks for the token again.
+- **Endpoint binding.** The stored token record carries the endpoint it was
+  saved for, and a token is only used for that endpoint. Changing the endpoint
+  requires entering a token again, so a mistyped or different host never
+  receives the stored token, whatever the order in which settings and the
+  token were written. Stored settings are checked again on load with the same
+  endpoint and repository rules as the settings screen.
+- **Store failures.** A credential store that cannot be read (for example
+  blocked browser storage) counts as holding no token: start-up falls through
+  to the settings screen. Saving still succeeds when an old copy in the other
+  store cannot be removed, and the viewer shows a warning; removing
+  credentials tries every store and reports one it could not clear.
 - **Never exposed.**
   - Secrets are wrapped in a `Secret` type whose `toString`, `toJSON` and
     inspection return `[redacted]`; only the HTTP layer reads the raw value to
@@ -370,8 +383,12 @@ Two different secrets with different purposes:
   - In the DOM only as a masked `type="password"` input while the user types it.
     After saving, settings show "configured" and a replace/remove action, not
     the value or a fragment of it.
-  - Content Security Policy limits `connect-src` to the configured API
-    endpoint; no third-party scripts, fonts or analytics.
+  - The production build carries a Content Security Policy:
+    `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; connect-src https:`.
+    The browser build cannot know the configured endpoint when it is built,
+    so `connect-src` allows any `https:` origin; packaged builds narrow it to
+    the configured endpoint. The dev server runs without it because hot
+    reload uses inline scripts. No third-party scripts, fonts or analytics.
 - **In-memory lifetime.** The token is read from the store at start-up (or
   entered), handed to the source, and held in the source's closure for the
   app session. Changing the repository, removing the credential or signing
@@ -421,7 +438,8 @@ This slice reserves:
   check) and becomes `decrypted` or `undecryptable`.
 - **Implementation.** age in the client with typage (`age-encryption` on npm),
   using the private key from the credential store. Decrypted text stays in
-  memory only.
+  memory only. The decryption slice adds the `private-key` entry to the credential
+  store and the private key field to the settings screen.
 
 ## 9. Packaging (_later_)
 
@@ -436,6 +454,16 @@ This slice reserves:
 - Signing is the maintainer's responsibility: Apple Developer ID signing and
   notarization for macOS, the Android release keystore for the apk. No signing
   material is ever committed or handled by agents.
+
+### Known limits for later slices
+
+- The repository field accepts only `owner/repository`. GitLab nested groups
+  (`group/subgroup/repository`) need a wider rule with the GitLab source.
+- `CredentialStorage` is a closed union of the two browser choices; packaged
+  builds add a keychain value and the settings screen offers it there.
+- The Tauri HTTP plugin must honour the request options the GitHub source
+  relies on (`redirect: "error"`, `cache: "no-store"`,
+  `credentials: "omit"`); verify this in the packaging slice.
 
 ## 10. Testing strategy
 

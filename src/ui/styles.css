@@ -85,6 +85,17 @@ button[aria-pressed="true"] {
   padding: 8px 12px;
 }
 
+.notice {
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.settings .note {
+  color: var(--muted);
+}
+
 .topics {
   display: flex;
   flex-wrap: wrap;

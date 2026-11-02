@@ -1,14 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_DRAFT, STORAGE_WARNINGS } from "../src/settings/model";
+import { DEFAULT_DRAFT, STORAGE_WARNINGS, type CredentialStorage } from "../src/settings/model";
 import { SettingsView } from "../src/ui/SettingsView";
 
-function render(tokenStored: boolean): string {
+function render(tokenStored: boolean, inStore: CredentialStorage = "memory"): string {
   return renderToStaticMarkup(
     <SettingsView
       initial={{ ...DEFAULT_DRAFT, repository: "alice-org/collab" }}
-      tokenStored={tokenStored}
+      tokenStored={{ memory: false, "browser-encrypted": false, [inStore]: tokenStored }}
       onSave={() => Promise.resolve(null)}
       onRemoveCredentials={() => Promise.resolve()}
       onCancel={null}
@@ -18,9 +18,9 @@ function render(tokenStored: boolean): string {
 }
 
 describe("SettingsView", () => {
-  it("masks both secret inputs and leaves them empty", () => {
+  it("masks the token input and leaves it empty", () => {
     const secretInputs = render(true).match(/<input type="password"[^>]*>/g) ?? [];
-    expect(secretInputs).toHaveLength(2);
+    expect(secretInputs).toHaveLength(1);
     for (const input of secretInputs) {
       expect(input).toContain('value=""');
       expect(input).toContain('autoComplete="off"');
@@ -32,6 +32,18 @@ describe("SettingsView", () => {
     expect(html).toContain('placeholder="stored; leave empty to keep it"');
     expect(html).toContain("Remove stored credentials");
     expect(render(false)).not.toContain("Remove stored credentials");
+  });
+
+  it("describes the token of the selected store, not of another one", () => {
+    const html = render(true, "browser-encrypted");
+    expect(html).not.toContain("stored; leave empty to keep it");
+    expect(html).toContain("Remove stored credentials");
+  });
+
+  it("does not ask for a private key before decryption exists", () => {
+    const html = render(false);
+    expect(html).not.toContain("Private key (optional)");
+    expect(html).toContain("Private keys are not accepted until decryption is available.");
   });
 
   it("shows the warning for the selected credential storage", () => {
