@@ -19,6 +19,8 @@ const TRANSIENT_AFTER_SUCCESS = new Set(["forbidden"]);
 
 export interface PollState {
   readonly visible: boolean;
+  /** Anonymous sessions can request a longer visible interval. */
+  readonly visibleIntervalMs?: number;
   /** Consecutive failed polls. */
   readonly failures: number;
   /** Error of the last poll, or null if it succeeded. */
@@ -31,7 +33,7 @@ export interface PollState {
 
 /** Milliseconds until the next poll, or null to stop polling. */
 export function nextPollDelay(state: PollState): number | null {
-  const base = state.visible ? POLL.visibleMs : POLL.hiddenMs;
+  const base = state.visible ? (state.visibleIntervalMs ?? POLL.visibleMs) : POLL.hiddenMs;
   const { error } = state;
   if (error instanceof SetupError) return null;
   if (
@@ -57,9 +59,15 @@ export function nextPollDelay(state: PollState): number | null {
 
 export interface PollerEnvironment {
   readonly visible: () => boolean;
+  readonly visibleIntervalMs?: number;
   readonly rateLimit: () => RateLimit | null;
   /** Called after each poll with its error, or null when it succeeded. */
   readonly onError?: (error: unknown) => void;
+}
+
+interface RetryOperation {
+  readonly key: string;
+  readonly run: () => Promise<unknown>;
 }
 
 export class Poller {
@@ -70,6 +78,8 @@ export class Poller {
   private inFlight = false;
   private lastError: unknown = null;
   private lastRunAt = 0;
+  private hasRun = false;
+  private retryOperation: RetryOperation | null = null;
 
   constructor(
     private readonly tick: () => Promise<unknown>,
@@ -83,13 +93,46 @@ export class Poller {
   start(first: () => Promise<unknown> = () => Promise.resolve()): void {
     if (this.running) return;
     this.running = true;
-    void this.run(first);
+    void this.run(first, "open");
   }
 
   stop(): void {
     this.running = false;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+  }
+
+  /** Runs a user-requested refresh through the same error and scheduling path. */
+  refreshNow(minimumIntervalMs = 0): Promise<boolean> {
+    return this.runOperation(
+      this.retryOperation?.run ?? this.tick,
+      minimumIntervalMs,
+      this.retryOperation?.key ?? "refresh",
+    );
+  }
+
+  /** Runs another user action through the poller's rate-limit and retry path. */
+  runOperation(
+    operation: () => Promise<unknown>,
+    minimumIntervalMs = 0,
+    operationKey = operation === this.tick ? "refresh" : "manual",
+  ): Promise<boolean> {
+    if (this.inFlight) return Promise.resolve(false);
+    if (
+      this.lastError instanceof SourceError &&
+      this.lastError.kind === "rate-limited" &&
+      this.lastError.retryAt !== null &&
+      this.lastError.retryAt.getTime() > Date.now()
+    ) {
+      return Promise.resolve(false);
+    }
+    if (minimumIntervalMs > 0 && this.hasRun && Date.now() - this.lastRunAt < minimumIntervalMs) {
+      return Promise.resolve(false);
+    }
+    this.running = true;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    return this.run(operation, operationKey).then(() => true);
   }
 
   /** Reschedules for the current visibility; a page that became visible polls at once if due. */
@@ -105,6 +148,9 @@ export class Poller {
     // Delays count from the end of the last run, so a reschedule keeps its place.
     const delay = nextPollDelay({
       visible: this.env.visible(),
+      ...(this.env.visibleIntervalMs === undefined
+        ? {}
+        : { visibleIntervalMs: this.env.visibleIntervalMs }),
       failures: this.failures,
       error: this.lastError,
       succeeded: this.succeeded,
@@ -117,13 +163,13 @@ export class Poller {
     }
     this.timer = setTimeout(
       () => {
-        void this.run(this.tick);
+        void this.run(this.retryOperation?.run ?? this.tick, this.retryOperation?.key ?? "refresh");
       },
       Math.max(0, this.lastRunAt + delay - Date.now()),
     );
   }
 
-  private async run(operation: () => Promise<unknown>): Promise<void> {
+  private async run(operation: () => Promise<unknown>, operationKey: string): Promise<void> {
     this.timer = null;
     this.inFlight = true;
     let error: unknown = null;
@@ -139,6 +185,12 @@ export class Poller {
     if (!this.running) return;
     this.lastError = error;
     this.lastRunAt = Date.now();
+    this.hasRun = true;
+    if (error instanceof SourceError && error.kind === "rate-limited") {
+      this.retryOperation = { key: operationKey, run: operation };
+    } else if (error === null && this.retryOperation?.key === operationKey) {
+      this.retryOperation = null;
+    }
     this.env.onError?.(error);
     this.schedule();
   }

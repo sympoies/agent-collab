@@ -30,6 +30,16 @@ function createSource(settings: ViewerSettings, token: Secret): MessageSource {
   }
 }
 
+function createLiveDemoSource(): MessageSource {
+  return new GitHubSource({
+    apiBase: "https://api.github.com",
+    owner: "sympoies",
+    repo: "agent-collab-demo",
+    branch: null,
+    token: null,
+  });
+}
+
 const root = document.getElementById("root");
 if (root === null) throw new Error("missing #root element");
 
@@ -43,6 +53,7 @@ createRoot(root).render(
       }}
       createSource={createSource}
       createDemoSource={() => new FixtureSource(demoFiles)}
+      createLiveDemoSource={createLiveDemoSource}
     />
   </StrictMode>,
 );

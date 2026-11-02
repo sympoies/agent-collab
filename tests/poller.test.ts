@@ -28,6 +28,10 @@ describe("nextPollDelay", () => {
     expect([POLL.visibleMs, POLL.hiddenMs]).toEqual([MINUTE, 5 * MINUTE]);
   });
 
+  it("uses a five-minute visible interval for anonymous sessions", () => {
+    expect(nextPollDelay({ ...base, visibleIntervalMs: 5 * MINUTE })).toBe(5 * MINUTE);
+  });
+
   it("backs off exponentially after failures, capped at fifteen minutes", () => {
     const error = new SourceError("unreachable", "");
     expect(nextPollDelay({ ...base, failures: 1, error })).toBe(2 * MINUTE);
@@ -79,6 +83,100 @@ describe("Poller", () => {
     expect(tick).toHaveBeenCalledTimes(2);
   });
 
+  it("waits five minutes before polling an anonymous session", async () => {
+    const tick = vi.fn(() => Promise.resolve());
+    const poller = new Poller(tick, {
+      visible: () => true,
+      visibleIntervalMs: 5 * MINUTE,
+      rateLimit: () => null,
+    });
+    poller.start();
+    await vi.advanceTimersByTimeAsync(5 * MINUTE - 1);
+    expect(tick).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(tick).toHaveBeenCalledOnce();
+    poller.stop();
+  });
+
+  it("reschedules after a manual refresh hits the rate limit", async () => {
+    const retryAt = new Date(NOW.getTime() + 20 * MINUTE);
+    const tick = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new SourceError("rate-limited", "", 403, retryAt))
+      .mockResolvedValue(undefined);
+    const poller = new Poller(tick, {
+      visible: () => true,
+      visibleIntervalMs: 5 * MINUTE,
+      rateLimit: () => null,
+    });
+    poller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await poller.refreshNow();
+    expect(tick).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(5 * MINUTE);
+    expect(tick).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(15 * MINUTE);
+    expect(tick).toHaveBeenCalledTimes(2);
+    poller.stop();
+  });
+
+  it("allows a manual refresh to recover after a stopping open error", async () => {
+    const tick = vi.fn(() => Promise.resolve());
+    const poller = new Poller(tick, { visible: () => true, rateLimit: () => null });
+    poller.start(() => Promise.reject(new SourceError("unauthorized", "", 401)));
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(30 * MINUTE);
+    expect(tick).not.toHaveBeenCalled();
+
+    await poller.refreshNow();
+    expect(tick).toHaveBeenCalledOnce();
+    poller.stop();
+  });
+
+  it("does not add a manual request before the anonymous poll interval", async () => {
+    const tick = vi.fn(() => Promise.resolve());
+    const poller = new Poller(tick, {
+      visible: () => true,
+      visibleIntervalMs: 5 * MINUTE,
+      rateLimit: () => null,
+    });
+    poller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await poller.refreshNow(5 * MINUTE)).toBe(false);
+    expect(tick).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5 * MINUTE);
+    expect(tick).toHaveBeenCalledOnce();
+    poller.stop();
+  });
+
+  it("retires a pending Load older retry after a manual recovery", async () => {
+    const retryAt = new Date(NOW.getTime() + MINUTE);
+    const loadOlder = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new SourceError("rate-limited", "", 403, retryAt))
+      .mockResolvedValue(undefined);
+    const tick = vi.fn(() => Promise.resolve());
+    const poller = new Poller(tick, {
+      visible: () => true,
+      visibleIntervalMs: 5 * MINUTE,
+      rateLimit: () => null,
+    });
+    const firstAction = () => loadOlder();
+    const manualAction = () => loadOlder();
+    poller.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await poller.runOperation(firstAction, 0, "load-older");
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    await poller.runOperation(manualAction, 0, "load-older");
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(5 * MINUTE);
+    expect(loadOlder).toHaveBeenCalledTimes(2);
+    expect(tick).toHaveBeenCalledOnce();
+    poller.stop();
+  });
+
   it("reports an error that needs the user and stops", async () => {
     const error = new SourceError("unauthorized", "", 401);
     const tick = vi.fn(() => Promise.reject(error));
@@ -121,12 +219,15 @@ describe("Poller", () => {
   it("waits until retryAt when opening is rate limited", async () => {
     const error = new SourceError("rate-limited", "", 403, new Date(NOW.getTime() + 20 * MINUTE));
     const tick = vi.fn(() => Promise.resolve());
+    const first = vi.fn().mockRejectedValueOnce(error).mockResolvedValue(undefined);
     const poller = new Poller(tick, { visible: () => true, rateLimit: () => null });
-    poller.start(() => Promise.reject(error));
+    poller.start(first);
     await vi.advanceTimersByTimeAsync(20 * MINUTE - 1);
+    expect(first).toHaveBeenCalledOnce();
     expect(tick).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    expect(tick).toHaveBeenCalledTimes(1);
+    expect(first).toHaveBeenCalledTimes(2);
+    expect(tick).not.toHaveBeenCalled();
   });
 
   it("keeps polling with backoff after a forbidden poll that follows a success", async () => {

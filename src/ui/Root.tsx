@@ -1,7 +1,7 @@
 // Switches between the settings screen and the viewer. Secrets go straight from
 // the credential store into the message source; they are never kept in React state.
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import type { Secret } from "../credentials/secret";
 import { Loader } from "../loader/loader";
@@ -22,6 +22,7 @@ import {
   type OpenSettings,
   type SettingsDeps,
 } from "../settings/session";
+import { LIVE_DEMO_POLL_INTERVAL_MS, openLiveDemo } from "../settings/live-demo";
 import type { MessageSource } from "../source/types";
 import { App } from "./App";
 import { SettingsView } from "./SettingsView";
@@ -29,6 +30,7 @@ import { SettingsView } from "./SettingsView";
 export interface RootProps extends SettingsDeps {
   readonly createSource: (settings: ViewerSettings, token: Secret) => MessageSource;
   readonly createDemoSource: () => MessageSource;
+  readonly createLiveDemoSource: () => MessageSource;
 }
 
 interface ViewerScreen {
@@ -39,10 +41,11 @@ interface ViewerScreen {
   readonly title: string;
   readonly selfNames: ReadonlySet<string>;
   readonly notice: string | null;
+  readonly pollIntervalMs: number | undefined;
 }
 
 type Screen =
-  | { readonly kind: "starting" }
+  | { readonly kind: "welcome" }
   | {
       readonly kind: "settings";
       readonly draft: SettingsDraft;
@@ -53,15 +56,17 @@ type Screen =
   | ViewerScreen;
 
 export function Root(props: RootProps) {
-  const { createSource, createDemoSource } = props;
-  const [screen, setScreen] = useState<Screen>({ kind: "starting" });
+  const { createSource, createDemoSource, createLiveDemoSource } = props;
+  const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
+  const navigation = useRef(0);
 
   const viewer = (
     source: MessageSource,
     title: string,
     selfNames: readonly string[],
     notice: string | null = null,
+    pollIntervalMs?: number,
   ): ViewerScreen => {
     viewers.current += 1;
     return {
@@ -71,6 +76,7 @@ export function Root(props: RootProps) {
       title,
       selfNames: new Set(selfNames),
       notice,
+      pollIntervalMs,
     };
   };
 
@@ -78,35 +84,64 @@ export function Root(props: RootProps) {
     viewer(createSource(settings, token), settings.repository, settings.selfNames, notice);
 
   const showSettings = async (back: ViewerScreen | null) => {
+    const operation = ++navigation.current;
     const settings = loadSettings(props.storage);
     const draft = settings === null ? DEFAULT_DRAFT : draftFromSettings(settings);
     const stored = await storedEndpoints(props);
+    if (operation !== navigation.current) return;
     setScreen({ kind: "settings", draft, storedEndpoints: stored, back });
   };
 
-  useEffect(() => {
-    // Any start-up failure (a blocked credential store, a source that cannot be
-    // created) falls through to the settings screen instead of a stuck screen.
-    restore(props)
-      .then(async (opened) => {
-        if (opened === null) await showSettings(null);
-        else setScreen(open(opened));
-      })
-      .catch(() => showSettings(null));
-    // Runs once at start-up; later changes go through the settings screen.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const openSavedRepository = async () => {
+    const operation = ++navigation.current;
+    try {
+      const opened = await restore(props);
+      if (operation !== navigation.current) return;
+      if (opened === null) await showSettings(null);
+      else setScreen(open(opened));
+    } catch {
+      if (operation !== navigation.current) return;
+      await showSettings(null);
+    }
+  };
+
+  const showLiveDemo = () => {
+    navigation.current += 1;
+    openLiveDemo(createLiveDemoSource, (source) => {
+      setScreen(viewer(source, "Live demo", [], null, LIVE_DEMO_POLL_INTERVAL_MS));
+    });
+  };
 
   const save = async (draft: SettingsDraft): Promise<DraftErrors | null> => {
+    const operation = ++navigation.current;
     const result = await apply(props, draft);
+    if (operation !== navigation.current) return null;
     if (!result.ok) return result.errors;
     setScreen(open(result.open, result.warning));
     return null;
   };
 
   switch (screen.kind) {
-    case "starting":
-      return <p className="empty">Loading…</p>;
+    case "welcome":
+      return (
+        <div className="app settings">
+          <h1>Agent collaboration viewer</h1>
+          <button type="button" onClick={showLiveDemo}>
+            Open live demo
+          </button>
+          <button type="button" onClick={() => void openSavedRepository()}>
+            Open saved repository
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void showSettings(null);
+            }}
+          >
+            Open another repository
+          </button>
+        </div>
+      );
     case "settings": {
       const back = screen.back;
       return (
@@ -116,18 +151,24 @@ export function Root(props: RootProps) {
             storedEndpoints={screen.storedEndpoints}
             onSave={save}
             onRemoveCredentials={async () => {
+              const operation = ++navigation.current;
               await removeCredentials(props);
+              if (operation !== navigation.current) return;
               await showSettings(null);
             }}
             onCancel={
               back === null
                 ? null
                 : () => {
+                    navigation.current += 1;
                     setScreen(back);
                   }
             }
             onOpenDemo={() => {
               setScreen(viewer(createDemoSource(), "Demo repository", ["alice-agent"]));
+            }}
+            onOpenLiveDemo={() => {
+              showLiveDemo();
             }}
           />
         </div>
@@ -141,6 +182,9 @@ export function Root(props: RootProps) {
           title={screen.title}
           selfNames={screen.selfNames}
           notice={screen.notice}
+          {...(screen.pollIntervalMs === undefined
+            ? {}
+            : { pollIntervalMs: screen.pollIntervalMs })}
           onOpenSettings={() => {
             void showSettings(screen);
           }}
