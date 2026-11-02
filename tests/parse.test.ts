@@ -54,6 +54,7 @@ describe("parseMessageFile: valid messages", () => {
       topic: "api",
       type: "question",
       replyTo: null,
+      replies: null,
       refs: ["topics/api/fields-v1.md"],
       needs: "confirm the field list",
       due: "2026-10-10",
@@ -85,6 +86,59 @@ describe("parseMessageFile: valid messages", () => {
     expect(result.to).toEqual(["bob-agent", "carol-agent"]);
     expect(result.refs).toEqual(["topics/a.md", "2026-10-01T0800-bob-agent-api-01"]);
   });
+
+  it.each(["", "all"])("treats to=%s as the everyone recipient", (to) => {
+    const result = message(parseMessageFile(PATH, file({ to })));
+    expect(result.to).toEqual([]);
+    expect(result.issues).toEqual([]);
+  });
+
+  it.each([
+    ["any", "any"],
+    ["all", "all"],
+    ["3", 3],
+  ] as const)("parses question replies=%s", (raw, expected) => {
+    expect(message(parseMessageFile(PATH, file({ replies: raw })))).toMatchObject({
+      replies: expected,
+      issues: [],
+    });
+  });
+
+  it("ignores a replies requirement on non-question messages", () => {
+    const result = message(parseMessageFile(PATH, file({ type: "info", replies: "all" })));
+    expect(result.replies).toBeNull();
+    expect(result.issues).toEqual([]);
+  });
+
+  it("accepts an empty-body acknowledgment without a body validation issue", () => {
+    const result = message(
+      parseMessageFile(
+        PATH,
+        file(
+          {
+            type: "ack",
+            reply_to: "2026-10-08T0900-bob-agent-api-01",
+            to: "alice-agent",
+          },
+          "",
+        ),
+      ),
+    );
+    expect(result.body).toEqual({ state: "plain", lines: [] });
+    expect(result.issues).not.toContain("body is empty");
+  });
+
+  it.each(["", "0", "-1", "1.5", "ANY", "many"])(
+    "keeps an invalid question replies value %j as a soft issue",
+    (replies) => {
+      const result = message(parseMessageFile(PATH, file({ replies })));
+      expect(result.type).toBe("question");
+      expect(result.replies).toBeNull();
+      expect(result.issues).toContain(
+        `replies must be any, all, or a positive integer: ${replies}`,
+      );
+    },
+  );
 
   it("maps a 'none' request to null in any case", () => {
     expect(message(parseMessageFile(PATH, file({ needs: "None" }))).needs).toBeNull();
@@ -152,12 +206,12 @@ describe("parseMessageFile: fatal problems produce a malformed file", () => {
     );
   });
 
-  it.each(["from", "to", "topic"])("rejects an empty %s", (key) => {
+  it.each(["from", "topic"])("rejects an empty %s", (key) => {
     expect(errors(parseMessageFile(PATH, file({ [key]: "" })))).toContain(`${key} is empty`);
   });
 
-  it("rejects recipients that name nobody", () => {
-    expect(errors(parseMessageFile(PATH, file({ to: " , " })))).toContain("to is empty");
+  it.each([",", ", ,"])("rejects malformed empty recipient list %j", (to) => {
+    expect(errors(parseMessageFile(PATH, file({ to })))).toContain("to is empty");
   });
 
   it("rejects an id that does not follow the id pattern", () => {

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { Loader, SetupError, type TimelineItem } from "../src/loader/loader";
+import { deriveQuestionStates } from "../src/message/questions";
 import { FixtureSource } from "../src/source/fixture";
-import { flat, MARKER, monthly, repo } from "./support";
+import { flat, MARKER, messageText, monthly, repo } from "./support";
 
 function paths(items: readonly TimelineItem[]): string[] {
   return items.map((item) => (item.kind === "message" ? item.message.path : item.path));
@@ -32,6 +33,63 @@ describe("Loader.open", () => {
   it("opens an empty repository without an inbox", async () => {
     const loader = await opened(new FixtureSource(repo([])));
     expect(loader.getSnapshot()).toMatchObject({ items: [], hasOlder: false });
+  });
+
+  it("exposes participant metadata from the marker", async () => {
+    const marker = `${MARKER}participants: alice-agent,bob-agent,carol-agent\nformer-participants: carol-agent\n`;
+    const loader = await opened(new FixtureSource(repo([], marker)));
+    expect(loader.getSnapshot()).toMatchObject({
+      participants: ["alice-agent", "bob-agent", "carol-agent"],
+      formerParticipants: ["carol-agent"],
+    });
+  });
+
+  it("ignores unknown marker keys", async () => {
+    const loader = await opened(new FixtureSource(repo([], `${MARKER}language: en\n`)));
+    expect(loader.getSnapshot().items).toEqual([]);
+    expect(loader.getSnapshot().participants).toEqual([]);
+  });
+
+  it("refreshes participant metadata with a changed repository head", async () => {
+    const questionId = "2026-10-01T0901-alice-agent-api-01";
+    const answerId = "2026-10-01T0902-bob-agent-api-01";
+    const questionPath = `inbox/2026-10/${questionId}.md`;
+    const answerPath = `inbox/2026-10/${answerId}.md`;
+    const question = messageText(questionId, "alice-agent", "api", {
+      to: "",
+      type: "question",
+      replies: "all",
+    });
+    const initialMarker = `${MARKER}participants: alice-agent,bob-agent\n`;
+    const source = new FixtureSource({ ...repo([], initialMarker), [questionPath]: question });
+    const loader = await opened(source);
+
+    const formerMarker = `${MARKER}participants: alice-agent,bob-agent\nformer-participants: bob-agent\n`;
+    source.commit({
+      ...repo([], formerMarker),
+      [questionPath]: question,
+      [answerPath]: messageText(answerId, "bob-agent", "api", {
+        to: "alice-agent",
+        type: "answer",
+        reply_to: questionId,
+      }),
+    });
+    await loader.refresh();
+
+    const snapshot = loader.getSnapshot();
+    expect(snapshot).toMatchObject({
+      participants: ["alice-agent", "bob-agent"],
+      formerParticipants: ["bob-agent"],
+    });
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants)[0],
+    ).toMatchObject({
+      eligibleAnswerers: [],
+      answerers: [],
+    });
   });
 
   it("orders the first page oldest to newest across flat and monthly files", async () => {
