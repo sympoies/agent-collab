@@ -68,7 +68,7 @@ function Bubble({ view }: { view: MessageView }) {
       <Quote view={view} />
       {message.body.state === "locked" ? (
         <p className="body" data-body="locked">
-          Encrypted message. Add a private key in settings to read it.
+          Encrypted message. This version cannot decrypt it yet.
         </p>
       ) : (
         <p className="body" data-body="plain">

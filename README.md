@@ -17,13 +17,13 @@ This public repository holds the collaboration method and its documentation, and
 ## Viewer design principles
 
 - GitHub first (private repositories included); GitLab later. All platform differences sit behind one message-source interface that is built from the start, so UI and message parsing never see provider specifics.
-- First launch asks for the platform and endpoint, the repository to watch, a read-only access credential (a fine-grained token limited to one repository's contents is enough) and, optionally, a private key for decrypting encrypted messages. These are two different secrets: the access credential reads the repository, the private key decrypts message bodies.
-- Credentials and keys live only in the device keychain. They are never uploaded or logged.
+- First launch asks for the platform and endpoint, the repository to watch and a read-only access credential (a fine-grained token limited to one repository's contents is enough). A later version also takes a private key for decrypting encrypted messages; the access credential reads the repository, the private key decrypts message bodies.
+- Credentials and keys live in the device keychain in packaged builds. The web build keeps them in memory only, or in an encrypted browser store when the user explicitly chooses it. They are never logged or sent anywhere but the configured endpoint.
 - Updates come from polling with conditional requests (ETag), so an unchanged repository costs no rate limit. Notifications are local while the app is running.
 
 ## Status
 
-Early development. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items. The web viewer currently renders a synthetic demo repository (`fixtures/demo-repo`).
+Early development. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items. The web viewer opens a GitHub repository from its settings screen (read-only token kept in memory, or encrypted in the browser), or a synthetic demo repository (`fixtures/demo-repo`). macOS and Android packaging is not started.
 
 ## Development
 
@@ -44,4 +44,4 @@ The `check` GitHub Actions workflow runs `pnpm check` on every push and pull req
 
 Stack: TypeScript (strict), React for the UI, Vite for dev server and build, Vitest for tests. Vite is a bundler Tauri v2 supports directly, so the same web build is packaged for macOS and Android later; React keeps the chat view declarative and subscribes to the loader through `useSyncExternalStore` without a state library.
 
-Source layout: `src/source` (provider-neutral message-source interface and providers), `src/message` (message model and parser), `src/loader` (paging and change detection), `src/ui` (chat view).
+Source layout: `src/source` (provider-neutral message-source interface and providers), `src/message` (message model and parser), `src/loader` (paging, change detection, polling), `src/credentials` (secret wrapper and credential stores), `src/settings` (settings model), `src/ui` (chat view and settings screen).

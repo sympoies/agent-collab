@@ -20,9 +20,12 @@ export interface AppProps {
   readonly loader: Loader;
   readonly title: string;
   readonly selfNames: ReadonlySet<string>;
+  /** A one-off message from opening the viewer, such as a settings warning. */
+  readonly notice: string | null;
+  readonly onOpenSettings: () => void;
 }
 
-export function App({ loader, title, selfNames }: AppProps) {
+export function App({ loader, title, selfNames, notice, onOpenSettings }: AppProps) {
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const [topic, setTopic] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
@@ -93,7 +96,15 @@ export function App({ loader, title, selfNames }: AppProps) {
         >
           Refresh
         </button>
+        <button type="button" onClick={onOpenSettings}>
+          Settings
+        </button>
       </header>
+      {notice !== null && (
+        <p className="notice" role="status">
+          {notice}
+        </p>
+      )}
       {error !== null && (
         <p className="error" role="alert">
           {error}
