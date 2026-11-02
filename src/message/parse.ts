@@ -2,7 +2,18 @@
 
 import { MESSAGE_TYPES, type Body, type MessageType, type ParsedFile } from "./types";
 
-const FIELDS = ["id", "from", "to", "topic", "type", "reply_to", "refs", "needs", "due"] as const;
+const FIELDS = [
+  "id",
+  "from",
+  "to",
+  "topic",
+  "type",
+  "reply_to",
+  "replies",
+  "refs",
+  "needs",
+  "due",
+] as const;
 type Field = (typeof FIELDS)[number];
 
 /** Fields without which a message cannot be placed in the timeline or attributed. */
@@ -47,13 +58,13 @@ function trimBlankEdges(lines: string[]): string[] {
   return lines.slice(start, end);
 }
 
-function parseBody(lines: string[], issues: string[]): Body {
+function parseBody(lines: string[], issues: string[], type: MessageType | null): Body {
   const trimmed = trimBlankEdges(lines);
   if (trimmed[0]?.trim() === AGE_ARMOR_HEADER) {
     return { state: "locked", armored: trimmed.join("\n") };
   }
   const nonBlank = trimmed.filter((line) => line.trim() !== "").length;
-  if (nonBlank === 0) {
+  if (nonBlank === 0 && type !== "ack") {
     issues.push("body is empty");
   } else if (nonBlank > MAX_BODY_LINES) {
     issues.push(
@@ -99,7 +110,9 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
   for (const key of PLACEMENT_FIELDS) {
     const value = fields.get(key);
     if (value === undefined) errors.push(`missing front matter key: ${key}`);
-    else if (splitList(value).length === 0) errors.push(`${key} is empty`);
+    else if ((key !== "to" || (value !== "" && value !== "all")) && splitList(value).length === 0) {
+      errors.push(`${key} is empty`);
+    }
   }
   const id = fields.get("id") ?? "";
   const idMatch = ID_RE.exec(id);
@@ -111,6 +124,7 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
   }
 
   for (const key of FIELDS) {
+    if (key === "replies") continue;
     if (!fields.has(key) && !(PLACEMENT_FIELDS as readonly string[]).includes(key)) {
       issues.push(`missing front matter key: ${key}`);
     }
@@ -146,7 +160,9 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
   ] as const) {
     if (!NAME_RE.test(value)) issues.push(`${key} must be lowercase [a-z0-9-]: ${value}`);
   }
-  const to = splitList(get("to"));
+  const toValue = get("to");
+  const recipients = splitList(toValue);
+  const to = toValue === "" || recipients.includes("all") ? [] : recipients;
   for (const name of to) {
     if (!NAME_RE.test(name)) issues.push(`to entry must be lowercase [a-z0-9-]: ${name}`);
   }
@@ -161,6 +177,20 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
   }
   if ((type === "answer" || type === "ack") && replyTo === "") {
     issues.push(`type ${type} needs reply_to`);
+  }
+
+  const repliesValue = get("replies");
+  let replies: "any" | "all" | number | null = null;
+  if (fields.has("replies") && type !== "question") {
+    issues.push("replies applies only to question messages");
+  } else if (type === "question" && fields.has("replies")) {
+    if (repliesValue === "any" || repliesValue === "all") {
+      replies = repliesValue;
+    } else if (/^[1-9]\d*$/.test(repliesValue) && Number.isSafeInteger(Number(repliesValue))) {
+      replies = Number(repliesValue);
+    } else {
+      issues.push(`replies must be any, all, or a positive integer: ${repliesValue}`);
+    }
   }
 
   const needs = get("needs");
@@ -178,7 +208,7 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
     issues.push(`due must be a YYYY-MM-DD date: ${due}`);
   }
 
-  const body = parseBody(lines.slice(end + 1), issues);
+  const body = parseBody(lines.slice(end + 1), issues, type);
 
   return {
     kind: "message",
@@ -191,6 +221,7 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
       topic,
       type,
       replyTo: replyTo === "" ? null : replyTo,
+      replies,
       refs: splitList(get("refs")),
       needs: needs === "" || NONE_NEEDS.has(needs.toLowerCase()) ? null : needs,
       due: due === "" ? null : due,

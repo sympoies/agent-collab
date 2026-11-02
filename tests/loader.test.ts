@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { Loader, SetupError, type TimelineItem } from "../src/loader/loader";
+import { deriveQuestionStates } from "../src/message/questions";
 import { FixtureSource } from "../src/source/fixture";
-import { flat, MARKER, monthly, repo } from "./support";
+import { flat, MARKER, messageText, monthly, repo } from "./support";
 
 function paths(items: readonly TimelineItem[]): string[] {
   return items.map((item) => (item.kind === "message" ? item.message.path : item.path));
@@ -32,6 +33,149 @@ describe("Loader.open", () => {
   it("opens an empty repository without an inbox", async () => {
     const loader = await opened(new FixtureSource(repo([])));
     expect(loader.getSnapshot()).toMatchObject({ items: [], hasOlder: false });
+  });
+
+  it("exposes participant metadata from the marker", async () => {
+    const marker = `${MARKER}participants: alice-agent,bob-agent,carol-agent\nformer-participants: carol-agent\n`;
+    const loader = await opened(new FixtureSource(repo([], marker)));
+    expect(loader.getSnapshot()).toMatchObject({
+      rosterKnown: true,
+      participants: ["alice-agent", "bob-agent", "carol-agent"],
+      formerParticipants: ["carol-agent"],
+    });
+  });
+
+  it("ignores unknown marker keys", async () => {
+    const loader = await opened(new FixtureSource(repo([], `${MARKER}language: en\n`)));
+    expect(loader.getSnapshot().items).toEqual([]);
+    expect(loader.getSnapshot().participants).toEqual([]);
+  });
+
+  it("refreshes participant metadata with a changed repository head", async () => {
+    const questionId = "2026-10-01T0901-alice-agent-api-01";
+    const answerId = "2026-10-01T0902-bob-agent-api-01";
+    const questionPath = `inbox/2026-10/${questionId}.md`;
+    const answerPath = `inbox/2026-10/${answerId}.md`;
+    const question = messageText(questionId, "alice-agent", "api", {
+      to: "",
+      type: "question",
+      replies: "all",
+    });
+    const initialMarker = `${MARKER}participants: alice-agent,bob-agent\n`;
+    const source = new FixtureSource({ ...repo([], initialMarker), [questionPath]: question });
+    const loader = await opened(source);
+
+    const formerMarker = `${MARKER}participants: alice-agent,bob-agent\nformer-participants: bob-agent\n`;
+    source.commit({
+      ...repo([], formerMarker),
+      [questionPath]: question,
+      [answerPath]: messageText(answerId, "bob-agent", "api", {
+        to: "alice-agent",
+        type: "answer",
+        reply_to: questionId,
+      }),
+    });
+    await loader.refresh();
+
+    const snapshot = loader.getSnapshot();
+    expect(snapshot).toMatchObject({
+      participants: ["alice-agent", "bob-agent"],
+      formerParticipants: ["bob-agent"],
+    });
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants)[0],
+    ).toMatchObject({
+      eligibleAnswerers: [],
+      answerers: [],
+    });
+  });
+
+  it("marks the roster unknown when a changed marker cannot be read", async () => {
+    const marker = `${MARKER}participants: alice-agent,bob-agent\n`;
+    const source = new FixtureSource(repo([], marker));
+    const loader = await opened(source);
+    source.commit(repo([], `${marker}former-participants: bob-agent\n`));
+    source.failReads([".agent-collab"]);
+
+    await expect(loader.refresh()).rejects.toMatchObject({ kind: "unexpected" });
+    expect(loader.getSnapshot()).toMatchObject({ rosterKnown: false, participants: [] });
+  });
+
+  it("reuses parsed marker data when its blob id is unchanged", async () => {
+    const marker = `${MARKER}participants: alice-agent,bob-agent\n`;
+    const initial = repo([monthly("2026-10", 1, 1)], marker);
+    const source = new FixtureSource(initial);
+    const loader = await opened(source);
+    expect(source.reads.filter((path) => path === ".agent-collab")).toHaveLength(1);
+
+    source.commit({ ...initial, [monthly("2026-10", 1, 2)]: "new revision" });
+    await loader.refresh();
+    expect(source.reads.filter((path) => path === ".agent-collab")).toHaveLength(1);
+  });
+
+  it("reports topics with listed but not yet loaded message files", async () => {
+    const questionId = "2026-10-01T0902-alice-agent-api-01";
+    const answerId = "2026-10-01T0901-bob-agent-api-01";
+    const files = {
+      ...repo([], `${MARKER}participants: alice-agent,bob-agent\n`),
+      [`inbox/2026-10/${questionId}.md`]: messageText(questionId, "alice-agent", "api", {
+        to: "",
+        type: "question",
+      }),
+      [`inbox/2026-10/${answerId}.md`]: messageText(answerId, "bob-agent", "api", {
+        to: "alice-agent",
+        type: "answer",
+        reply_to: questionId,
+      }),
+    };
+    const loader = new Loader(new FixtureSource(files), { pageSize: 1 });
+    await loader.open();
+    const snapshot = loader.getSnapshot();
+    expect(snapshot.incompleteTopics).toEqual(["api"]);
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+        incompleteTopics: snapshot.incompleteTopics,
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null });
+  });
+
+  it("marks a question topic incomplete when one of its files is unavailable", async () => {
+    const questionId = "2026-10-01T0901-alice-agent-api-01";
+    const answerId = "2026-10-01T0902-bob-agent-api-01";
+    const questionPath = `inbox/2026-10/${questionId}.md`;
+    const answerPath = `inbox/2026-10/${answerId}.md`;
+    const source = new FixtureSource({
+      ...repo([], `${MARKER}participants: alice-agent,bob-agent\n`),
+      [questionPath]: messageText(questionId, "alice-agent", "api", {
+        to: "",
+        type: "question",
+      }),
+      [answerPath]: messageText(answerId, "bob-agent", "api", {
+        to: "alice-agent",
+        type: "answer",
+        reply_to: questionId,
+      }),
+    });
+    source.failReads([answerPath]);
+    const loader = await opened(source);
+    const snapshot = loader.getSnapshot();
+    expect(snapshot.incompleteTopics).toEqual(["api"]);
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+        incompleteTopics: snapshot.incompleteTopics,
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null });
   });
 
   it("orders the first page oldest to newest across flat and monthly files", async () => {

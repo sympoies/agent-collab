@@ -23,6 +23,14 @@ export interface LoaderSnapshot {
   readonly hasOlder: boolean;
   /** Paths of items that arrived through refresh after open. */
   readonly fresh: ReadonlySet<string>;
+  /** Participant roster from the repository marker. */
+  readonly participants: readonly string[];
+  /** Participants explicitly marked as no longer active. */
+  readonly formerParticipants: readonly string[];
+  /** True when the marker for the currently published revision was read successfully. */
+  readonly rosterKnown: boolean;
+  /** Topics with pending/unavailable files, or null when their topics cannot be determined. */
+  readonly incompleteTopics: readonly string[] | null;
 }
 
 export interface LoaderOptions {
@@ -46,6 +54,53 @@ const PER_FILE_ERRORS: ReadonlySet<SourceErrorKind> = new Set([
   "too-large",
   "unexpected",
 ]);
+
+interface MarkerParticipants {
+  readonly participants: readonly string[];
+  readonly formerParticipants: readonly string[];
+}
+
+function markerParticipants(text: string): MarkerParticipants {
+  const fields = new Map<string, string>();
+  for (const line of text
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .slice(1)) {
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim();
+    if (key === "participants" || key === "former-participants") {
+      fields.set(key, line.slice(colon + 1).trim());
+    }
+  }
+  const split = (value: string | undefined): string[] =>
+    value === undefined
+      ? []
+      : value
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean);
+  return {
+    participants: split(fields.get("participants")),
+    formerParticipants: split(fields.get("former-participants")),
+  };
+}
+
+function topicsForMessagePath(path: string, senders: readonly string[]): readonly string[] | null {
+  const fileName = path.slice(path.lastIndexOf("/") + 1);
+  const match = /^(\d{4}-\d{2}-\d{2}T\d{4})-(.+)-(\d{2})\.md$/.exec(fileName);
+  if (match === null) return null;
+  const senderAndTopic = match[2] as string;
+  const topics = new Set<string>();
+  for (const sender of senders) {
+    const prefix = `${sender}-`;
+    if (!senderAndTopic.startsWith(prefix)) continue;
+    const topic = senderAndTopic.slice(prefix.length);
+    if (/^[a-z0-9-]+$/.test(topic)) topics.add(topic);
+  }
+  return topics.size === 0 ? null : [...topics];
+}
 
 const newestFirst = (a: DirectoryEntry, b: DirectoryEntry): number =>
   a.name === b.name ? (a.path < b.path ? 1 : -1) : a.name < b.name ? 1 : -1;
@@ -108,8 +163,23 @@ export class Loader {
    */
   private readonly unavailable = new Map<string, RetryState>();
   private readonly fresh = new Set<string>();
+  private participants: readonly string[] = [];
+  private formerParticipants: readonly string[] = [];
+  private rosterKnown = false;
+  private markerCache: {
+    readonly objectId: string;
+    readonly participants: MarkerParticipants;
+  } | null = null;
   private readonly listeners = new Set<() => void>();
-  private snapshot: LoaderSnapshot = { items: [], hasOlder: false, fresh: new Set() };
+  private snapshot: LoaderSnapshot = {
+    items: [],
+    hasOlder: false,
+    fresh: new Set(),
+    participants: [],
+    formerParticipants: [],
+    rosterKnown: false,
+    incompleteTopics: null,
+  };
   private queue: Promise<unknown> = Promise.resolve();
   private opening: Promise<void> | null = null;
 
@@ -133,6 +203,24 @@ export class Loader {
     return this.source.rateLimit();
   }
 
+  private async readMarker(root: readonly DirectoryEntry[]): Promise<MarkerParticipants> {
+    const entry = root.find(
+      (candidate) => candidate.kind === "file" && candidate.name === MARKER_FILE,
+    );
+    if (entry === undefined) {
+      throw new SetupError(`not a collaboration repository (no ${MARKER_FILE} marker)`);
+    }
+    if (this.markerCache?.objectId === entry.objectId) return this.markerCache.participants;
+    const text = await this.source.readFile(entry);
+    const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
+    if (firstLine !== SUPPORTED_PROTOCOL) {
+      throw new SetupError(`unsupported collaboration protocol: ${firstLine}`);
+    }
+    const participants = markerParticipants(text);
+    this.markerCache = { objectId: entry.objectId, participants };
+    return participants;
+  }
+
   /** Check the marker and load the newest page. Concurrent calls share one attempt. */
   open(): Promise<void> {
     this.opening ??= this.serialize(async () => {
@@ -140,15 +228,10 @@ export class Loader {
         const head = await this.source.head(null);
         if (head === "not-modified") throw new SourceError("unexpected", "");
         const root = await this.source.listDirectory(head.revision, "");
-        const marker = root.find((entry) => entry.kind === "file" && entry.name === MARKER_FILE);
-        if (marker === undefined) {
-          throw new SetupError(`not a collaboration repository (no ${MARKER_FILE} marker)`);
-        }
-        const text = await this.source.readFile(marker);
-        const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
-        if (firstLine !== SUPPORTED_PROTOCOL) {
-          throw new SetupError(`unsupported collaboration protocol: ${firstLine}`);
-        }
+        const participantData = await this.readMarker(root);
+        this.participants = participantData.participants;
+        this.formerParticipants = participantData.formerParticipants;
+        this.rosterKnown = true;
         const hasInbox = root.some((entry) => entry.kind === "directory" && entry.name === "inbox");
         const inbox = hasInbox ? await this.source.listDirectory(head.revision, "inbox") : [];
         this.head = head;
@@ -162,6 +245,9 @@ export class Loader {
         this.unlistedMonths = [];
         this.listedMonths.clear();
         this.unavailable.clear();
+        this.participants = [];
+        this.formerParticipants = [];
+        this.rosterKnown = false;
         this.opening = null;
         throw error;
       }
@@ -187,30 +273,43 @@ export class Loader {
         if (retries.length > 0) this.publish(await this.readAll(retries));
         return 0;
       }
-      const inbox = await this.listOrEmpty(head.revision, "inbox");
-      this.updateRetries(inbox);
-      const found: DirectoryEntry[] = inbox.filter(
-        (entry) => isMessageFile(entry) && !this.isKnown(entry.name),
-      );
-      const monthUpdates = new Map<string, string>();
-      for (const month of inbox.filter(isMonth)) {
-        const listedId = this.listedMonths.get(month.name);
-        const unlisted = this.unlistedMonths.some((entry) => entry.name === month.name);
-        if (unlisted || listedId === month.objectId) continue;
-        const entries = await this.source.listDirectory(head.revision, month.path);
-        this.updateRetries(entries);
-        found.push(...entries.filter((e) => isMessageFile(e) && !this.isKnown(e.name)));
-        monthUpdates.set(month.name, month.objectId);
+      this.rosterKnown = false;
+      try {
+        const root = await this.source.listDirectory(head.revision, "");
+        const participantData = await this.readMarker(root);
+        const inbox = await this.listOrEmpty(head.revision, "inbox");
+        this.updateRetries(inbox);
+        const found: DirectoryEntry[] = inbox.filter(
+          (entry) => isMessageFile(entry) && !this.isKnown(entry.name),
+        );
+        const monthUpdates = new Map<string, string>();
+        for (const month of inbox.filter(isMonth)) {
+          const listedId = this.listedMonths.get(month.name);
+          const unlisted = this.unlistedMonths.some((entry) => entry.name === month.name);
+          if (unlisted || listedId === month.objectId) continue;
+          const entries = await this.source.listDirectory(head.revision, month.path);
+          this.updateRetries(entries);
+          found.push(...entries.filter((e) => isMessageFile(e) && !this.isKnown(e.name)));
+          monthUpdates.set(month.name, month.objectId);
+        }
+        const retries = this.dueRetries();
+        const added = await this.readAll(found);
+        const recovered = await this.readAll(retries);
+        const arrived = added.filter((item) => item.kind !== "unavailable");
+        for (const [name, objectId] of monthUpdates) this.listedMonths.set(name, objectId);
+        for (const item of arrived) this.fresh.add(itemPath(item));
+        this.head = head;
+        this.participants = participantData.participants;
+        this.formerParticipants = participantData.formerParticipants;
+        this.rosterKnown = true;
+        this.publish([...added, ...recovered]);
+        return arrived.length;
+      } catch (error) {
+        this.participants = [];
+        this.formerParticipants = [];
+        this.publish([]);
+        throw error;
       }
-      const retries = this.dueRetries();
-      const added = await this.readAll(found);
-      const recovered = await this.readAll(retries);
-      const arrived = added.filter((item) => item.kind !== "unavailable");
-      for (const [name, objectId] of monthUpdates) this.listedMonths.set(name, objectId);
-      for (const item of arrived) this.fresh.add(itemPath(item));
-      this.head = head;
-      this.publish([...added, ...recovered]);
-      return arrived.length;
     });
   }
 
@@ -300,8 +399,28 @@ export class Loader {
       items,
       hasOlder: this.pending.length > 0 || this.unlistedMonths.length > 0,
       fresh: new Set(this.fresh),
+      participants: this.participants,
+      formerParticipants: this.formerParticipants,
+      rosterKnown: this.rosterKnown,
+      incompleteTopics: this.incompleteTopics(),
     };
     for (const listener of this.listeners) listener();
+  }
+
+  private incompleteTopics(): readonly string[] | null {
+    if (!this.rosterKnown || this.unlistedMonths.length > 0) return null;
+    const senders = [...this.participants, ...this.formerParticipants];
+    const incompletePaths = [
+      ...this.pending.map((entry) => entry.path),
+      ...[...this.unavailable.values()].map((retry) => retry.entry.path),
+    ];
+    const topics = new Set<string>();
+    for (const path of incompletePaths) {
+      const possibleTopics = topicsForMessagePath(path, senders);
+      if (possibleTopics === null) return null;
+      for (const topic of possibleTopics) topics.add(topic);
+    }
+    return [...topics].sort();
   }
 
   private serialize<T>(operation: () => Promise<T>): Promise<T> {

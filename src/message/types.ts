@@ -4,6 +4,8 @@ export const MESSAGE_TYPES = ["question", "answer", "info", "decision-needed", "
 
 export type MessageType = (typeof MESSAGE_TYPES)[number];
 
+export type RepliesRequirement = "any" | "all" | number;
+
 export type Body =
   | { readonly state: "plain"; readonly lines: readonly string[] }
   /** Encrypted body; decryption is a later slice. */
@@ -20,6 +22,8 @@ export interface Message {
   /** null when the value is not a known message type. */
   readonly type: MessageType | null;
   readonly replyTo: string | null;
+  /** Minimum answer threshold for a question, or null when not specified/valid. */
+  readonly replies: RepliesRequirement | null;
   readonly refs: readonly string[];
   /** null when nothing is requested ("none"). */
   readonly needs: string | null;
