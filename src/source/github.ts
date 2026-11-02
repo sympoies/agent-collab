@@ -80,6 +80,15 @@ function toEntry(parent: string, entry: TreeEntry): DirectoryEntry | null {
   return null;
 }
 
+// URL.canParse is missing in older Android WebViews.
+function isHttps(value: string): boolean {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export class GitHubSource implements MessageSource {
   private readonly config: GitHubSourceConfig;
   private readonly fetchImpl: typeof globalThis.fetch;
@@ -95,9 +104,7 @@ export class GitHubSource implements MessageSource {
     this.config = config;
     this.fetchImpl = config.fetch ?? globalThis.fetch.bind(globalThis);
     this.now = config.now ?? (() => new Date());
-    if (!URL.canParse(config.apiBase) || new URL(config.apiBase).protocol !== "https:") {
-      throw new Error("The API endpoint must use https.");
-    }
+    if (!isHttps(config.apiBase)) throw new Error("The API endpoint must use https.");
     const base = config.apiBase.replace(/\/+$/, "");
     this.repoUrl = `${base}/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}`;
   }
