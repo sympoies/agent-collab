@@ -242,6 +242,32 @@ describe("Loader tolerance", () => {
     expect(loader.getSnapshot().items.map((item) => item.kind)).toEqual(["message", "message"]);
   });
 
+  it("retries a file that keeps failing with growing spacing", async () => {
+    const failing = monthly("2026-10", 1, 1);
+    const source = new FixtureSource(repo([failing, monthly("2026-10", 1, 2)]));
+    source.failReads([failing]);
+    const loader = await opened(source);
+    const readsAfter: number[] = [];
+    for (let poll = 1; poll <= 10; poll += 1) {
+      expect(await loader.refresh()).toBe(0);
+      readsAfter.push(source.reads.filter((path) => path === failing).length);
+    }
+    // Read at open, then on polls 1, 3 and 7 (spacing 1, 2, 4, ...).
+    expect(readsAfter).toEqual([2, 2, 3, 3, 3, 3, 4, 4, 4, 4]);
+    expect(loader.getSnapshot().fresh.size).toBe(0);
+  });
+
+  it("does not count or mark a new file that fails to download", async () => {
+    const initial = repo([monthly("2026-10", 1, 1)]);
+    const source = new FixtureSource(initial);
+    const loader = await opened(source);
+    source.commit({ ...initial, ...repo([monthly("2026-10", 1, 2)], null) });
+    source.failReads([monthly("2026-10", 1, 2)]);
+    expect(await loader.refresh()).toBe(0);
+    expect(loader.getSnapshot().fresh.size).toBe(0);
+    expect(loader.getSnapshot().items.map((item) => item.kind)).toEqual(["message", "unavailable"]);
+  });
+
   it("parses a marker with a leading byte order mark", async () => {
     const files = repo([monthly("2026-10", 1, 1)], `\uFEFF${MARKER}`);
     const loader = await opened(new FixtureSource(files));
