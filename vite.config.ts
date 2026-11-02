@@ -20,7 +20,9 @@ const contentSecurityPolicy: Plugin = {
   ],
 };
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // The deployment path applies to production output only; local dev stays at "/".
+  base: command === "build" ? (process.env.VITE_BASE_PATH ?? "/") : "/",
   plugins: [react(), contentSecurityPolicy],
   server: { strictPort: true },
   clearScreen: false,
@@ -29,4 +31,4 @@ export default defineConfig({
     environment: "node",
     setupFiles: ["tests/setup.ts"],
   },
-});
+}));
