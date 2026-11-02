@@ -23,7 +23,7 @@ This public repository holds the collaboration method and its documentation, and
 
 ## Status
 
-Early development. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items. The web viewer currently renders a synthetic demo repository (`fixtures/demo-repo`).
+Early development. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items. The web viewer opens a GitHub repository from its settings screen (read-only token kept in memory, or encrypted in the browser), or a synthetic demo repository (`fixtures/demo-repo`). macOS and Android packaging is not started.
 
 ## Development
 
@@ -42,4 +42,4 @@ Requires Node.js 24 or newer and pnpm 11.
 
 Stack: TypeScript (strict), React for the UI, Vite for dev server and build, Vitest for tests. Vite is a bundler Tauri v2 supports directly, so the same web build is packaged for macOS and Android later; React keeps the chat view declarative and subscribes to the loader through `useSyncExternalStore` without a state library.
 
-Source layout: `src/source` (provider-neutral message-source interface and providers), `src/message` (message model and parser), `src/loader` (paging and change detection), `src/ui` (chat view).
+Source layout: `src/source` (provider-neutral message-source interface and providers), `src/message` (message model and parser), `src/loader` (paging, change detection, polling), `src/credentials` (secret wrapper and credential stores), `src/settings` (settings model), `src/ui` (chat view and settings screen).

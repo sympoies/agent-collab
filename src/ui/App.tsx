@@ -20,9 +20,10 @@ export interface AppProps {
   readonly loader: Loader;
   readonly title: string;
   readonly selfNames: ReadonlySet<string>;
+  readonly onOpenSettings: () => void;
 }
 
-export function App({ loader, title, selfNames }: AppProps) {
+export function App({ loader, title, selfNames, onOpenSettings }: AppProps) {
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const [topic, setTopic] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
@@ -93,6 +94,9 @@ export function App({ loader, title, selfNames }: AppProps) {
           }}
         >
           Refresh
+        </button>
+        <button type="button" onClick={onOpenSettings}>
+          Settings
         </button>
       </header>
       {error !== null && (

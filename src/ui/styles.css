@@ -254,3 +254,61 @@ button[aria-pressed="true"] {
   color: var(--muted);
   text-align: center;
 }
+
+.bar .actions,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 12px;
+}
+
+.settings h1 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.field input[type="text"],
+.field input[type="url"],
+.field input[type="password"],
+.field select {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.field small {
+  color: var(--muted);
+}
+
+.field .field-error {
+  color: var(--danger);
+}
+
+.field .warning {
+  color: var(--warn);
+}
+
+.choice {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
