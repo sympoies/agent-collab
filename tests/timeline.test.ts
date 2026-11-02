@@ -167,6 +167,22 @@ describe("buildRows", () => {
       true,
     ]);
   });
+
+  it("keys groups by file path so two files with one id stay distinct", () => {
+    const id = "2026-10-01T0900-alice-agent-api-01";
+    const rows = buildRows(
+      [
+        parseMessageFile(`inbox/${id}.md`, messageText(id, "alice-agent", "api")),
+        parseMessageFile(
+          `inbox/2026-10/${id}.md`,
+          messageText(id, "alice-agent", "api", { from: "bob-agent" }),
+        ),
+      ],
+      OPTIONS,
+    );
+    const keys = rows.flatMap((row) => (row.kind === "group" ? [row.key] : []));
+    expect(keys).toEqual([`inbox/${id}.md`, `inbox/2026-10/${id}.md`]);
+  });
 });
 
 describe("topicSummaries", () => {

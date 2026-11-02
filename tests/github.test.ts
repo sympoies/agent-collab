@@ -1,6 +1,6 @@
 import { inspect } from "node:util";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { Secret } from "../src/credentials/secret";
 import { Loader } from "../src/loader/loader";
@@ -90,6 +90,18 @@ const tree = (
     truncated,
     tree: entries.map((entry) => ({ mode: entry.type === "tree" ? "040000" : "100644", ...entry })),
   });
+
+describe("GitHubSource configuration", () => {
+  it("refuses an API base that is not https", () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    expect(() => source(fetch, { apiBase: "http://api.github.example" })).toThrow(
+      "The API endpoint must use https.",
+    );
+    expect(() => source(fetch, { apiBase: "not a url" })).toThrow(
+      "The API endpoint must use https.",
+    );
+  });
+});
 
 describe("GitHubSource.head", () => {
   it("reads the branch ref with a bearer token and remembers the ETag", async () => {

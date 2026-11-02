@@ -14,6 +14,8 @@ export const POLL = {
 
 /** Source errors that polling cannot fix; the user has to change settings. */
 const STOPPING_ERRORS = new Set(["unauthorized", "forbidden", "not-found"]);
+/** Stopping errors that are retried with backoff once a request has succeeded. */
+const TRANSIENT_AFTER_SUCCESS = new Set(["forbidden"]);
 
 export interface PollState {
   readonly visible: boolean;
@@ -21,6 +23,8 @@ export interface PollState {
   readonly failures: number;
   /** Error of the last poll, or null if it succeeded. */
   readonly error: unknown;
+  /** A request (open or poll) has succeeded before. */
+  readonly succeeded: boolean;
   readonly rateLimit: RateLimit | null;
   readonly now: Date;
 }
@@ -30,7 +34,13 @@ export function nextPollDelay(state: PollState): number | null {
   const base = state.visible ? POLL.visibleMs : POLL.hiddenMs;
   const { error } = state;
   if (error instanceof SetupError) return null;
-  if (error instanceof SourceError && STOPPING_ERRORS.has(error.kind)) return null;
+  if (
+    error instanceof SourceError &&
+    STOPPING_ERRORS.has(error.kind) &&
+    !(state.succeeded && TRANSIENT_AFTER_SUCCESS.has(error.kind))
+  ) {
+    return null;
+  }
   if (error instanceof SourceError && error.kind === "rate-limited" && error.retryAt !== null) {
     return Math.max(base, error.retryAt.getTime() - state.now.getTime());
   }
@@ -55,17 +65,25 @@ export interface PollerEnvironment {
 export class Poller {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
+  private succeeded = false;
   private running = false;
+  private inFlight = false;
+  private lastError: unknown = null;
+  private lastRunAt = 0;
 
   constructor(
     private readonly tick: () => Promise<unknown>,
     private readonly env: PollerEnvironment,
   ) {}
 
-  start(): void {
+  /**
+   * Runs `first` (usually opening the source) and schedules the polls from
+   * its outcome, so an open error stops polling or delays it like a poll error.
+   */
+  start(first: () => Promise<unknown> = () => Promise.resolve()): void {
     if (this.running) return;
     this.running = true;
-    this.schedule(null);
+    void this.run(first);
   }
 
   stop(): void {
@@ -74,34 +92,54 @@ export class Poller {
     this.timer = null;
   }
 
-  private schedule(error: unknown): void {
+  /** Reschedules for the current visibility; a page that became visible polls at once if due. */
+  visibilityChanged(): void {
+    if (!this.running || this.inFlight) return;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    this.schedule();
+  }
+
+  private schedule(): void {
     if (!this.running) return;
+    // Delays count from the end of the last run, so a reschedule keeps its place.
     const delay = nextPollDelay({
       visible: this.env.visible(),
       failures: this.failures,
-      error,
+      error: this.lastError,
+      succeeded: this.succeeded,
       rateLimit: this.env.rateLimit(),
-      now: new Date(),
+      now: new Date(this.lastRunAt),
     });
     if (delay === null) {
       this.stop();
       return;
     }
-    this.timer = setTimeout(() => {
-      void this.poll();
-    }, delay);
+    this.timer = setTimeout(
+      () => {
+        void this.run(this.tick);
+      },
+      Math.max(0, this.lastRunAt + delay - Date.now()),
+    );
   }
 
-  private async poll(): Promise<void> {
+  private async run(operation: () => Promise<unknown>): Promise<void> {
+    this.timer = null;
+    this.inFlight = true;
     let error: unknown = null;
     try {
-      await this.tick();
+      await operation();
       this.failures = 0;
+      this.succeeded = true;
     } catch (caught) {
       error = caught;
       this.failures += 1;
     }
+    this.inFlight = false;
+    if (!this.running) return;
+    this.lastError = error;
+    this.lastRunAt = Date.now();
     this.env.onError?.(error);
-    this.schedule(error);
+    this.schedule();
   }
 }

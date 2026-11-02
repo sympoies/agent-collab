@@ -232,6 +232,22 @@ describe("Loader tolerance", () => {
     ]);
   });
 
+  it("downloads a file again on refresh after it was unavailable", async () => {
+    const files = repo([monthly("2026-10", 1, 1), monthly("2026-10", 1, 2)]);
+    const source = new FixtureSource(files);
+    source.failReads([monthly("2026-10", 1, 1)]);
+    const loader = await opened(source);
+    source.failReads([]);
+    expect(await loader.refresh()).toBe(0);
+    expect(loader.getSnapshot().items.map((item) => item.kind)).toEqual(["message", "message"]);
+  });
+
+  it("parses a marker with a leading byte order mark", async () => {
+    const files = repo([monthly("2026-10", 1, 1)], `\uFEFF${MARKER}`);
+    const loader = await opened(new FixtureSource(files));
+    expect(loader.getSnapshot().items).toHaveLength(1);
+  });
+
   it("parses a marker with Windows line endings", async () => {
     const files = repo([monthly("2026-10", 1, 1)], MARKER.replaceAll("\n", "\r\n"));
     const loader = await opened(new FixtureSource(files));

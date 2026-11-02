@@ -8,7 +8,14 @@ const NOW = new Date("2026-11-02T00:00:00Z");
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 
-const base = { visible: true, failures: 0, error: null, rateLimit: null, now: NOW } as const;
+const base = {
+  visible: true,
+  failures: 0,
+  error: null,
+  succeeded: false,
+  rateLimit: null,
+  now: NOW,
+} as const;
 
 function limit(remaining: number, resetInMs: number): RateLimit {
   return { limit: 5000, remaining, resetAt: new Date(NOW.getTime() + resetInMs) };
@@ -38,6 +45,12 @@ describe("nextPollDelay", () => {
       expect(nextPollDelay({ ...base, failures: 1, error: new SourceError(kind, "") })).toBeNull();
     }
     expect(nextPollDelay({ ...base, failures: 1, error: new SetupError("no marker") })).toBeNull();
+  });
+
+  it("backs off on forbidden once a request has succeeded", () => {
+    const error = new SourceError("forbidden", "", 403);
+    expect(nextPollDelay({ ...base, failures: 1, error, succeeded: true })).toBe(2 * MINUTE);
+    expect(nextPollDelay({ ...base, failures: 1, error, succeeded: false })).toBeNull();
   });
 
   it("stretches the interval when less than ten percent of the budget remains", () => {
@@ -92,5 +105,55 @@ describe("Poller", () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(tick).toHaveBeenCalledTimes(2);
     expect(onError).toHaveBeenLastCalledWith(null);
+  });
+
+  it("does not poll when opening fails with an error that needs the user", async () => {
+    const error = new SetupError("no marker");
+    const tick = vi.fn(() => Promise.resolve());
+    const onError = vi.fn();
+    const poller = new Poller(tick, { visible: () => true, rateLimit: () => null, onError });
+    poller.start(() => Promise.reject(error));
+    await vi.advanceTimersByTimeAsync(30 * MINUTE);
+    expect(tick).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(error);
+  });
+
+  it("waits until retryAt when opening is rate limited", async () => {
+    const error = new SourceError("rate-limited", "", 403, new Date(NOW.getTime() + 20 * MINUTE));
+    const tick = vi.fn(() => Promise.resolve());
+    const poller = new Poller(tick, { visible: () => true, rateLimit: () => null });
+    poller.start(() => Promise.reject(error));
+    await vi.advanceTimersByTimeAsync(20 * MINUTE - 1);
+    expect(tick).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(tick).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps polling with backoff after a forbidden poll that follows a success", async () => {
+    const tick = vi
+      .fn<() => Promise<void>>()
+      .mockRejectedValueOnce(new SourceError("forbidden", "", 403))
+      .mockResolvedValue(undefined);
+    const poller = new Poller(tick, { visible: () => true, rateLimit: () => null });
+    poller.start(() => Promise.resolve());
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    expect(tick).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+    expect(tick).toHaveBeenCalledTimes(2);
+  });
+
+  it("polls at once when the page becomes visible after the visible interval", async () => {
+    let visible = false;
+    const tick = vi.fn(() => Promise.resolve());
+    const poller = new Poller(tick, { visible: () => visible, rateLimit: () => null });
+    poller.start();
+    await vi.advanceTimersByTimeAsync(2 * MINUTE);
+    expect(tick).not.toHaveBeenCalled();
+    visible = true;
+    poller.visibilityChanged();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tick).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(MINUTE);
+    expect(tick).toHaveBeenCalledTimes(2);
   });
 });
