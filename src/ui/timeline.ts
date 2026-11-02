@@ -110,7 +110,7 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
     group = { from: message.from, topic: message.topic, last: at, messages: [view] };
     rows.push({
       kind: "group",
-      key: message.id,
+      key: message.path,
       from: message.from,
       topic: message.topic,
       align: options.selfNames.has(message.from) ? "end" : "start",

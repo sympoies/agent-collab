@@ -92,6 +92,8 @@ export class Loader {
   private unlistedMonths: DirectoryEntry[] = [];
   /** Listed month folders and their object ids. */
   private readonly listedMonths = new Map<string, string>();
+  /** Files shown as unavailable, keyed by file name; refresh downloads them again. */
+  private readonly unavailable = new Map<string, DirectoryEntry>();
   private readonly fresh = new Set<string>();
   private readonly listeners = new Set<() => void>();
   private snapshot: LoaderSnapshot = { items: [], hasOlder: false, fresh: new Set() };
@@ -141,6 +143,7 @@ export class Loader {
         this.pending = [];
         this.unlistedMonths = [];
         this.listedMonths.clear();
+        this.unavailable.clear();
         this.opening = null;
         throw error;
       }
@@ -153,12 +156,19 @@ export class Loader {
     return this.serialize(() => this.loadPage());
   }
 
-  /** Poll for changes; resolves to the number of new items. Opens first if open has not succeeded. */
+  /**
+   * Poll for changes and download unavailable files again; resolves to the
+   * number of new items. Opens first if open has not succeeded.
+   */
   refresh(): Promise<number> {
     if (this.head === null) return this.open().then(() => 0);
     return this.serialize(async () => {
       const head = await this.source.head(this.head);
-      if (head === "not-modified") return 0;
+      if (head === "not-modified") {
+        if (this.unavailable.size > 0)
+          this.publish(await this.readAll([...this.unavailable.values()]));
+        return 0;
+      }
       const inbox = await this.listOrEmpty(head.revision, "inbox");
       const found: DirectoryEntry[] = inbox.filter(
         (entry) => isMessageFile(entry) && !this.isKnown(entry.name),
@@ -172,11 +182,15 @@ export class Loader {
         found.push(...entries.filter((e) => isMessageFile(e) && !this.isKnown(e.name)));
         monthUpdates.set(month.name, month.objectId);
       }
+      const retries = [...this.unavailable.values()].filter(
+        (entry) => !found.some((e) => e.name === entry.name),
+      );
       const added = await this.readAll(found);
+      const recovered = await this.readAll(retries);
       for (const [name, objectId] of monthUpdates) this.listedMonths.set(name, objectId);
       for (const item of added) this.fresh.add(itemPath(item));
       this.head = head;
-      this.publish(added);
+      this.publish([...added, ...recovered]);
       return added.length;
     });
   }
@@ -212,9 +226,12 @@ export class Loader {
   private async readAll(entries: readonly DirectoryEntry[]): Promise<TimelineItem[]> {
     return mapLimit(entries, this.concurrency, async (entry): Promise<TimelineItem> => {
       try {
-        return parseMessageFile(entry.path, await this.source.readFile(entry));
+        const item = parseMessageFile(entry.path, await this.source.readFile(entry));
+        this.unavailable.delete(entry.name);
+        return item;
       } catch (error) {
         if (error instanceof SourceError && PER_FILE_ERRORS.has(error.kind)) {
+          this.unavailable.set(entry.name, entry);
           return { kind: "unavailable", path: entry.path, error: error.kind };
         }
         throw error;
@@ -232,7 +249,10 @@ export class Loader {
   }
 
   private isKnown(name: string): boolean {
-    return this.items.has(name) || this.pending.some((entry) => entry.name === name);
+    return (
+      (this.items.has(name) && !this.unavailable.has(name)) ||
+      this.pending.some((entry) => entry.name === name)
+    );
   }
 
   private publish(added: readonly TimelineItem[]): void {
