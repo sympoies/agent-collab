@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_DRAFT, STORAGE_WARNINGS, type CredentialStorage } from "../src/settings/model";
 import { SettingsView } from "../src/ui/SettingsView";
@@ -8,11 +8,17 @@ function render(
   tokenStored: boolean,
   inStore: CredentialStorage = "memory",
   endpoint = DEFAULT_DRAFT.endpoint,
+  selectedStorage: CredentialStorage = "memory",
 ): string {
   const stored = tokenStored ? "https://api.github.com" : null;
   return renderToStaticMarkup(
     <SettingsView
-      initial={{ ...DEFAULT_DRAFT, repository: "alice-org/collab", endpoint }}
+      initial={{
+        ...DEFAULT_DRAFT,
+        repository: "alice-org/collab",
+        endpoint,
+        credentialStorage: selectedStorage,
+      }}
       storedEndpoints={{ memory: null, "browser-encrypted": null, [inStore]: stored }}
       onSave={() => Promise.resolve(null)}
       onRemoveCredentials={() => Promise.resolve()}
@@ -62,5 +68,16 @@ describe("SettingsView", () => {
 
   it("shows the warning for the selected credential storage", () => {
     expect(render(false)).toContain(STORAGE_WARNINGS.memory);
+  });
+
+  it("warns that sibling GitHub Pages projects share browser storage", () => {
+    vi.stubGlobal("window", { location: { hostname: "alice-agent.github.io" } });
+    try {
+      const html = render(false, "memory", DEFAULT_DRAFT.endpoint, "browser-encrypted");
+      expect(html).toContain("Sibling GitHub Pages projects");
+      expect(html).toContain("Prefer In memory only");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

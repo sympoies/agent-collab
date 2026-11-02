@@ -16,8 +16,9 @@ To create a token in GitHub:
    **Personal access tokens** › **Fine-grained tokens**.
 2. Choose **Generate new token**, select the repository owner, and choose
    **Only select repositories**. Select just the repository you want to view.
-3. Under repository permissions, set **Contents** to **Read-only**. Leave other
-   permissions at **No access**, choose an expiry, and generate the token.
+3. Under repository permissions, set **Contents** to **Read-only**. GitHub also
+   grants **Metadata: Read-only** automatically; leave other selectable
+   permissions at **No access**. Choose an expiry and generate the token.
 4. Copy the token and enter it in the viewer's **Access token** field. GitHub
    shows the token only when it is created.
 
@@ -26,27 +27,37 @@ To create a token in GitHub:
 - **In memory only** keeps the token for this tab. Reloading the page means you
   enter it again.
 - **Encrypted in this browser** encrypts the token in this browser profile so
-  it can be reused later. Anyone who can use this browser profile or run code
-  on this site may still use it. The token is not plain text in site storage.
+  it can be reused later. The token and encryption key are stored for this
+  browser origin. Anyone who can use this browser profile or run code on this
+  site may still use the token. Other sites sharing the origin can access both
+  the encrypted token and its key.
+
+  On a `github.io` address, project sites for the same account share an origin.
+  A sibling project can access the saved token and key, so prefer **In memory
+  only** there. A dedicated custom domain removes this sibling-project
+  exposure.
 
 Encrypted messages appear as **locked**. They are encrypted, and this viewer
 does not decrypt them yet.
 
 ## If something goes wrong
 
-- **401**: the token may be expired or revoked. Create a new token and update
-  the viewer.
-- **403**: check that the token grants **Contents: Read-only** for this
-  repository. A rate limit can also temporarily block access; wait and try
-  again later.
-- **Repository not found**: check the `owner/repository` spelling and confirm
-  the token can access it. If the repository was renamed, enter its current
-  name.
-- **Nothing loads**: check the endpoint and repository, leave Branch empty to
-  try the default branch, and use **Refresh**. Network or browser access
-  restrictions may also prevent the provider API from loading.
+- **unauthorized (HTTP 401)**: the token may be expired or revoked. Create a
+  new token and update the viewer.
+- **forbidden (HTTP 403)**: check that the token can read this repository.
+- **rate-limited (HTTP 403 or 429)**: wait and try again later.
+- **not-found (HTTP 404)**: check the repository spelling and Branch. If the
+  repository was renamed, enter its current name.
+- **unreachable**: check your connection and endpoint. A browser or network
+  restriction may block the provider API.
+- **too-large**: the repository listing exceeds the provider's limit; the
+  viewer cannot load that listing.
+- **unexpected (for example, HTTP 5xx)**: try again later. Leave Branch empty
+  to use the repository's default branch, and use **Refresh** after correcting
+  settings.
 
 The hosted site requires the repository maintainer to enable GitHub Pages:
 open repository **Settings** › **Pages**, then choose **GitHub Actions** as the
-build and deployment source. The deployment workflow runs after that setting is
-enabled.
+build and deployment source. Then open **Actions** › **pages** and choose **Run
+workflow** on `main`, or push a new commit to `main`. The workflow only runs on
+pushes to `main` or when started manually.
