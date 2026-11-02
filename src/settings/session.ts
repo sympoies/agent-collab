@@ -60,19 +60,15 @@ export async function restore(deps: SettingsDeps): Promise<OpenSettings | null> 
   return { settings, token: stored.token };
 }
 
-/** Which stores hold a token for `endpoint`. */
-export async function storedTokens(
+/** The endpoint each store holds a token for, or null when it holds none. */
+export async function storedEndpoints(
   deps: SettingsDeps,
-  endpoint: string,
-): Promise<Record<CredentialStorage, boolean>> {
+): Promise<Record<CredentialStorage, string | null>> {
   const [memory, encrypted] = await Promise.all([
     readToken(deps.stores.memory),
     readToken(deps.stores["browser-encrypted"]),
   ]);
-  return {
-    memory: memory?.endpoint === endpoint,
-    "browser-encrypted": encrypted?.endpoint === endpoint,
-  };
+  return { memory: memory?.endpoint ?? null, "browser-encrypted": encrypted?.endpoint ?? null };
 }
 
 export async function apply(

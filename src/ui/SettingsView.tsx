@@ -3,6 +3,7 @@
 import { useState, type ReactNode, type SubmitEvent } from "react";
 
 import {
+  savedForm,
   STORAGE_WARNINGS,
   type CredentialStorage,
   type DraftErrors,
@@ -11,8 +12,8 @@ import {
 
 export interface SettingsViewProps {
   readonly initial: SettingsDraft;
-  /** Stores that hold a token for the saved endpoint; leaving the field empty keeps it. */
-  readonly tokenStored: Readonly<Record<CredentialStorage, boolean>>;
+  /** Endpoint each store holds a token for; leaving the field empty keeps a matching one. */
+  readonly storedEndpoints: Readonly<Record<CredentialStorage, string | null>>;
   /** Validates and saves; resolves to field errors, or null on success. */
   readonly onSave: (draft: SettingsDraft) => Promise<DraftErrors | null>;
   readonly onRemoveCredentials: () => Promise<void>;
@@ -24,8 +25,9 @@ export function SettingsView(props: SettingsViewProps) {
   const [draft, setDraft] = useState(props.initial);
   const [errors, setErrors] = useState<DraftErrors>({});
   const [saving, setSaving] = useState(false);
-  const stored = props.tokenStored[draft.credentialStorage];
-  const anyStored = Object.values(props.tokenStored).includes(true);
+  const storedFor = props.storedEndpoints[draft.credentialStorage];
+  const stored = storedFor !== null && storedFor === savedForm(draft.endpoint);
+  const anyStored = Object.values(props.storedEndpoints).some((endpoint) => endpoint !== null);
 
   const update = (field: keyof SettingsDraft) => (value: string) => {
     setDraft((current) => ({ ...current, [field]: value }));

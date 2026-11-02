@@ -91,6 +91,13 @@ function normalizeEndpoint(value: string, errors: DraftErrors): string {
   return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
 }
 
+/** The endpoint as the settings screen saves it, or null when it is not valid. */
+export function savedForm(endpoint: string): string | null {
+  const errors: DraftErrors = {};
+  const normalized = normalizeEndpoint(endpoint, errors);
+  return errors.endpoint === undefined ? normalized : null;
+}
+
 export interface DraftContext {
   /** A token is stored in the chosen credential store. */
   readonly tokenStored: boolean;

@@ -386,7 +386,7 @@ Two different secrets with different purposes:
     After saving, settings show "configured" and a replace/remove action, not
     the value or a fragment of it.
   - The production build carries a Content Security Policy:
-    `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; connect-src https:`.
+    `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src https:`.
     The browser build cannot know the configured endpoint when it is built,
     so `connect-src` allows any `https:` origin; packaged builds narrow it to
     the configured endpoint. The dev server runs without it because hot
@@ -466,6 +466,9 @@ This slice reserves:
 - The Tauri HTTP plugin must honour the request options the GitHub source
   relies on (`redirect: "error"`, `cache: "no-store"`,
   `credentials: "omit"`); verify this in the packaging slice.
+- The meta CSP of the browser build does not fit the Tauri build as is: it
+  must also allow the IPC origins that the HTTP and keychain plugins use.
+  Check this in the packaging slice.
 
 ## 10. Testing strategy
 

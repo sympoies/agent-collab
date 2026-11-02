@@ -5,7 +5,8 @@ import { defineConfig } from "vitest/config";
 // Content Security Policy for the built page (docs/design.md, section 6). Only the
 // build gets it: the dev server injects inline scripts for hot reload.
 const CSP =
-  "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; connect-src https:";
+  "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; " +
+  "connect-src https:";
 
 const contentSecurityPolicy: Plugin = {
   name: "content-security-policy",

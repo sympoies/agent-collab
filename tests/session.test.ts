@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Secret } from "../src/credentials/secret";
 import { MemoryStore, type CredentialStore } from "../src/credentials/store";
 import { DEFAULT_DRAFT, type SettingsDraft } from "../src/settings/model";
-import { apply, removeCredentials, restore, storedTokens } from "../src/settings/session";
+import { apply, removeCredentials, restore, storedEndpoints } from "../src/settings/session";
 
 const TOKEN = "test-token-not-real";
 const OTHER_TOKEN = "other-token-not-real";
@@ -92,9 +92,9 @@ describe("settings session", () => {
     await apply(d, draft({ credentialStorage: "browser-encrypted" }));
     await apply(d, draft({ credentialStorage: "memory" }));
     expect(await d.stores["browser-encrypted"].get("access-token")).toBeNull();
-    expect(await storedTokens(d, "https://api.github.com")).toEqual({
-      memory: true,
-      "browser-encrypted": false,
+    expect(await storedEndpoints(d)).toEqual({
+      memory: "https://api.github.com",
+      "browser-encrypted": null,
     });
   });
 
@@ -128,10 +128,7 @@ describe("settings session with a failing credential store", () => {
     await apply(d, draft({ credentialStorage: "browser-encrypted" }));
     d.stores["browser-encrypted"] = broken;
     expect(await restore(d)).toBeNull();
-    expect(await storedTokens(d, "https://api.github.com")).toEqual({
-      memory: false,
-      "browser-encrypted": false,
-    });
+    expect(await storedEndpoints(d)).toEqual({ memory: null, "browser-encrypted": null });
   });
 
   it("saves and warns when the old copy cannot be removed", async () => {

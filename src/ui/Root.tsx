@@ -18,7 +18,7 @@ import {
   apply,
   removeCredentials,
   restore,
-  storedTokens,
+  storedEndpoints,
   type OpenSettings,
   type SettingsDeps,
 } from "../settings/session";
@@ -46,7 +46,7 @@ type Screen =
   | {
       readonly kind: "settings";
       readonly draft: SettingsDraft;
-      readonly tokenStored: Readonly<Record<CredentialStorage, boolean>>;
+      readonly storedEndpoints: Readonly<Record<CredentialStorage, string | null>>;
       /** The viewer to return to on cancel. */
       readonly back: ViewerScreen | null;
     }
@@ -80,8 +80,8 @@ export function Root(props: RootProps) {
   const showSettings = async (back: ViewerScreen | null) => {
     const settings = loadSettings(props.storage);
     const draft = settings === null ? DEFAULT_DRAFT : draftFromSettings(settings);
-    const stored = await storedTokens(props, draft.endpoint);
-    setScreen({ kind: "settings", draft, tokenStored: stored, back });
+    const stored = await storedEndpoints(props);
+    setScreen({ kind: "settings", draft, storedEndpoints: stored, back });
   };
 
   useEffect(() => {
@@ -113,7 +113,7 @@ export function Root(props: RootProps) {
         <div className="app">
           <SettingsView
             initial={screen.draft}
-            tokenStored={screen.tokenStored}
+            storedEndpoints={screen.storedEndpoints}
             onSave={save}
             onRemoveCredentials={async () => {
               await removeCredentials(props);

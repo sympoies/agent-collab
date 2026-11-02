@@ -4,11 +4,16 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_DRAFT, STORAGE_WARNINGS, type CredentialStorage } from "../src/settings/model";
 import { SettingsView } from "../src/ui/SettingsView";
 
-function render(tokenStored: boolean, inStore: CredentialStorage = "memory"): string {
+function render(
+  tokenStored: boolean,
+  inStore: CredentialStorage = "memory",
+  endpoint = DEFAULT_DRAFT.endpoint,
+): string {
+  const stored = tokenStored ? "https://api.github.com" : null;
   return renderToStaticMarkup(
     <SettingsView
-      initial={{ ...DEFAULT_DRAFT, repository: "alice-org/collab" }}
-      tokenStored={{ memory: false, "browser-encrypted": false, [inStore]: tokenStored }}
+      initial={{ ...DEFAULT_DRAFT, repository: "alice-org/collab", endpoint }}
+      storedEndpoints={{ memory: null, "browser-encrypted": null, [inStore]: stored }}
       onSave={() => Promise.resolve(null)}
       onRemoveCredentials={() => Promise.resolve()}
       onCancel={null}
@@ -38,6 +43,15 @@ describe("SettingsView", () => {
     const html = render(true, "browser-encrypted");
     expect(html).not.toContain("stored; leave empty to keep it");
     expect(html).toContain("Remove stored credentials");
+  });
+
+  it("describes the token for the endpoint being edited", () => {
+    expect(render(true, "memory", "https://api.github.com/")).toContain(
+      'placeholder="stored; leave empty to keep it"',
+    );
+    const other = render(true, "memory", "https://github.example.com/api/v3");
+    expect(other).not.toContain("stored; leave empty to keep it");
+    expect(other).toContain("Remove stored credentials");
   });
 
   it("does not ask for a private key before decryption exists", () => {
