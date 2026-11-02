@@ -125,6 +125,27 @@ describe("GitHubSource.head", () => {
     expect(header(calls[0], "if-none-match")).toBe('"e1"');
   });
 
+  it("supports anonymous requests without an Authorization header", async () => {
+    const { fetch, calls } = fakeFetch({
+      [`${REPO}/git/ref/heads/main`]: json({ object: { sha: "c1" } }, { etag: '"e1"' }),
+    });
+    const github = source(fetch, { token: null });
+    expect(await github.head(null)).toEqual({ revision: "c1", validator: '"e1"' });
+    expect(header(calls[0], "authorization")).toBeNull();
+    expect(header(calls[0], "accept")).toBe("application/vnd.github+json");
+    expect(header(calls[0], "x-github-api-version")).toBe("2022-11-28");
+  });
+
+  it("keeps anonymous manual refreshes conditional", async () => {
+    const { fetch, calls } = fakeFetch({
+      [`${REPO}/git/ref/heads/main`]: status(304),
+    });
+    const github = source(fetch, { token: null });
+    expect(await github.head({ revision: "c1", validator: '"e1"' })).toBe("not-modified");
+    expect(header(calls[0], "authorization")).toBeNull();
+    expect(header(calls[0], "if-none-match")).toBe('"e1"');
+  });
+
   it("resolves the default branch once when no branch is configured", async () => {
     const { fetch, calls } = fakeFetch({
       [REPO]: json({ default_branch: "trunk" }),
@@ -265,6 +286,30 @@ describe("GitHubSource rate limits and errors", () => {
     [500, "unexpected"],
   ] as const)("maps HTTP %i to %s", async (code, kind) => {
     expect(await failure(status(code))).toMatchObject({ kind, status: code });
+  });
+
+  it("explains that an anonymous repository needs a token or does not exist", async () => {
+    for (const code of [401, 404]) {
+      const { fetch, calls } = fakeFetch({ [url]: status(code) });
+      await expect(source(fetch, { token: null }).head(null)).rejects.toMatchObject({
+        message: "This repository needs a token or does not exist.",
+      });
+      expect(header(calls[0], "authorization")).toBeNull();
+    }
+  });
+
+  it("explains access denial and includes the rate-limit reset time", async () => {
+    const forbiddenFetch = fakeFetch({ [url]: status(403) });
+    const forbiddenRequest = source(forbiddenFetch.fetch, { token: null }).head(null);
+    await expect(forbiddenRequest).rejects.toMatchObject({
+      message: "Access was denied. Check that the repository is public.",
+    });
+    expect(header(forbiddenFetch.calls[0], "authorization")).toBeNull();
+
+    const rateFetch = fakeFetch({ [url]: status(403, { "x-ratelimit-remaining": "0" }) });
+    const rateRequest = source(rateFetch.fetch, { token: null }).head(null);
+    await expect(rateRequest).rejects.toThrow(/GitHub API rate limit reached.*2026/);
+    expect(header(rateFetch.calls[0], "authorization")).toBeNull();
   });
 
   it("maps a network failure to unreachable", async () => {

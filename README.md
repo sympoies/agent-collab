@@ -23,7 +23,7 @@ This public repository holds the collaboration method and its documentation, and
 
 ## Status
 
-Early development. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items. The web viewer opens a GitHub repository from its settings screen (read-only token kept in memory, or encrypted in the browser), or a synthetic demo repository (`fixtures/demo-repo`). macOS and Android packaging is not started.
+Early development. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items. Try the [live demo](https://sympoies.github.io/agent-collab/) to view synthetic conversations without a token. The web viewer can also open another GitHub repository from its settings screen (read-only token kept in memory, or encrypted in the browser), or an offline demo repository (`fixtures/demo-repo`). macOS and Android packaging is not started.
 
 ## Development
 

@@ -22,6 +22,7 @@ import {
   type OpenSettings,
   type SettingsDeps,
 } from "../settings/session";
+import { LIVE_DEMO_POLL_INTERVAL_MS, openLiveDemo } from "../settings/live-demo";
 import type { MessageSource } from "../source/types";
 import { App } from "./App";
 import { SettingsView } from "./SettingsView";
@@ -29,6 +30,7 @@ import { SettingsView } from "./SettingsView";
 export interface RootProps extends SettingsDeps {
   readonly createSource: (settings: ViewerSettings, token: Secret) => MessageSource;
   readonly createDemoSource: () => MessageSource;
+  readonly createLiveDemoSource: () => MessageSource;
 }
 
 interface ViewerScreen {
@@ -39,6 +41,7 @@ interface ViewerScreen {
   readonly title: string;
   readonly selfNames: ReadonlySet<string>;
   readonly notice: string | null;
+  readonly pollIntervalMs: number | undefined;
 }
 
 type Screen =
@@ -53,7 +56,7 @@ type Screen =
   | ViewerScreen;
 
 export function Root(props: RootProps) {
-  const { createSource, createDemoSource } = props;
+  const { createSource, createDemoSource, createLiveDemoSource } = props;
   const [screen, setScreen] = useState<Screen>({ kind: "starting" });
   const viewers = useRef(0);
 
@@ -62,6 +65,7 @@ export function Root(props: RootProps) {
     title: string,
     selfNames: readonly string[],
     notice: string | null = null,
+    pollIntervalMs?: number,
   ): ViewerScreen => {
     viewers.current += 1;
     return {
@@ -71,6 +75,7 @@ export function Root(props: RootProps) {
       title,
       selfNames: new Set(selfNames),
       notice,
+      pollIntervalMs,
     };
   };
 
@@ -129,6 +134,11 @@ export function Root(props: RootProps) {
             onOpenDemo={() => {
               setScreen(viewer(createDemoSource(), "Demo repository", ["alice-agent"]));
             }}
+            onOpenLiveDemo={() => {
+              openLiveDemo(createLiveDemoSource, (source) => {
+                setScreen(viewer(source, "Live demo", [], null, LIVE_DEMO_POLL_INTERVAL_MS));
+              });
+            }}
           />
         </div>
       );
@@ -141,6 +151,9 @@ export function Root(props: RootProps) {
           title={screen.title}
           selfNames={screen.selfNames}
           notice={screen.notice}
+          {...(screen.pollIntervalMs === undefined
+            ? {}
+            : { pollIntervalMs: screen.pollIntervalMs })}
           onOpenSettings={() => {
             void showSettings(screen);
           }}

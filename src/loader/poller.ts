@@ -19,6 +19,8 @@ const TRANSIENT_AFTER_SUCCESS = new Set(["forbidden"]);
 
 export interface PollState {
   readonly visible: boolean;
+  /** Anonymous sessions can request a longer visible interval. */
+  readonly visibleIntervalMs?: number;
   /** Consecutive failed polls. */
   readonly failures: number;
   /** Error of the last poll, or null if it succeeded. */
@@ -31,7 +33,7 @@ export interface PollState {
 
 /** Milliseconds until the next poll, or null to stop polling. */
 export function nextPollDelay(state: PollState): number | null {
-  const base = state.visible ? POLL.visibleMs : POLL.hiddenMs;
+  const base = state.visible ? (state.visibleIntervalMs ?? POLL.visibleMs) : POLL.hiddenMs;
   const { error } = state;
   if (error instanceof SetupError) return null;
   if (
@@ -57,6 +59,7 @@ export function nextPollDelay(state: PollState): number | null {
 
 export interface PollerEnvironment {
   readonly visible: () => boolean;
+  readonly visibleIntervalMs?: number;
   readonly rateLimit: () => RateLimit | null;
   /** Called after each poll with its error, or null when it succeeded. */
   readonly onError?: (error: unknown) => void;
@@ -92,6 +95,22 @@ export class Poller {
     this.timer = null;
   }
 
+  /** Runs a user-requested refresh through the same error and scheduling path. */
+  refreshNow(): Promise<void> {
+    if (!this.running || this.inFlight) return Promise.resolve();
+    if (
+      this.lastError instanceof SourceError &&
+      this.lastError.kind === "rate-limited" &&
+      this.lastError.retryAt !== null &&
+      this.lastError.retryAt.getTime() > Date.now()
+    ) {
+      return Promise.resolve();
+    }
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    return this.run(this.tick);
+  }
+
   /** Reschedules for the current visibility; a page that became visible polls at once if due. */
   visibilityChanged(): void {
     if (!this.running || this.inFlight) return;
@@ -105,6 +124,9 @@ export class Poller {
     // Delays count from the end of the last run, so a reschedule keeps its place.
     const delay = nextPollDelay({
       visible: this.env.visible(),
+      ...(this.env.visibleIntervalMs === undefined
+        ? {}
+        : { visibleIntervalMs: this.env.visibleIntervalMs }),
       failures: this.failures,
       error: this.lastError,
       succeeded: this.succeeded,

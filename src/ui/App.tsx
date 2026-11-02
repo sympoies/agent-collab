@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { SetupError, type Loader } from "../loader/loader";
 import { Poller } from "../loader/poller";
@@ -22,14 +22,28 @@ export interface AppProps {
   readonly selfNames: ReadonlySet<string>;
   /** A one-off message from opening the viewer, such as a settings warning. */
   readonly notice: string | null;
+  readonly pollIntervalMs?: number;
   readonly onOpenSettings: () => void;
 }
 
-export function App({ loader, title, selfNames, notice, onOpenSettings }: AppProps) {
+export function App({
+  loader,
+  title,
+  selfNames,
+  notice,
+  pollIntervalMs,
+  onOpenSettings,
+}: AppProps) {
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
+  const pollerRef = useRef<Poller | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [readyRetryAt, setReadyRetryAt] = useState<Date | null>(null);
+
+  const showError = (reason: unknown) => {
+    setError(reason);
+  };
 
   const run = (operation: () => Promise<unknown>) => {
     setBusy(true);
@@ -38,7 +52,7 @@ export function App({ loader, title, selfNames, notice, onOpenSettings }: AppPro
         setError(null);
       })
       .catch((reason: unknown) => {
-        setError(describe(reason));
+        showError(reason);
       })
       .finally(() => {
         setBusy(false);
@@ -48,11 +62,13 @@ export function App({ loader, title, selfNames, notice, onOpenSettings }: AppPro
   useEffect(() => {
     const poller = new Poller(() => loader.refresh(), {
       visible: () => document.visibilityState === "visible",
+      ...(pollIntervalMs === undefined ? {} : { visibleIntervalMs: pollIntervalMs }),
       rateLimit: () => loader.rateLimit(),
       onError: (reason) => {
-        setError(reason === null ? null : describe(reason));
+        showError(reason);
       },
     });
+    pollerRef.current = poller;
     const onVisibility = () => {
       poller.visibilityChanged();
     };
@@ -65,8 +81,9 @@ export function App({ loader, title, selfNames, notice, onOpenSettings }: AppPro
     return () => {
       document.removeEventListener("visibilitychange", onVisibility);
       poller.stop();
+      pollerRef.current = null;
     };
-  }, [loader]);
+  }, [loader, pollIntervalMs]);
 
   const topics = useMemo(
     () => topicSummaries(snapshot.items, snapshot.fresh),
@@ -82,6 +99,21 @@ export function App({ loader, title, selfNames, notice, onOpenSettings }: AppPro
       }),
     [snapshot.items, snapshot.fresh, selfNames, topic],
   );
+  const retryAt =
+    error instanceof SourceError && error.kind === "rate-limited" ? error.retryAt : null;
+  useEffect(() => {
+    if (retryAt === null) return;
+    const timer = setTimeout(
+      () => {
+        setReadyRetryAt(retryAt);
+      },
+      Math.max(0, retryAt.getTime() - Date.now()),
+    );
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [retryAt]);
+  const retryingAfterLimit = retryAt !== null && readyRetryAt?.getTime() !== retryAt.getTime();
 
   return (
     <div className="app">
@@ -89,9 +121,17 @@ export function App({ loader, title, selfNames, notice, onOpenSettings }: AppPro
         <h1>{title}</h1>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || retryingAfterLimit}
           onClick={() => {
-            run(() => loader.refresh());
+            const poller = pollerRef.current;
+            if (poller === null) {
+              run(() => loader.refresh());
+              return;
+            }
+            setBusy(true);
+            void poller.refreshNow().finally(() => {
+              setBusy(false);
+            });
           }}
         >
           Refresh
@@ -107,7 +147,7 @@ export function App({ loader, title, selfNames, notice, onOpenSettings }: AppPro
       )}
       {error !== null && (
         <p className="error" role="alert">
-          {error}
+          {describe(error)}
         </p>
       )}
       <nav className="topics" aria-label="Topics">

@@ -19,7 +19,7 @@ export interface GitHubSourceConfig {
   readonly repo: string;
   /** Branch to watch; null uses the repository's default branch. */
   readonly branch: string | null;
-  readonly token: Secret;
+  readonly token?: Secret | null;
   readonly fetch?: typeof globalThis.fetch;
   readonly now?: () => Date;
 }
@@ -215,9 +215,11 @@ export class GitHubSource implements MessageSource {
   ): Promise<Response> {
     const headers = new Headers({
       Accept: accept,
-      Authorization: `Bearer ${this.config.token.reveal()}`,
       "X-GitHub-Api-Version": API_VERSION,
     });
+    if (this.config.token !== undefined && this.config.token !== null) {
+      headers.set("Authorization", `Bearer ${this.config.token.reveal()}`);
+    }
     if (validator !== undefined && validator !== null) headers.set("If-None-Match", validator);
     let response: Response;
     try {
@@ -232,7 +234,38 @@ export class GitHubSource implements MessageSource {
     }
     this.recordRateLimit(response.headers);
     if (response.ok || response.status === 304) return response;
-    throw new SourceError(this.errorKind(response), path, response.status, this.retryAt(response));
+    const kind = this.errorKind(response);
+    const retryAt = this.retryAt(response);
+    throw new SourceError(
+      kind,
+      path,
+      response.status,
+      retryAt,
+      this.errorMessage(kind, response, retryAt),
+    );
+  }
+
+  private errorMessage(
+    kind: SourceErrorKind,
+    response: Response,
+    retryAt: Date | null,
+  ): string | undefined {
+    if (this.config.token === undefined || this.config.token === null) {
+      if (response.status === 401 || response.status === 404) {
+        return "This repository needs a token or does not exist.";
+      }
+    }
+    if (kind === "forbidden") {
+      return this.config.token === undefined || this.config.token === null
+        ? "Access was denied. Check that the repository is public."
+        : "Access was denied. Check repository visibility or token permissions.";
+    }
+    if (kind === "rate-limited") {
+      return retryAt === null
+        ? "GitHub API rate limit reached. Try again later."
+        : `GitHub API rate limit reached. Try again after ${retryAt.toLocaleString()}.`;
+    }
+    return undefined;
   }
 
   private recordRateLimit(headers: Headers): void {

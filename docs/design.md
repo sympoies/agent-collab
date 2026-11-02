@@ -128,8 +128,9 @@ All calls go to the configured API base (default `https://api.github.com`):
 | `listDirectory` | `GET /repos/{owner}/{repo}/git/trees/{sha}` | walk from the root tree one segment at a time; every tree is immutable and cached |
 | `readFile` | `GET /repos/{owner}/{repo}/git/blobs/{sha}` with `Accept: application/vnd.github.raw+json` | raw bytes, immutable, cached |
 
-- Headers: `Authorization: Bearer <token>`, `X-GitHub-Api-Version` pinned,
-  `Accept` as above. Requests use `cache: "no-store"` so the browser HTTP
+- Headers: optional `Authorization: Bearer <token>`, `X-GitHub-Api-Version`
+  pinned, `Accept` as above. Anonymous requests omit `Authorization` entirely.
+  Requests use `cache: "no-store"` so the browser HTTP
   cache never stores private content; the source sets `If-None-Match` itself.
   The API base must be an `https:` URL; the source refuses anything else.
 - Requests use `redirect: "error"`, so the token is never sent on to another
@@ -337,7 +338,7 @@ Two different secrets with different purposes:
 
 | Secret | Purpose | Required |
 | --- | --- | --- |
-| Access credential | read the repository through the provider API | yes |
+| Access credential | read a private repository through the provider API | private repositories only |
 | Private key | decrypt encrypted message bodies (age identity) | no (_later_; the settings screen does not accept or store one until a decryptor exists) |
 
 - **Scope.** GitHub: a fine-grained personal access token with access to
@@ -396,6 +397,10 @@ Two different secrets with different purposes:
   app session. Changing the repository, removing the credential or signing
   out drops the source and the reference. A `401` stops polling and asks for a
   new credential instead of retrying.
+- **Public live demo.** The settings screen can open the configured public demo
+  repository anonymously. This session bypasses settings and credential stores;
+  it has no credential and saves no settings. Anonymous `401`/`404` errors say
+  the repository needs a token or does not exist.
 
 ## 7. Polling and notifications
 
@@ -404,7 +409,11 @@ Two different secrets with different purposes:
   directory, diffs entry names against what is known, and reads only the new
   files. A new month directory is picked up because `inbox/` itself changes.
 - **Interval.** 60 seconds while the window is visible, 5 minutes while
-  hidden; a manual refresh is always available. Errors back off exponentially
+  hidden. Anonymous demo sessions use 5 minutes whether visible or hidden.
+  A manual refresh uses the same ETag conditional request: an unchanged
+  repository returns `304 Not Modified` without using the anonymous request
+  limit. A changed repository can require additional requests. The refresh
+  action is disabled until the reset time after a rate-limit response. Errors back off exponentially
   (doubling, capped at 15 minutes); `rate-limited` waits until `retryAt`; when
   the remaining budget drops below 10 % of the limit the interval stretches so
   the budget lasts until the reset. Opening the repository counts as the

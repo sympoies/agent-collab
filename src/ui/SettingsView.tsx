@@ -19,6 +19,7 @@ export interface SettingsViewProps {
   readonly onRemoveCredentials: () => Promise<void>;
   readonly onCancel: (() => void) | null;
   readonly onOpenDemo: () => void;
+  readonly onOpenLiveDemo: () => void;
 }
 
 export function SettingsView(props: SettingsViewProps) {
@@ -188,7 +189,10 @@ export function SettingsView(props: SettingsViewProps) {
           </button>
         )}
         <button type="button" onClick={props.onOpenDemo}>
-          Open demo repository
+          Open offline demo
+        </button>
+        <button type="button" onClick={props.onOpenLiveDemo}>
+          Open live demo
         </button>
       </div>
     </form>

@@ -46,8 +46,8 @@ export type SourceErrorKind =
 
 /**
  * The only error type a source raises. It never carries credentials, request
- * headers or full URLs; only the kind, an optional HTTP status and the
- * repository-relative path.
+ * headers or full URLs; it carries the kind, an optional HTTP status, retry
+ * time, safe user-facing message and repository-relative path.
  */
 export class SourceError extends Error {
   override readonly name = "SourceError";
@@ -57,7 +57,11 @@ export class SourceError extends Error {
     readonly path: string,
     readonly status: number | null = null,
     readonly retryAt: Date | null = null,
+    message?: string,
   ) {
-    super(`${kind}${status === null ? "" : ` (HTTP ${status})`}: ${path === "" ? "/" : path}`);
+    super(
+      message ??
+        `${kind}${status === null ? "" : ` (HTTP ${status})`}: ${path === "" ? "/" : path}`,
+    );
   }
 }
