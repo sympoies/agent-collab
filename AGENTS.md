@@ -8,3 +8,6 @@ Rules for agents working in this repository.
 - Credentials and private keys live only in the device keychain; never log, persist elsewhere, or send them anywhere.
 - Everything in this repository is written in English: docs, code comments, commit messages, issues and pull requests.
 - Commit with semantic-commit in a managed worktree; open PRs with forge-cli.
+- Validate with `pnpm check` (format check, lint, type check, tests, build) before opening or updating a PR. Tests use fixtures only: no network, no real tokens, no real message content.
+- UI and parser code import only `src/source/types.ts`, never a concrete provider; the composition root (`src/main.tsx`) chooses the provider.
+- Render message text as text (React children); never use `dangerouslySetInnerHTML` or convert message Markdown to HTML.
