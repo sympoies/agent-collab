@@ -217,7 +217,7 @@ Please review the field draft in refs and say which fields can become optional.
 | `type` | yes | `question`, `answer`, `info`, `decision-needed` or `ack` |
 | `reply_to` | may be empty | a message id; required for `answer` and `ack` |
 | `refs` | may be empty | comma-separated `topics/` paths, message ids or URLs |
-| `needs` | yes | what the recipient should do; `none` when nothing is requested |
+| `needs` | yes | what the recipient should do; `none` (any case) when nothing is requested. The protocol also accepts the CJK equivalent (U+7121) |
 | `due` | may be empty | `YYYY-MM-DD` |
 
 The id timestamp is wall-clock time in the repository's configured time zone,
@@ -270,11 +270,16 @@ The parser never throws on file content. It sorts findings into two classes:
   disagrees with `from`/`topic`, the file name or the month folder, an empty
   body, or more than five body lines.
 
+Line endings may be `\n` or `\r\n`, and a leading UTF-8 byte order mark is
+ignored, both in message files and in the marker file.
+
 A malformed card shows the path and the errors; the raw text is available
 behind an expander and is rendered as text, never as HTML. Files in `inbox/`
 that are not `.md` (for example `.gitkeep`) are ignored. A file that fails to
 download produces an error card for that path; the rest of the timeline
-still renders.
+still renders. Refreshes download the file again with growing spacing (after
+1, 2, 4, ... refreshes, at most every 15) until it succeeds. A file that is
+still unavailable is not counted as new and not marked fresh.
 
 ### Loading and paging
 

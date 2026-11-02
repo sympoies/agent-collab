@@ -23,4 +23,25 @@ This public repository holds the collaboration method and its documentation, and
 
 ## Status
 
-Planning. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items.
+Early development. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items. The web viewer currently renders a synthetic demo repository (`fixtures/demo-repo`).
+
+## Development
+
+Requires Node.js 24 or newer and pnpm 11.
+
+| Command                             | Purpose                                                                 |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| `pnpm install`                      | install dependencies                                                    |
+| `pnpm dev`                          | run the web viewer locally                                              |
+| `pnpm test`                         | unit tests (fixtures only, no network)                                  |
+| `pnpm lint`                         | ESLint with type-aware rules                                            |
+| `pnpm typecheck`                    | TypeScript strict type check                                            |
+| `pnpm format` / `pnpm format:check` | Prettier                                                                |
+| `pnpm build`                        | production build into `dist/`                                           |
+| `pnpm check`                        | the validation command: format check, lint, type check, tests and build |
+
+The `check` GitHub Actions workflow runs `pnpm check` on every push and pull request.
+
+Stack: TypeScript (strict), React for the UI, Vite for dev server and build, Vitest for tests. Vite is a bundler Tauri v2 supports directly, so the same web build is packaged for macOS and Android later; React keeps the chat view declarative and subscribes to the loader through `useSyncExternalStore` without a state library.
+
+Source layout: `src/source` (provider-neutral message-source interface and providers), `src/message` (message model and parser), `src/loader` (paging and change detection), `src/ui` (chat view).
