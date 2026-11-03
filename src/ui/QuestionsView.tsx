@@ -1,11 +1,12 @@
 // Questions grouped by derived state (open, concluded, answered), from deriveQuestionStates.
 
+import { useT, type Translate } from "../i18n/LocaleProvider";
 import type { QuestionGroups, QuestionItem } from "../message/receipts";
 import type { Message } from "../message/types";
 import type { People } from "./people";
 
-function firstLine(message: Message): string {
-  if (message.body.state === "locked") return "Encrypted message";
+function firstLine(message: Message, t: Translate): string {
+  if (message.body.state === "locked") return t("chat.encrypted");
   return message.body.lines.find((line) => line.trim() !== "") ?? "";
 }
 
@@ -18,6 +19,7 @@ function Item({
   people: People;
   onOpen: (question: Message) => void;
 }) {
+  const t = useT();
   const { state } = item;
   const { question } = state;
   return (
@@ -29,14 +31,14 @@ function Item({
           onOpen(question);
         }}
       >
-        <span className="question-text">{firstLine(question)}</span>
+        <span className="question-text">{firstLine(question, t)}</span>
         <span className="question-meta">
           {people.label(question.from)} · #{question.topic} · {question.timestamp}
           {state.progress !== null &&
-            ` · ${String(state.progress.answered)}/${String(state.progress.target)} answered`}
+            ` · ${t("questions.progress", { answered: state.progress.answered, target: state.progress.target })}`}
         </span>
       </button>
-      {item.waitingForViewer && <span className="you">Waiting for you</span>}
+      {item.waitingForViewer && <span className="you">{t("questions.waiting")}</span>}
       {state.conclusionText !== null && <p className="conclusion-text">{state.conclusionText}</p>}
     </li>
   );
@@ -77,16 +79,27 @@ export function QuestionsView({
   people: People;
   onOpen: (question: Message) => void;
 }) {
+  const t = useT();
   const total =
     groups.open.length + groups.concluded.length + groups.answered.length + groups.unknown.length;
-  if (total === 0) return <p className="empty">No questions yet.</p>;
+  if (total === 0) return <p className="empty">{t("questions.empty")}</p>;
   return (
     <div className="questions">
-      <Group title="Open" items={groups.open} people={people} onOpen={onOpen} />
-      <Group title="Concluded" items={groups.concluded} people={people} onOpen={onOpen} />
-      <Group title="Answered" items={groups.answered} people={people} onOpen={onOpen} />
+      <Group title={t("questions.open")} items={groups.open} people={people} onOpen={onOpen} />
       <Group
-        title="Not yet known (loading)"
+        title={t("questions.concluded")}
+        items={groups.concluded}
+        people={people}
+        onOpen={onOpen}
+      />
+      <Group
+        title={t("questions.answered")}
+        items={groups.answered}
+        people={people}
+        onOpen={onOpen}
+      />
+      <Group
+        title={t("questions.unknown")}
         items={groups.unknown}
         people={people}
         onOpen={onOpen}

@@ -106,7 +106,7 @@ describe("App rate-limit recovery for older messages", () => {
       await Promise.resolve();
     });
     expect(loader.getSnapshot().items).toHaveLength(1);
-    expect(host.textContent).toContain("rate-limited");
+    expect(host.textContent).toContain("The request limit is reached");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5 * MINUTE);

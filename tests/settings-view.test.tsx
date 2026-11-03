@@ -1,3 +1,4 @@
+import { en } from "../src/i18n/catalog";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
@@ -74,7 +75,7 @@ describe("SettingsView", () => {
   });
 
   it("shows the warning for the selected credential storage", () => {
-    expect(render(false)).toContain(STORAGE_WARNINGS.memory);
+    expect(render(false)).toContain(en[STORAGE_WARNINGS.memory]);
   });
 
   it("warns that sibling GitHub Pages projects share browser storage", () => {

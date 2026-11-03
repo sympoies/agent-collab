@@ -44,6 +44,15 @@ export interface LoaderOptions {
 /** The repository is not a readable collaboration repository. */
 export class SetupError extends Error {
   override readonly name = "SetupError";
+
+  /** `code` and `detail` let the UI word the problem in the user's language. */
+  constructor(
+    message: string,
+    readonly code: "no-marker" | "protocol",
+    readonly detail = "",
+  ) {
+    super(message);
+  }
 }
 
 const MARKER_FILE = ".agent-collab";
@@ -217,13 +226,20 @@ export class Loader {
       (candidate) => candidate.kind === "file" && candidate.name === MARKER_FILE,
     );
     if (entry === undefined) {
-      throw new SetupError(`not a collaboration repository (no ${MARKER_FILE} marker)`);
+      throw new SetupError(
+        `not a collaboration repository (no ${MARKER_FILE} marker)`,
+        "no-marker",
+      );
     }
     if (this.markerCache?.objectId === entry.objectId) return this.markerCache.participants;
     const text = await this.source.readFile(entry);
     const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
     if (firstLine !== SUPPORTED_PROTOCOL) {
-      throw new SetupError(`unsupported collaboration protocol: ${firstLine}`);
+      throw new SetupError(
+        `unsupported collaboration protocol: ${firstLine}`,
+        "protocol",
+        firstLine,
+      );
     }
     const participants = markerParticipants(text);
     this.markerCache = { objectId: entry.objectId, participants };

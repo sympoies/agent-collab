@@ -31,7 +31,7 @@ import {
 } from "../settings/live-demo";
 import { demoFiles } from "../demo/fixtures";
 import { SourceError, type MessageSource } from "../source/types";
-import { LanguageSwitcher, useT } from "../i18n/LocaleProvider";
+import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
 import { App, type AppProps, type SourceIndicator } from "./App";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
@@ -41,12 +41,6 @@ export interface LocalFolderOpen {
   readonly source: MessageSource;
   readonly name: string;
 }
-
-const NO_FOLDER = "No folder selected, or the browser does not allow this folder.";
-const BLOCKED = "The browser blocked folder access for this page.";
-const TOO_LARGE_FOLDER = "This folder is too large to read. Choose the clone folder itself.";
-const NOT_A_CLONE =
-  "This folder is not a collaboration clone (no .agent-collab file). Choose the clone folder itself.";
 
 export interface RootProps extends SettingsDeps {
   readonly createSource: (settings: ViewerSettings, token: Secret) => MessageSource;
@@ -61,7 +55,7 @@ interface ViewerScreen {
   /** Distinct per opened viewer, so reopening the same repository starts fresh. */
   readonly id: number;
   readonly loader: Loader;
-  readonly title: string;
+  readonly title: AppProps["title"];
   readonly selfNames: ReadonlySet<string>;
   readonly identity: AppProps["identity"];
   readonly notice: string | null;
@@ -87,7 +81,7 @@ type Screen =
   | ViewerScreen;
 
 export function Root(props: RootProps) {
-  const t = useT();
+  const { t, formatDateTime } = useLocale();
   const { createSource, createDemoSource, createLiveDemoSource, openLocalFolder } = props;
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
@@ -101,7 +95,7 @@ export function Root(props: RootProps) {
 
   const viewer = (
     loader: Loader,
-    title: string,
+    title: AppProps["title"],
     selfNames: readonly string[],
     identity: ViewerScreen["identity"],
     notice: string | null = null,
@@ -159,36 +153,48 @@ export function Root(props: RootProps) {
   };
 
   const liveViewer = (loader: Loader, notice: string): ViewerScreen =>
-    viewer(loader, "Live demo", [], MEMORY_ONLY, notice, LIVE_DEMO_POLL_INTERVAL_MS);
+    viewer(
+      loader,
+      { key: "app.liveDemoTitle" },
+      [],
+      MEMORY_ONLY,
+      notice,
+      LIVE_DEMO_POLL_INTERVAL_MS,
+    );
 
   const showLiveDemo = () => {
     const operation = ++navigation.current;
     if (liveLoader.current !== null) {
-      setScreen(liveViewer(liveLoader.current, "Showing the live repository."));
+      setScreen(liveViewer(liveLoader.current, t("live.showingLive")));
       return;
     }
-    void openLiveDemo(createLiveDemoSource, demoFiles, liveGate).then((result) => {
-      if (result.view.kind === "live") liveLoader.current = result.loader;
-      if (operation !== navigation.current) return;
-      setScreen(
-        result.view.kind === "live"
-          ? liveViewer(result.loader, result.banner)
-          : viewer(
-              result.loader,
-              "Live demo",
-              [],
-              MEMORY_ONLY,
-              result.banner,
-              LIVE_DEMO_POLL_INTERVAL_MS,
-              result.view,
-            ),
-      );
-    });
+    void openLiveDemo(createLiveDemoSource, demoFiles, liveGate, { t, formatDateTime }).then(
+      (result) => {
+        if (result.view.kind === "live") liveLoader.current = result.loader;
+        if (operation !== navigation.current) return;
+        setScreen(
+          result.view.kind === "live"
+            ? liveViewer(result.loader, result.banner)
+            : viewer(
+                result.loader,
+                { key: "app.liveDemoTitle" },
+                [],
+                MEMORY_ONLY,
+                result.banner,
+                LIVE_DEMO_POLL_INTERVAL_MS,
+                result.view,
+              ),
+        );
+      },
+    );
   };
 
   const checkLiveNow = async (current: ViewerScreen): Promise<void> => {
     if (current.liveDemo === null) return;
-    const result = await checkLive(createLiveDemoSource, current.liveDemo, liveGate);
+    const result = await checkLive(createLiveDemoSource, current.liveDemo, liveGate, {
+      t,
+      formatDateTime,
+    });
     if (result.loader !== null) liveLoader.current = result.loader;
     const next =
       result.loader === null
@@ -226,7 +232,11 @@ export function Root(props: RootProps) {
     } catch (error) {
       // Cancelling and a refused sensitive folder both reject; the reason is never shown. A page
       // the browser does not trust with folders is told apart from a cancelled picker.
-      refuse(error instanceof DOMException && error.name === "SecurityError" ? BLOCKED : NO_FOLDER);
+      refuse(
+        error instanceof DOMException && error.name === "SecurityError"
+          ? t("local.blocked")
+          : t("local.noFolder"),
+      );
       return;
     }
     const loader = new Loader(opened.source);
@@ -235,20 +245,29 @@ export function Root(props: RootProps) {
     } catch (error) {
       refuse(
         error instanceof SetupError
-          ? NOT_A_CLONE
+          ? t("local.notClone")
           : error instanceof SourceError && error.kind === "too-large"
-            ? TOO_LARGE_FOLDER
-            : "This folder could not be read.",
+            ? t("local.tooLarge")
+            : t("local.unreadable"),
       );
       return;
     }
     if (operation !== navigation.current) return;
     setLocalMessage(null);
     setScreen(
-      viewer(loader, `Local folder: ${opened.name}`, [], MEMORY_ONLY, null, undefined, null, {
-        label: "Local folder",
-        experimental: true,
-      }),
+      viewer(
+        loader,
+        { key: "app.localTitle", params: { name: opened.name } },
+        [],
+        MEMORY_ONLY,
+        null,
+        undefined,
+        null,
+        {
+          label: "bar.localFolder",
+          experimental: true,
+        },
+      ),
     );
   };
 
@@ -257,7 +276,7 @@ export function Root(props: RootProps) {
     const result = await apply(props, draft);
     if (operation !== navigation.current) return null;
     if (!result.ok) return result.errors;
-    setScreen(open(result.open, result.warning));
+    setScreen(open(result.open, result.warning === null ? null : t(result.warning)));
     return null;
   };
 
@@ -333,7 +352,7 @@ export function Root(props: RootProps) {
                     navigation.current += 1;
                     setScreen(
                       back.liveDemo !== null && liveLoader.current !== null
-                        ? liveViewer(liveLoader.current, "Showing the live repository.")
+                        ? liveViewer(liveLoader.current, t("live.showingLive"))
                         : back,
                     );
                   }
@@ -342,7 +361,7 @@ export function Root(props: RootProps) {
               setScreen(
                 viewer(
                   new Loader(createDemoSource()),
-                  "Demo repository",
+                  { key: "app.demoTitle" },
                   ["alice-agent"],
                   MEMORY_ONLY,
                 ),

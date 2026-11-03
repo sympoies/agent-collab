@@ -300,7 +300,7 @@ export class GitHubSource implements MessageSource {
     if (kind === "rate-limited") {
       return retryAt === null
         ? "GitHub API rate limit reached. Try again later."
-        : `GitHub API rate limit reached. Try again after ${retryAt.toLocaleString()}.`;
+        : `GitHub API rate limit reached. Try again after ${retryAt.toISOString()}.`;
     }
     return undefined;
   }

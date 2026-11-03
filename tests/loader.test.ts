@@ -19,14 +19,18 @@ describe("Loader.open", () => {
   it("rejects a repository without the collaboration marker", async () => {
     const loader = new Loader(new FixtureSource(repo([], null)));
     await expect(loader.open()).rejects.toThrow(
-      new SetupError("not a collaboration repository (no .agent-collab marker)"),
+      new SetupError("not a collaboration repository (no .agent-collab marker)", "no-marker"),
     );
   });
 
   it("rejects an unsupported protocol version", async () => {
     const loader = new Loader(new FixtureSource(repo([], "collab-protocol: 2\n")));
     await expect(loader.open()).rejects.toThrow(
-      new SetupError("unsupported collaboration protocol: collab-protocol: 2"),
+      new SetupError(
+        "unsupported collaboration protocol: collab-protocol: 2",
+        "protocol",
+        "collab-protocol: 2",
+      ),
     );
   });
 

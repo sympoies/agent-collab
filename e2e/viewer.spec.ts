@@ -6,6 +6,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { en, LOCALE_NAMES, LOCALES } from "../src/i18n/catalog";
 import { ja } from "../src/i18n/ja";
 import { zhTW } from "../src/i18n/zh-TW";
+import { formatDateTime } from "../src/i18n/translate";
 
 const screenshotDir = resolve(process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "");
 
@@ -608,7 +609,7 @@ test("empty repositories and provider errors have clear states", async ({ page }
 
   const failedPage = await page.context().newPage();
   const assertErrorRequests = await openViewer(failedPage, "error");
-  await expect(failedPage.getByRole("alert")).toContainText("unexpected (HTTP 500)");
+  await expect(failedPage.getByRole("alert")).toContainText(en["error.unexpected"]);
   await saveScreenshot(failedPage, "error-state.png");
   assertErrorRequests();
 });
@@ -828,7 +829,9 @@ test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Open live demo" }).click();
   await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
-  await expect(page.getByText("2026-11-03T08:00:00.000Z")).toBeVisible();
+  await expect(
+    page.getByText(formatDateTime("en", new Date("2026-11-03T08:00:00.000Z"))),
+  ).toBeVisible();
   expect(requests).toEqual([]);
 
   await page.getByRole("button", { name: "Check live now" }).click();
@@ -1405,9 +1408,7 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
     ).fakeClone.state.permission = "prompt";
   });
   await revoked.clock.fastForward(61_000);
-  await expect(revoked.getByRole("alert")).toContainText(
-    "Local folder permission needs to be granted again",
-  );
+  await expect(revoked.getByRole("alert")).toContainText("choose the folder again");
   // The messages stay on screen, and choosing the folder again recovers.
   await expect(revoked.getByText("The first message from the local clone.")).toBeVisible();
   await revoked.evaluate(() => {
@@ -1461,7 +1462,12 @@ for (const code of LOCALES) {
       await page.reload();
       await expect(page.locator("html")).toHaveAttribute("lang", code);
       await page.getByRole("button", { name: messages["welcome.openAnother"] }).click();
-      await page.getByRole("button", { name: "Open offline demo" }).click();
+      await expectNoClipping(
+        page,
+        ".settings button, .settings .field > span, .settings legend, .settings .note",
+      );
+      await saveScreenshot(page, `i18n-settings-${code}-${view.label}.png`);
+      await page.getByRole("button", { name: messages["settings.openOffline"] }).click();
       const toolbar = page.locator(".bar-actions");
       await expect(toolbar.getByRole("button", { name: messages["bar.refresh"] })).toBeVisible();
       await expect(toolbar.getByRole("button", { name: messages["bar.settings"] })).toBeVisible();
@@ -1486,6 +1492,24 @@ for (const code of LOCALES) {
         await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
       ).toBeLessThanOrEqual(0);
       await saveScreenshot(page, `i18n-viewer-${code}-${view.label}.png`);
+
+      // Chat rows, receipts, the profile panel and the Questions view in this language.
+      await expectNoClipping(page, ".message .meta, .receipts, .group-header");
+      if (view.size.width < 721) {
+        await page.getByRole("button", { name: messages["nav.back"] }).click();
+      }
+      await page.getByRole("button", { name: messages["nav.questions"] }).click();
+      await expectNoClipping(page, ".question-link, .question-group h3, .conversation h2");
+      await page.getByRole("button", { name: messages["bar.profile"] }).click();
+      await expect(page.getByRole("heading", { name: messages["profile.title"] })).toBeVisible();
+      await expectNoClipping(
+        page,
+        ".profile button, .profile legend, .profile .note, .profile-name span",
+      );
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `i18n-profile-${code}-${view.label}.png`);
     });
   }
 }

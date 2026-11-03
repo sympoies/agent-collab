@@ -4,6 +4,7 @@
 
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 
+import { useT, type Translate } from "../i18n/LocaleProvider";
 import type { AttachmentReader, FileInfo } from "../loader/attachments";
 import { parseCsv } from "../message/csv";
 import { IMAGE_MAX_PIXELS, imageDimensions } from "../message/image";
@@ -35,21 +36,17 @@ const BADGES: Readonly<Record<FileKind, string>> = {
   other: "FILE",
 };
 
-export function formatSize(size: number | null): string {
-  if (size === null) return "size unknown";
-  if (size < 1024) return `${String(size)} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+export function formatSize(size: number | null, t: Translate): string {
+  if (size === null) return t("size.unknown");
+  if (size < 1024) return t("size.bytes", { value: size });
+  if (size < 1024 * 1024) return t("size.kb", { value: (size / 1024).toFixed(1) });
+  return t("size.mb", { value: (size / (1024 * 1024)).toFixed(1) });
 }
 
-function failure(error: unknown): string {
-  if (error instanceof SourceError && error.kind === "not-found") {
-    return "This file is not in the repository at this revision.";
-  }
-  if (error instanceof SourceError && error.kind === "rate-limited") {
-    return "Could not load this file: the request limit is reached. Try again later.";
-  }
-  return "Could not load this file.";
+function failure(error: unknown, t: Translate): string {
+  if (error instanceof SourceError && error.kind === "not-found") return t("file.notFound");
+  if (error instanceof SourceError && error.kind === "rate-limited") return t("file.rateLimited");
+  return t("file.failed");
 }
 
 type Load<T> =
@@ -58,6 +55,7 @@ type Load<T> =
   | { readonly state: "done"; readonly value: T };
 
 function useLoad<T>(load: () => Promise<T>): Load<T> {
+  const t = useT();
   const [result, setResult] = useState<Load<T>>({ state: "loading" });
   useEffect(() => {
     let current = true;
@@ -66,7 +64,7 @@ function useLoad<T>(load: () => Promise<T>): Load<T> {
         if (current) setResult({ state: "done", value });
       },
       (error: unknown) => {
-        if (current) setResult({ state: "error", message: failure(error) });
+        if (current) setResult({ state: "error", message: failure(error, t) });
       },
     );
     return () => {
@@ -79,11 +77,12 @@ function useLoad<T>(load: () => Promise<T>): Load<T> {
 }
 
 function OpenLink({ reader, path }: { reader: AttachmentReader; path: string }) {
+  const t = useT();
   const link = reader.webLink(path);
   if (link === null) return null;
   return (
     <a className="open-link" href={link.url} target="_blank" rel="noopener noreferrer">
-      Open in {link.label}
+      {t("file.open", { provider: link.label })}
     </a>
   );
 }
@@ -113,25 +112,20 @@ function TextPreview({
   path: string;
   kind: "markdown" | "text" | "csv";
 }) {
+  const t = useT();
   const result = useLoad(() => reader.readText(path, TEXT_PREVIEW_MAX_BYTES));
-  if (result.state === "loading") return <p className="note">Loading preview…</p>;
+  if (result.state === "loading") return <p className="note">{t("file.loadingPreview")}</p>;
   if (result.state === "error") return <p className="note">{result.message}</p>;
   const read = result.value;
   if (read.state === "unknown-size") {
-    return (
-      <NoPreview
-        reader={reader}
-        path={path}
-        reason="The file size is unknown, so it is not previewed."
-      />
-    );
+    return <NoPreview reader={reader} path={path} reason={t("file.unknownSize")} />;
   }
   if (read.state === "too-large") {
     return (
       <NoPreview
         reader={reader}
         path={path}
-        reason={`Too large to preview (${formatSize(read.size)}).`}
+        reason={t("file.tooLarge", { size: formatSize(read.size, t) })}
       />
     );
   }
@@ -165,12 +159,12 @@ function TextPreview({
         </table>
         {table.truncated && (
           <p className="note">
-            Showing the first {String(CSV_PREVIEW_ROWS)} of {String(table.totalRows)} rows.
+            {t("file.csvRows", { shown: CSV_PREVIEW_ROWS, total: table.totalRows })}
           </p>
         )}
         {table.columnsTruncated && (
           <p className="note">
-            Showing the first {String(CSV_PREVIEW_COLUMNS)} of {String(table.totalColumns)} columns.
+            {t("file.csvColumns", { shown: CSV_PREVIEW_COLUMNS, total: table.totalColumns })}
           </p>
         )}
       </div>
@@ -188,6 +182,7 @@ function ImagePreview({
   path: string;
   name: string;
 }) {
+  const t = useT();
   const result = useLoad(() => reader.readBytes(path, IMAGE_PREVIEW_MAX_BYTES));
   const mime = imageMime(name);
   const bytes =
@@ -208,45 +203,33 @@ function ImagePreview({
       setUrl(null);
     };
   }, [shown, mime]);
-  if (result.state === "loading") return <p className="note">Loading preview…</p>;
+  if (result.state === "loading") return <p className="note">{t("file.loadingPreview")}</p>;
   if (result.state === "error") return <p className="note">{result.message}</p>;
   const read = result.value;
   if (read.state === "unsupported") {
-    return <NoPreview reader={reader} path={path} reason="This source cannot preview images." />;
+    return <NoPreview reader={reader} path={path} reason={t("file.imageUnsupported")} />;
   }
   if (read.state === "unknown-size") {
-    return (
-      <NoPreview
-        reader={reader}
-        path={path}
-        reason="The file size is unknown, so it is not previewed."
-      />
-    );
+    return <NoPreview reader={reader} path={path} reason={t("file.unknownSize")} />;
   }
   if (read.state === "too-large") {
     return (
       <NoPreview
         reader={reader}
         path={path}
-        reason={`Too large to preview (${formatSize(read.size)}).`}
+        reason={t("file.tooLarge", { size: formatSize(read.size, t) })}
       />
     );
   }
   if (size === null) {
-    return (
-      <NoPreview
-        reader={reader}
-        path={path}
-        reason="The image size could not be read, so it is not previewed."
-      />
-    );
+    return <NoPreview reader={reader} path={path} reason={t("file.imageUnreadable")} />;
   }
   if (shown === null) {
     return (
       <NoPreview
         reader={reader}
         path={path}
-        reason={`Too many pixels to preview (${String(size.width)}\u00d7${String(size.height)}).`}
+        reason={t("file.tooManyPixels", { width: size.width, height: size.height })}
       />
     );
   }
@@ -260,20 +243,21 @@ function Details({
   file: Extract<Ref, { kind: "file" }>;
   reader: AttachmentReader;
 }) {
+  const t = useT();
   const info = useLoad<FileInfo | null>(() => reader.info(file.path));
   let body: ReactNode;
-  if (info.state === "loading") body = <p className="note">Loading…</p>;
+  if (info.state === "loading") body = <p className="note">{t("file.loading")}</p>;
   else if (info.state === "error") body = <p className="note">{info.message}</p>;
   else if (info.value === null) {
-    body = <p className="note">This file is not in the repository at this revision.</p>;
+    body = <p className="note">{t("file.notFound")}</p>;
   } else {
     body = (
       <>
         <p className="file-meta">
-          {formatSize(info.value.size)} · <code>{file.path}</code>
+          {formatSize(info.value.size, t)} · <code>{file.path}</code>
         </p>
         {file.fileKind === "other" ? (
-          <NoPreview reader={reader} path={file.path} reason="No preview for this file type." />
+          <NoPreview reader={reader} path={file.path} reason={t("file.noPreview")} />
         ) : file.fileKind === "image" ? (
           imageMime(file.name) === null ? null : (
             <ImagePreview reader={reader} path={file.path} name={file.name} />
@@ -325,6 +309,7 @@ export function RefList({
   refs: readonly string[];
   context: AttachmentContext;
 }) {
+  const t = useT();
   if (refs.length === 0) return null;
   return (
     <ul className="refs">
@@ -355,11 +340,14 @@ export function RefList({
                     href={`#msg-${ref.id}`}
                     onClick={jumpHandler(ref.id, context)}
                   >
-                    Message {ref.id.slice(0, 10)} {ref.id.slice(11, 13)}:{ref.id.slice(13, 15)}
+                    {t("file.messageRef", {
+                      date: ref.id.slice(0, 10),
+                      time: `${ref.id.slice(11, 13)}:${ref.id.slice(13, 15)}`,
+                    })}
                   </a>
                 ) : (
-                  <span className="chip" title="This message is not loaded">
-                    Message {ref.id.slice(0, 10)} (not loaded)
+                  <span className="chip" title={t("file.messageRefMissingTitle")}>
+                    {t("file.messageRefMissing", { date: ref.id.slice(0, 10) })}
                   </span>
                 )}
               </li>
@@ -406,16 +394,13 @@ export function FilesView({
   /** Older messages are not loaded yet, so their attachments are not listed. */
   hasOlder: boolean;
 }) {
+  const t = useT();
   const items = collectAttachments(messages);
-  const note = hasOlder && (
-    <p className="note">
-      Only files and links from the loaded messages are listed. Load older messages to see more.
-    </p>
-  );
+  const note = hasOlder && <p className="note">{t("files.loadedOnly")}</p>;
   if (items.length === 0) {
     return (
       <>
-        <p className="empty">No files or links in the loaded messages.</p>
+        <p className="empty">{t("files.empty")}</p>
         {note}
       </>
     );

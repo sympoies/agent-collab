@@ -1,3 +1,4 @@
+import type { Translate } from "../i18n/LocaleProvider";
 import type { MessageSource } from "../source/types";
 import { SourceError } from "../source/types";
 import { Loader } from "../loader/loader";
@@ -7,6 +8,12 @@ import { DemoSnapshotSource, readDemoSnapshot, type DemoSnapshot } from "./demo-
 
 /** Anonymous sessions poll every five minutes, regardless of page visibility. */
 export const LIVE_DEMO_POLL_INTERVAL_MS = 5 * 60_000;
+
+/** What the notices need to speak the user's language. */
+export interface Presenter {
+  readonly t: Translate;
+  readonly formatDateTime: (date: Date) => string;
+}
 
 /** A static copy of the demo that makes no API requests. */
 export type StaticDemoView =
@@ -43,10 +50,10 @@ export class LiveCheckGate {
   }
 }
 
-function shown(view: StaticDemoView): string {
+function shown(view: StaticDemoView, text: Presenter): string {
   return view.kind === "snapshot"
-    ? `the snapshot generated at ${view.generatedAt}`
-    : "the bundled sample";
+    ? text.t("live.snapshotAt", { date: text.formatDateTime(new Date(view.generatedAt)) })
+    : text.t("live.bundled");
 }
 
 /** Says why a live check left the viewer on its static copy; `error` null means it was not made. */
@@ -54,15 +61,19 @@ export function liveCheckNotice(
   view: StaticDemoView,
   error: unknown,
   nextCheckAt: Date | null,
+  text: Presenter,
 ): string {
   const reason =
     error === null
-      ? "The live check is paused to respect GitHub's API limit"
+      ? text.t("live.paused")
       : error instanceof SourceError && error.kind === "rate-limited"
-        ? "The live check hit GitHub's API limit"
-        : "The live check is unavailable";
-  const next = nextCheckAt === null ? "" : ` Next live check: ${nextCheckAt.toLocaleString()}.`;
-  return `${reason}. Still showing ${shown(view)}.${next}`;
+        ? text.t("live.hitLimit")
+        : text.t("live.unavailable");
+  const next =
+    nextCheckAt === null
+      ? ""
+      : text.t("live.nextCheck", { date: text.formatDateTime(nextCheckAt) });
+  return text.t("live.stillShowing", { reason, shown: shown(view, text), next });
 }
 
 /**
@@ -103,14 +114,15 @@ export async function checkLive(
   createSource: () => MessageSource,
   view: StaticDemoView,
   gate: LiveCheckGate,
+  text: Presenter,
 ): Promise<LiveCheck> {
   const blockedUntil = gate.nextCheckAt();
   if (blockedUntil !== null) {
-    return { loader: null, notice: liveCheckNotice(view, null, blockedUntil) };
+    return { loader: null, notice: liveCheckNotice(view, null, blockedUntil, text) };
   }
   const result = await openLive(createSource, gate);
-  if ("loader" in result) return { loader: result.loader, notice: "Checked the live repository." };
-  return { loader: null, notice: liveCheckNotice(view, result.error, gate.nextCheckAt()) };
+  if ("loader" in result) return { loader: result.loader, notice: text.t("live.checked") };
+  return { loader: null, notice: liveCheckNotice(view, result.error, gate.nextCheckAt(), text) };
 }
 
 /** Opens a viewer source without settings or credential-store access. */
@@ -129,6 +141,7 @@ export async function openLiveDemo(
   createSource: () => MessageSource,
   bundledFiles: Readonly<Record<string, string>>,
   gate: LiveCheckGate,
+  text: Presenter,
   loadSnapshot: () => Promise<DemoSnapshot | null> = () => readDemoSnapshot(),
 ): Promise<LiveDemoOpen> {
   const snapshot = await loadSnapshot();
@@ -139,7 +152,9 @@ export async function openLiveDemo(
       return {
         loader,
         view: { kind: "snapshot", generatedAt: snapshot.generatedAt },
-        banner: `Showing the snapshot generated at ${snapshot.generatedAt}.`,
+        banner: text.t("live.showingSnapshot", {
+          date: text.formatDateTime(new Date(snapshot.generatedAt)),
+        }),
       };
     } catch {
       // A malformed snapshot is treated as missing and uses the same fallback order below.
@@ -148,17 +163,17 @@ export async function openLiveDemo(
 
   const bundled: StaticDemoView = { kind: "bundled" };
   const blockedUntil = gate.nextCheckAt();
-  let banner = liveCheckNotice(bundled, null, blockedUntil);
+  let banner = liveCheckNotice(bundled, null, blockedUntil, text);
   if (blockedUntil === null) {
     const result = await openLive(createSource, gate);
     if ("loader" in result) {
       return {
         loader: result.loader,
         view: { kind: "live" },
-        banner: "The public snapshot is unavailable. Showing the live repository.",
+        banner: text.t("live.snapshotMissing"),
       };
     }
-    banner = liveCheckNotice(bundled, result.error, gate.nextCheckAt());
+    banner = liveCheckNotice(bundled, result.error, gate.nextCheckAt(), text);
   }
   const loader = new Loader(new FixtureSource(bundledFiles));
   await loader.open();

@@ -1,3 +1,5 @@
+import { formatDateTime, translate } from "../src/i18n/translate";
+
 // Helpers to build synthetic collaboration repositories for tests.
 
 export const MARKER = "collab-protocol: 1\ninbox-layout: monthly\n";
@@ -80,3 +82,13 @@ export function pngBytes(width: number, height: number): Uint8Array {
     0,
   ]);
 }
+
+/** English text and UTC dates, for tests of code that takes a translator. */
+export const tEn = (
+  key: Parameters<typeof translate>[1],
+  params?: Parameters<typeof translate>[2],
+) => translate("en", key, params);
+export const presenterEn = {
+  t: tEn,
+  formatDateTime: (date: Date) => formatDateTime("en", date, "UTC"),
+};

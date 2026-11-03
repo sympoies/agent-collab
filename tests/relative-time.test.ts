@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { relativeTime } from "../src/ui/relativeTime";
+import { tEn } from "./support";
 
 const NOW = new Date("2026-11-03T12:00:00Z");
 const ago = (ms: number) => new Date(NOW.getTime() - ms);
@@ -24,10 +25,10 @@ describe("relativeTime", () => {
     [10 * DAY, "10 days ago"],
     [400 * DAY, "400 days ago"],
   ])("shows %i ms as %s", (elapsed, text) => {
-    expect(relativeTime(ago(elapsed), NOW)).toBe(text);
+    expect(relativeTime(ago(elapsed), NOW, tEn)).toBe(text);
   });
 
   it("treats a time slightly in the future (clock skew) as just now", () => {
-    expect(relativeTime(new Date(NOW.getTime() + 30 * SECOND), NOW)).toBe("just now");
+    expect(relativeTime(new Date(NOW.getTime() + 30 * SECOND), NOW, tEn)).toBe("just now");
   });
 });

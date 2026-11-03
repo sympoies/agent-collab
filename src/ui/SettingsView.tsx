@@ -1,5 +1,6 @@
 // Settings screen. Secret inputs are masked, never prefilled and never echoed back.
 
+import { useLocale } from "../i18n/LocaleProvider";
 import { useState, type ReactNode, type SubmitEvent } from "react";
 
 import {
@@ -23,6 +24,7 @@ export interface SettingsViewProps {
 }
 
 export function SettingsView(props: SettingsViewProps) {
+  const { t } = useLocale();
   const [draft, setDraft] = useState(props.initial);
   const [errors, setErrors] = useState<DraftErrors>({});
   const [saving, setSaving] = useState(false);
@@ -44,7 +46,7 @@ export function SettingsView(props: SettingsViewProps) {
         setErrors(result ?? {});
       })
       .catch(() => {
-        setErrors({ token: "Could not save the credential." });
+        setErrors({ token: "settings.saveFailed" });
       })
       .finally(() => {
         setSaving(false);
@@ -58,7 +60,7 @@ export function SettingsView(props: SettingsViewProps) {
       {hint !== undefined && <small>{hint}</small>}
       {errors[name] !== undefined && (
         <small className="field-error" role="alert">
-          {errors[name]}
+          {t(errors[name])}
         </small>
       )}
     </label>
@@ -66,25 +68,25 @@ export function SettingsView(props: SettingsViewProps) {
 
   return (
     <form className="settings" onSubmit={submit} autoComplete="off">
-      <h1>Settings</h1>
+      <h1>{t("settings.title")}</h1>
       {field(
         "platform",
-        "Platform",
+        t("settings.platform"),
         <select
           value={draft.platform}
           onChange={(event) => {
             update("platform")(event.target.value);
           }}
         >
-          <option value="github">GitHub</option>
+          <option value="github">{t("settings.github")}</option>
           <option value="gitlab" disabled>
-            GitLab (later)
+            {t("settings.gitlab")}
           </option>
         </select>,
       )}
       {field(
         "endpoint",
-        "API endpoint",
+        t("settings.endpoint"),
         <input
           type="url"
           value={draft.endpoint}
@@ -92,14 +94,14 @@ export function SettingsView(props: SettingsViewProps) {
             update("endpoint")(event.target.value);
           }}
         />,
-        "https://api.github.com, or https://<host>/api/v3 for GitHub Enterprise Server.",
+        t("settings.endpointHint"),
       )}
       {field(
         "repository",
-        "Repository",
+        t("settings.repository"),
         <input
           type="text"
-          placeholder="owner/repository"
+          placeholder={t("settings.repositoryPlaceholder")}
           value={draft.repository}
           onChange={(event) => {
             update("repository")(event.target.value);
@@ -108,10 +110,10 @@ export function SettingsView(props: SettingsViewProps) {
       )}
       {field(
         "branch",
-        "Branch",
+        t("settings.branch"),
         <input
           type="text"
-          placeholder="default branch"
+          placeholder={t("settings.branchPlaceholder")}
           value={draft.branch}
           onChange={(event) => {
             update("branch")(event.target.value);
@@ -120,38 +122,35 @@ export function SettingsView(props: SettingsViewProps) {
       )}
       {field(
         "selfNames",
-        "My names",
+        t("settings.myNames"),
         <input
           type="text"
-          placeholder="alice, alice-agent"
+          placeholder={t("settings.myNamesPlaceholder")}
           value={draft.selfNames}
           onChange={(event) => {
             update("selfNames")(event.target.value);
           }}
         />,
-        "Messages from these senders are shown on the right.",
+        t("settings.myNamesHint"),
       )}
       {field(
         "token",
-        "Access token",
+        t("settings.token"),
         <input
           type="password"
           autoComplete="off"
           spellCheck={false}
-          placeholder={stored ? "stored; leave empty to keep it" : ""}
+          placeholder={stored ? t("settings.tokenStored") : ""}
           value={draft.token}
           onChange={(event) => {
             update("token")(event.target.value);
           }}
         />,
-        "A fine-grained token for this one repository with Contents: read-only.",
+        t("settings.tokenHint"),
       )}
-      <p className="note">
-        Encrypted messages show as locked. Private keys are not accepted until decryption is
-        available.
-      </p>
+      <p className="note">{t("settings.encryptedHint")}</p>
       <fieldset className="field">
-        <legend>Keep credentials</legend>
+        <legend>{t("settings.keep")}</legend>
         {(["memory", "browser-encrypted"] as const).map((kind: CredentialStorage) => (
           <label key={kind} className="choice">
             <input
@@ -162,18 +161,22 @@ export function SettingsView(props: SettingsViewProps) {
                 update("credentialStorage")(kind);
               }}
             />
-            {kind === "memory" ? "In memory only" : "Encrypted in this browser"}
+            {kind === "memory" ? t("settings.memory") : t("settings.encrypted")}
           </label>
         ))}
-        <small className="warning">{storageWarning(draft.credentialStorage, hostname)}</small>
+        <small className="warning">
+          {storageWarning(draft.credentialStorage, hostname)
+            .map((key) => t(key))
+            .join(" ")}
+        </small>
       </fieldset>
       <div className="actions">
         <button type="submit" disabled={saving}>
-          Save and open
+          {t("settings.saveOpen")}
         </button>
         {props.onCancel !== null && (
           <button type="button" disabled={saving} onClick={props.onCancel}>
-            Cancel
+            {t("settings.cancel")}
           </button>
         )}
         {anyStored && (
@@ -182,18 +185,18 @@ export function SettingsView(props: SettingsViewProps) {
             disabled={saving}
             onClick={() => {
               props.onRemoveCredentials().catch(() => {
-                setErrors({ token: "Could not remove the stored credentials." });
+                setErrors({ token: "settings.removeFailed" });
               });
             }}
           >
-            Remove stored credentials
+            {t("settings.remove")}
           </button>
         )}
         <button type="button" disabled={saving} onClick={props.onOpenDemo}>
-          Open offline demo
+          {t("settings.openOffline")}
         </button>
         <button type="button" disabled={saving} onClick={props.onOpenLiveDemo}>
-          Open live demo
+          {t("welcome.openLiveDemo")}
         </button>
       </div>
     </form>
