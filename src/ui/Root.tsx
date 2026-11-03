@@ -22,7 +22,14 @@ import {
   type OpenSettings,
   type SettingsDeps,
 } from "../settings/session";
-import { LIVE_DEMO_POLL_INTERVAL_MS, openLiveDemo } from "../settings/live-demo";
+import {
+  checkLive,
+  LIVE_DEMO_POLL_INTERVAL_MS,
+  LiveCheckGate,
+  openLiveDemo,
+  type StaticDemoView,
+} from "../settings/live-demo";
+import { demoFiles } from "../demo/fixtures";
 import type { MessageSource } from "../source/types";
 import { App } from "./App";
 import { SettingsView } from "./SettingsView";
@@ -43,6 +50,8 @@ interface ViewerScreen {
   readonly selfNames: ReadonlySet<string>;
   readonly notice: string | null;
   readonly pollIntervalMs: number | undefined;
+  /** The static demo copy on screen, or null for every other viewer, live demo included. */
+  readonly liveDemo: StaticDemoView | null;
 }
 
 type Screen =
@@ -61,28 +70,39 @@ export function Root(props: RootProps) {
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
   const navigation = useRef(0);
+  // Page-session state of the public demo: API requests are spaced across every
+  // open and check, and a live copy once read replaces the static copies for good.
+  const [liveGate] = useState(() => new LiveCheckGate());
+  const liveLoader = useRef<Loader | null>(null);
 
   const viewer = (
-    source: MessageSource,
+    loader: Loader,
     title: string,
     selfNames: readonly string[],
     notice: string | null = null,
     pollIntervalMs?: number,
+    liveDemo: StaticDemoView | null = null,
   ): ViewerScreen => {
     viewers.current += 1;
     return {
       kind: "viewer",
       id: viewers.current,
-      loader: new Loader(source),
+      loader,
       title,
       selfNames: new Set(selfNames),
       notice,
       pollIntervalMs,
+      liveDemo,
     };
   };
 
   const open = ({ settings, token }: OpenSettings, notice: string | null = null) =>
-    viewer(createSource(settings, token), settings.repository, settings.selfNames, notice);
+    viewer(
+      new Loader(createSource(settings, token)),
+      settings.repository,
+      settings.selfNames,
+      notice,
+    );
 
   const showSettings = async (back: ViewerScreen | null) => {
     const operation = ++navigation.current;
@@ -106,11 +126,45 @@ export function Root(props: RootProps) {
     }
   };
 
+  const liveViewer = (loader: Loader, notice: string): ViewerScreen =>
+    viewer(loader, "Live demo", [], notice, LIVE_DEMO_POLL_INTERVAL_MS);
+
   const showLiveDemo = () => {
-    navigation.current += 1;
-    openLiveDemo(createLiveDemoSource, (source) => {
-      setScreen(viewer(source, "Live demo", [], null, LIVE_DEMO_POLL_INTERVAL_MS));
+    const operation = ++navigation.current;
+    if (liveLoader.current !== null) {
+      setScreen(liveViewer(liveLoader.current, "Showing the live repository."));
+      return;
+    }
+    void openLiveDemo(createLiveDemoSource, demoFiles, liveGate).then((result) => {
+      if (result.view.kind === "live") liveLoader.current = result.loader;
+      if (operation !== navigation.current) return;
+      setScreen(
+        result.view.kind === "live"
+          ? liveViewer(result.loader, result.banner)
+          : viewer(
+              result.loader,
+              "Live demo",
+              [],
+              result.banner,
+              LIVE_DEMO_POLL_INTERVAL_MS,
+              result.view,
+            ),
+      );
     });
+  };
+
+  const checkLiveNow = async (current: ViewerScreen): Promise<void> => {
+    if (current.liveDemo === null) return;
+    const result = await checkLive(createLiveDemoSource, current.liveDemo, liveGate);
+    if (result.loader !== null) liveLoader.current = result.loader;
+    const next =
+      result.loader === null
+        ? { ...current, notice: result.notice }
+        : liveViewer(result.loader, result.notice);
+    // Leave a viewer the user has since navigated away from alone.
+    setScreen((previous) =>
+      previous.kind === "viewer" && previous.id === current.id ? next : previous,
+    );
   };
 
   const save = async (draft: SettingsDraft): Promise<DraftErrors | null> => {
@@ -173,11 +227,15 @@ export function Root(props: RootProps) {
                 ? null
                 : () => {
                     navigation.current += 1;
-                    setScreen(back);
+                    setScreen(
+                      back.liveDemo !== null && liveLoader.current !== null
+                        ? liveViewer(liveLoader.current, "Showing the live repository.")
+                        : back,
+                    );
                   }
             }
             onOpenDemo={() => {
-              setScreen(viewer(createDemoSource(), "Demo repository", ["alice-agent"]));
+              setScreen(viewer(new Loader(createDemoSource()), "Demo repository", ["alice-agent"]));
             }}
             onOpenLiveDemo={() => {
               showLiveDemo();
@@ -200,6 +258,7 @@ export function Root(props: RootProps) {
           onOpenSettings={() => {
             void showSettings(screen);
           }}
+          {...(screen.liveDemo === null ? {} : { onCheckLiveNow: () => checkLiveNow(screen) })}
         />
       );
   }

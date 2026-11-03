@@ -302,9 +302,9 @@ still unavailable is not counted as new and not marked fresh.
    the next older month when the current one is exhausted.
 
 Listings and contents are cached by object id for the session, so paging and
-re-polling never download the same object twice. Contents are kept in memory
-only; nothing from a private repository is written to browser storage in the
-first release.
+re-polling never download the same object twice. Private repository contents
+stay in memory only. The public demo has a separate guarded cache for immutable
+public blobs.
 
 ## 5. Chat rendering
 
@@ -389,9 +389,9 @@ Two different secrets with different purposes:
     After saving, settings show "configured" and a replace/remove action, not
     the value or a fragment of it.
   - The production build carries a Content Security Policy:
-    `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src https:`.
+    `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'self' https:`.
     The browser build cannot know the configured endpoint when it is built,
-    so `connect-src` allows any `https:` origin; packaged builds narrow it to
+    so `connect-src` allows same-origin requests and any `https:` origin; packaged builds narrow it to
     the configured endpoint. The dev server runs without it because hot
     reload uses inline scripts. No third-party scripts, fonts or analytics.
 - **In-memory lifetime.** When a user chooses a saved repository, its token is
@@ -399,12 +399,46 @@ Two different secrets with different purposes:
   app session. Changing the repository, removing the credential or signing
   out drops the source and the reference. A `401` stops polling and asks for a
   new credential instead of retrying.
-- **Public live demo.** The welcome and settings screens can open the configured
-  public demo repository anonymously. The app does not read saved settings or
-  credentials until the user chooses a saved repository or settings. The live
-  session bypasses both stores; it has no credential and saves no settings.
-  Anonymous `401`/`404` errors say
-  the repository needs a token or does not exist.
+- **Public live demo.** The welcome and settings screens open a same-origin
+  snapshot of the public demo repository. The Pages workflow builds the
+  snapshot with its read-only workflow token on main updates, every six hours,
+  and on manual runs; the token is not included in the generated file or web
+  bundle. Opening the snapshot makes no GitHub API requests. The live demo does
+  not read saved settings or credentials. Only the public demo source may cache
+  immutable blobs in guarded browser storage; private repository content
+  remains in memory only. The transition rules below keep the page from
+  hammering the API or showing mixed data.
+
+  _Copies._ A demo viewer shows exactly one copy: the snapshot, the bundled
+  sample, or the live repository. A copy is read completely before it replaces
+  another, so a viewer never merges items from two copies and nothing is
+  filled in from the previous one.
+
+  _Opening._ Open the snapshot first. Only when it is missing or malformed
+  does the page ask the API, once and only if the request gate allows it; if
+  the API fails, the bundled sample is shown.
+
+  _Checking._ **Check live now** is the only way from a static copy to the live
+  repository, and only an explicit click starts it. Navigating, re-rendering and
+  reopening the demo never start a check. A successful check replaces the
+  static copy with the live repository, which is always at least as new as the
+  snapshot. A failed check (rate limit, network error or an invalid
+  repository) changes nothing but the notice, which names the copy still shown
+  and the time of the next check.
+
+  _One-way._ After a live copy was shown, the page does not go back to the
+  snapshot or the bundled sample in that page session: reopening the demo or
+  cancelling out of settings shows the live copy again. If a later poll hits a
+  rate limit, the live items stay on screen with the error banner and the poller
+  retries after the reset.
+
+  _Request gate._ One gate per page session spaces every anonymous API request
+  made for opening or checking: at least five minutes after any request, and
+  after a rate-limit response until the reset time the API reported
+  (`Retry-After`, or `X-RateLimit-Reset` when there is no `Retry-After`), or
+  15 minutes when it reported none. While the gate is closed a click on
+  **Check live now** makes no request and only explains when the next check is
+  possible. The gate lives in memory; reloading the page starts a new session.
 
 ## 7. Polling and notifications
 
@@ -413,8 +447,9 @@ Two different secrets with different purposes:
   directory, diffs entry names against what is known, and reads only the new
   files. A new month directory is picked up because `inbox/` itself changes.
 - **Interval.** 60 seconds while the window is visible, 5 minutes while
-  hidden. Anonymous demo sessions use 5 minutes whether visible or hidden.
-  Manual refresh is limited to that same five-minute interval and replaces the
+  hidden. The public demo does not poll GitHub while showing a static copy.
+  When it shows the live repository, anonymous demo sessions use a five-minute
+  interval whether visible or hidden. Manual refresh is limited to that same interval and replaces the
   next scheduled poll, so it cannot add another poll during the interval. Each
   anonymous API request still counts against the per-IP limit, including a
   `304 Not Modified`; ETags reduce transfer and avoid fetching unchanged

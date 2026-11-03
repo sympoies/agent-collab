@@ -25,6 +25,7 @@ export interface AppProps {
   /** A one-off message from opening the viewer, such as a settings warning. */
   readonly notice: string | null;
   readonly pollIntervalMs?: number;
+  readonly onCheckLiveNow?: () => Promise<void>;
   readonly onOpenSettings: () => void;
 }
 
@@ -35,6 +36,7 @@ export function App({
   notice,
   pollIntervalMs,
   onOpenSettings,
+  onCheckLiveNow,
 }: AppProps) {
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const pollerRef = useRef<Poller | null>(null);
@@ -45,6 +47,7 @@ export function App({
   const announcedMessages = useRef<Set<string>>(new Set());
   const [arrivalAnnouncement, setArrivalAnnouncement] = useState("");
   const [busy, setBusy] = useState(true);
+  const [checkingLive, setCheckingLive] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [readyRetryAt, setReadyRetryAt] = useState<Date | null>(null);
 
@@ -166,16 +169,32 @@ export function App({
         <h1>{title}</h1>
         <div className="bar-actions">
           <ThemeToggle />
-          <button
-            type="button"
-            disabled={busy || retryingAfterLimit}
-            aria-busy={busy}
-            onClick={() => {
-              run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
-            }}
-          >
-            Refresh
-          </button>
+          {onCheckLiveNow === undefined ? (
+            <button
+              type="button"
+              disabled={busy || retryingAfterLimit}
+              aria-busy={busy}
+              onClick={() => {
+                run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
+              }}
+            >
+              Refresh
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={checkingLive}
+              aria-busy={checkingLive}
+              onClick={() => {
+                setCheckingLive(true);
+                void onCheckLiveNow().finally(() => {
+                  setCheckingLive(false);
+                });
+              }}
+            >
+              Check live now
+            </button>
+          )}
           <button type="button" onClick={onOpenSettings}>
             Settings
           </button>

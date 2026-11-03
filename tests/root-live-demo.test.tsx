@@ -15,6 +15,95 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 describe("Root live demo", () => {
   afterEach(() => {
     document.body.replaceChildren();
+    vi.unstubAllGlobals();
+  });
+
+  it("opens a same-origin snapshot before creating the anonymous API source", async () => {
+    const id = "2026-11-03T0900-alice-agent-api-01";
+    const snapshot = {
+      schemaVersion: 1,
+      generatedAt: "2026-11-03T08:00:00.000Z",
+      revision: "snapshot-tree",
+      files: [
+        {
+          path: ".agent-collab",
+          text: "collab-protocol: 1\nparticipants: alice-agent\n",
+        },
+        {
+          path: `inbox/${id}.md`,
+          text: [
+            "---",
+            `id: ${id}`,
+            "from: alice-agent",
+            "to:",
+            "topic: api",
+            "type: info",
+            "reply_to:",
+            "refs:",
+            "needs: none",
+            "due:",
+            "---",
+            "Snapshot message.",
+          ].join("\n"),
+        },
+      ],
+    };
+    const readSnapshot = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(snapshot), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", readSnapshot);
+    const source: MessageSource = {
+      head: vi.fn(() => Promise.resolve({ revision: "api-revision", validator: null })),
+      listDirectory: vi.fn(() => Promise.resolve([])),
+      readFile: vi.fn(() => Promise.resolve("")),
+      rateLimit: () => null,
+    };
+    const createLiveDemoSource = vi.fn(() => source);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+          <Root
+            storage={{ getItem: () => null, setItem: () => undefined }}
+            stores={{ memory: new MemoryStore(), "browser-encrypted": new MemoryStore() }}
+            createSource={() => source}
+            createDemoSource={() => source}
+            createLiveDemoSource={createLiveDemoSource}
+          />
+        </ThemeProvider>,
+      );
+      await Promise.resolve();
+    });
+    const open = [...host.querySelectorAll("button")].find(
+      (button) => button.textContent === "Open live demo",
+    );
+    await act(async () => {
+      open?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(readSnapshot).toHaveBeenCalledOnce();
+    expect(createLiveDemoSource).not.toHaveBeenCalled();
+    expect(host.textContent).toContain("Snapshot message.");
+    expect(host.textContent).toContain("2026-11-03T08:00:00.000Z");
+    expect(
+      [...host.querySelectorAll("button")].some(
+        (button) => button.textContent === "Check live now",
+      ),
+    ).toBe(true);
+
+    act(() => {
+      root.unmount();
+    });
+    vi.unstubAllGlobals();
   });
 
   it("opens the live source without reading or writing saved settings or credentials", async () => {

@@ -583,3 +583,76 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   expect(settingsFailurePageErrors).toEqual([]);
   assertSettingsFailureRequests();
 });
+
+test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
+  const id = "2026-11-03T0900-alice-agent-api-01";
+  const snapshot = {
+    schemaVersion: 1,
+    generatedAt: "2026-11-03T08:00:00.000Z",
+    revision: "snapshot-tree",
+    files: [
+      { path: ".agent-collab", text: "collab-protocol: 1\nparticipants: alice-agent\n" },
+      {
+        path: `inbox/${id}.md`,
+        text: [
+          "---",
+          `id: ${id}`,
+          "from: alice-agent",
+          "to:",
+          "topic: api",
+          "type: info",
+          "reply_to:",
+          "refs:",
+          "needs: none",
+          "due:",
+          "---",
+          "Snapshot remains available after an API rate limit.",
+        ].join("\n"),
+      },
+    ],
+  };
+  await page.route("**/demo-snapshot.json", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(snapshot),
+    }),
+  );
+  const requests: string[] = [];
+  await page.route("https://api.github.com/**", async (route) => {
+    requests.push(new URL(route.request().url()).pathname);
+    await route.fulfill({
+      status: 403,
+      contentType: "application/json",
+      headers: {
+        "access-control-allow-origin": "*",
+        "access-control-expose-headers":
+          "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset",
+        "x-ratelimit-limit": "60",
+        "x-ratelimit-remaining": "0",
+        "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3600),
+        "retry-after": "3600",
+      },
+      body: JSON.stringify({ message: "Synthetic rate limit" }),
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open live demo" }).click();
+  await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
+  await expect(page.getByText("2026-11-03T08:00:00.000Z")).toBeVisible();
+  expect(requests).toEqual([]);
+
+  await page.getByRole("button", { name: "Check live now" }).click();
+  await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
+  await expect(page.locator(".notice")).toContainText("Next live check");
+  const requestsAfterLimit = requests.length;
+  expect(requestsAfterLimit).toBeGreaterThan(0);
+
+  // Until the reset, further checks and a reopened demo make no API request.
+  await page.getByRole("button", { name: "Check live now" }).click();
+  await expect(page.locator(".notice")).toContainText("paused");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Open live demo" }).click();
+  await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
+  expect(requests).toHaveLength(requestsAfterLimit);
+});

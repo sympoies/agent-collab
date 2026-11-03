@@ -21,6 +21,6 @@ assert.ok(
 );
 assert.match(
   html,
-  /<meta http-equiv="Content-Security-Policy" content="default-src &#39;self&#39;; script-src &#39;self&#39;; object-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;; connect-src https:">/,
+  /<meta http-equiv="Content-Security-Policy" content="default-src &#39;self&#39;; script-src &#39;self&#39;; object-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;; connect-src &#39;self&#39; https:">/,
   "the build-only CSP meta tag should remain in production HTML",
 );
