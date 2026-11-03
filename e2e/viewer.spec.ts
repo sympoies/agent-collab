@@ -650,8 +650,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   expect(focused.outlineStyle).toBe("solid");
   expect(focused.outlineWidth).toBe("3px");
 
-  // Viewing as, Profile & colors, theme, Settings, Questions, Files, All, then the first topic.
-  for (let tab = 0; tab < 8; tab += 1) await page.keyboard.press("Tab");
+  // Viewing as, Profile & colors, Local folder, theme, Settings, Questions, Files, All, then the first topic.
+  for (let tab = 0; tab < 9; tab += 1) await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "#release" })).toHaveAttribute(
     "aria-pressed",
@@ -1144,3 +1144,267 @@ for (const identity of identityCases) {
     assertRequests();
   });
 }
+
+const CLONE_MARKER = "collab-protocol: 1\nparticipants: alice-agent, bob-agent\n";
+
+function cloneMessage(id: string, from: string, body: string): string {
+  return [
+    "---",
+    `id: ${id}`,
+    `from: ${from}`,
+    "to: all",
+    "topic: api",
+    "type: info",
+    "reply_to:",
+    "refs:",
+    "needs: none",
+    "due:",
+    "---",
+    body,
+  ].join("\n");
+}
+
+/**
+ * Stands in for the browser's folder picker with an in-memory clone, so the real production code
+ * path (feature detection, picker, source, polling) runs without a native dialog. The page can
+ * change the clone through window.fakeClone, like a background `git pull` would.
+ */
+async function installFakeFolder(
+  page: Page,
+  options: { picker: "works" | "cancels" | "missing" | "not-a-clone" },
+) {
+  await page.addInitScript(
+    ({ mode, marker, first }) => {
+      if (mode === "missing") {
+        Reflect.deleteProperty(window, "showDirectoryPicker");
+        return;
+      }
+      class FakeFile {
+        readonly kind = "file";
+        constructor(
+          readonly name: string,
+          public content: string,
+          public modified: number,
+        ) {}
+        getFile() {
+          const blob = new Blob([this.content]);
+          Object.defineProperty(blob, "lastModified", { value: this.modified });
+          const content = this.content;
+          Object.defineProperty(blob, "text", {
+            value: () => {
+              counts.textReads += 1;
+              return Promise.resolve(content);
+            },
+          });
+          counts.metadataReads += 1;
+          return Promise.resolve(blob);
+        }
+      }
+      class FakeDirectory {
+        readonly kind = "directory";
+        readonly children = new Map<string, FakeFile | FakeDirectory>();
+        constructor(readonly name: string) {}
+        async *values() {
+          await Promise.resolve();
+          yield* this.children.values();
+        }
+        getDirectoryHandle(name: string) {
+          const child = this.children.get(name);
+          if (!(child instanceof FakeDirectory)) {
+            return Promise.reject(new DOMException("missing", "NotFoundError"));
+          }
+          return Promise.resolve(child);
+        }
+        getFileHandle(name: string) {
+          const child = this.children.get(name);
+          if (!(child instanceof FakeFile)) {
+            return Promise.reject(new DOMException("missing", "NotFoundError"));
+          }
+          return Promise.resolve(child);
+        }
+        queryPermission() {
+          return Promise.resolve(state.permission);
+        }
+      }
+      const counts = { textReads: 0, metadataReads: 0, picks: 0 };
+      const state = { permission: "granted" };
+      const root = new FakeDirectory("demo-clone");
+      const write = (path: string, content: string, modified: number) => {
+        const segments = path.split("/");
+        const name = segments.pop() ?? "";
+        let directory = root;
+        for (const segment of segments) {
+          let child = directory.children.get(segment);
+          if (!(child instanceof FakeDirectory)) {
+            child = new FakeDirectory(segment);
+            directory.children.set(segment, child);
+          }
+          directory = child;
+        }
+        const existing = directory.children.get(name);
+        if (existing instanceof FakeFile) {
+          existing.content = content;
+          existing.modified = modified;
+        } else directory.children.set(name, new FakeFile(name, content, modified));
+      };
+      if (mode !== "not-a-clone") write(".agent-collab", marker, Date.now() - 3_600_000);
+      write("inbox/2026-10/2026-10-08T0900-alice-agent-api-01.md", first, Date.now() - 10 * 60_000);
+      Object.assign(window, {
+        fakeClone: { write, counts, state },
+        showDirectoryPicker: () => {
+          counts.picks += 1;
+          return mode === "cancels"
+            ? Promise.reject(new DOMException("user closed it", "AbortError"))
+            : Promise.resolve(root);
+        },
+      });
+    },
+    {
+      mode: options.picker,
+      marker: CLONE_MARKER,
+      first: cloneMessage(
+        "2026-10-08T0900-alice-agent-api-01",
+        "alice-agent",
+        "The first message from the local clone.",
+      ),
+    },
+  );
+}
+
+for (const view of [
+  { label: "desktop", scheme: "dark", theme: "night-owl", size: { width: 1280, height: 800 } },
+  { label: "phone", scheme: "light", theme: "paper", size: { width: 390, height: 844 } },
+] as const) {
+  test(`a local folder opens, labels itself, polls for changes and shows when it last changed on ${view.label}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: view.scheme });
+    await page.setViewportSize(view.size);
+    await page.clock.install({ time: new Date() });
+    await installFakeFolder(page, { picker: "works" });
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.hostname !== "127.0.0.1") requests.push(url.hostname);
+    });
+    await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", view.theme);
+    await page.getByRole("button", { name: "Open local folder (experimental)" }).click();
+
+    await expect(page.getByRole("heading", { name: "Local folder: demo-clone" })).toBeVisible();
+    if (view.size.width < 721) await page.getByRole("button", { name: /^#api/ }).click();
+    await expect(page.getByText("The first message from the local clone.")).toBeVisible();
+    const indicator = page.locator(".source-indicator");
+    await expect(indicator).toContainText("Local folder · experimental");
+    await expect(indicator.locator(".last-changed")).toHaveText(
+      /^Last change seen (just now|1 minute ago|\d+ minutes ago)$/,
+    );
+    await expect(indicator.locator(".last-changed")).toHaveAttribute(
+      "title",
+      /file modification time/,
+    );
+    await saveScreenshot(page, `local-folder-${view.label}-${view.theme}.png`);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+
+    // A poll of an unchanged folder reads no message text and publishes nothing new.
+    const textReads = () =>
+      page.evaluate(
+        () =>
+          (window as unknown as { fakeClone: { counts: { textReads: number } } }).fakeClone.counts
+            .textReads,
+      );
+    const before = await textReads();
+    await page.clock.fastForward(61_000);
+    await expect.poll(textReads).toBe(before);
+
+    // The clone changes on disk (like a background git pull); the page picks it up by itself.
+    await page.evaluate(() => {
+      const clone = (
+        window as unknown as { fakeClone: { write: (p: string, c: string, m: number) => void } }
+      ).fakeClone;
+      clone.write(
+        "inbox/2026-10/2026-10-08T0905-bob-agent-api-01.md",
+        [
+          "---",
+          "id: 2026-10-08T0905-bob-agent-api-01",
+          "from: bob-agent",
+          "to: all",
+          "topic: api",
+          "type: info",
+          "reply_to:",
+          "refs:",
+          "needs: none",
+          "due:",
+          "---",
+          "A message that arrived on disk.",
+        ].join("\n"),
+        Date.now(),
+      );
+    });
+    await page.clock.fastForward(61_000);
+    await expect(page.getByText("A message that arrived on disk.")).toBeVisible();
+    await expect(indicator.locator(".last-changed")).toHaveText(
+      /^Last change seen (just now|1 minute ago)$/,
+    );
+    expect(requests).toEqual([]);
+  });
+}
+
+test("a browser without a folder picker gets an explanation instead of a broken button", async ({
+  page,
+}) => {
+  await installFakeFolder(page, { picker: "missing" });
+  await page.goto("/");
+  await expect(page.getByText(/needs a browser that can open folders/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /Open local folder/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Open another repository" }).click();
+  await page.getByRole("button", { name: "Open offline demo" }).click();
+  await expect(page.getByRole("button", { name: "Local folder", exact: true })).toHaveCount(0);
+});
+
+test("cancelling the picker, choosing a non-clone folder and revoked permission have clear states", async ({
+  page,
+}) => {
+  await installFakeFolder(page, { picker: "cancels" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open local folder (experimental)" }).click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "No folder selected, or the browser does not allow this folder.",
+  );
+  await expect(page.getByRole("heading", { name: "Agent collaboration viewer" })).toBeVisible();
+
+  const other = await page.context().newPage();
+  await installFakeFolder(other, { picker: "not-a-clone" });
+  await other.goto("/");
+  await other.getByRole("button", { name: "Open local folder (experimental)" }).click();
+  await expect(other.getByRole("alert")).toContainText("not a collaboration clone");
+
+  const revoked = await page.context().newPage();
+  await revoked.clock.install({ time: new Date() });
+  await installFakeFolder(revoked, { picker: "works" });
+  await revoked.goto("/");
+  await revoked.getByRole("button", { name: "Open local folder (experimental)" }).click();
+  await expect(revoked.getByText("The first message from the local clone.")).toBeVisible();
+  await revoked.evaluate(() => {
+    (
+      window as unknown as { fakeClone: { state: { permission: string } } }
+    ).fakeClone.state.permission = "prompt";
+  });
+  await revoked.clock.fastForward(61_000);
+  await expect(revoked.getByRole("alert")).toContainText(
+    "Local folder permission needs to be granted again",
+  );
+  // The messages stay on screen, and choosing the folder again recovers.
+  await expect(revoked.getByText("The first message from the local clone.")).toBeVisible();
+  await revoked.evaluate(() => {
+    (
+      window as unknown as { fakeClone: { state: { permission: string } } }
+    ).fakeClone.state.permission = "granted";
+  });
+  await revoked.getByRole("button", { name: "Local folder", exact: true }).click();
+  await expect(revoked.getByRole("alert")).toHaveCount(0);
+  await expect(revoked.getByText("The first message from the local clone.")).toBeVisible();
+});

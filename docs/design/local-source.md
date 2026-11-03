@@ -1,5 +1,9 @@
 # Local clone source: design decision
 
+**Update, slices 3 and 4:** the freshness work and the experimental source choice are implemented
+(see "Implemented behavior" at the end). The text below keeps the spike's analysis; where it says
+"the current loader republishes" or "current cost", read it as the situation before that update.
+
 **Status:** spike recommendation, 2026-11-03. Browser claims below were checked against the cited primary sources on this date; the small spike does not verify native browser behavior.
 
 ## Recommendation
@@ -86,3 +90,35 @@ Sizes are rough effort estimates, not calendar promises.
 7. **Topic/attachment preview (M, separate issue if desired):** only after a product need; implement segment-safe handle resolution and preview limits.
 
 No fallback helper or topic preview is part of this spike.
+
+## Implemented behavior (slices 3 and 4)
+
+- **Source choice.** The welcome screen and the toolbar of an open viewer offer a local folder, only
+  where `window.showDirectoryPicker` exists; elsewhere the welcome screen explains that a browser
+  with folder access is needed and the toolbar has no folder button. The picker runs straight from
+  the click with `mode: "read"`. Cancelling or a refused folder shows the neutral message; a folder
+  without `.agent-collab` is refused before the viewer opens. The handle stays in memory and is
+  never stored; reloading means picking again. A revoked permission stops the read with the
+  `forbidden` message and keeps the messages on screen; choosing the folder again recovers.
+- **Label.** The source is shown as "Local folder · experimental" until the dedicated-origin and CSP
+  slice lands. The viewer keeps no identity preferences for a local folder, so the folder name is
+  never written to browser storage.
+- **One scan per poll.** A poll walks the root, the inbox and every inbox directory once and reads
+  each file's metadata once. The revision covers the whole scan, so an unchanged folder answers
+  "not modified": the loader lists nothing, reads nothing and does not republish. Listings for the
+  same revision come from the scan, so the loader's later requests cost no further metadata reads.
+  Topic files are not scanned; they are read when an attachment card is opened, and entries carry
+  their size.
+- **Edits in place.** Identities are 53-bit hashes of size and modification time (directories hash
+  their children), so an edited file changes its directory and the loader replaces the loaded item;
+  it is not counted as a new arrival. Same-size edits within the filesystem's timestamp precision can
+  still be missed (accepted); a 53-bit hash makes an accidental collision very unlikely.
+- **Last change.** The newest file modification time of the latest successful scan, shown near the
+  source name as relative text with the exact time on hover and no warning thresholds. A failed scan
+  does not advance it.
+- **Measurement.** `tests/local-folder.test.ts` builds a clone of 3,000 messages in 24 month folders
+  and counts calls on the handle fake: an unchanged poll costs exactly 3,001 metadata reads (one per
+  file, plus the marker), 26 directory enumerations (root, inbox, 24 months) and zero content
+  reads; before this change the same poll cost a metadata walk for the inbox listing, another for
+  each month listing, and a full republish. Measured timings on real disks are part of the
+  Chromium acceptance slice.

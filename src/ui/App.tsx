@@ -22,6 +22,7 @@ import { SourceError } from "../source/types";
 import { FilesView, type AttachmentContext } from "./Attachments";
 import { ChatView } from "./ChatView";
 import { buildPeople } from "./people";
+import { relativeTime } from "./relativeTime";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
 import { ThemeToggle } from "./ThemeProvider";
@@ -38,6 +39,28 @@ function describe(error: unknown): string {
   return "Unexpected error while loading messages.";
 }
 
+/** Names a source that is not a repository, so it is always visible which data is shown. */
+export interface SourceIndicator {
+  readonly label: string;
+  /** Shown as experimental until the source is released. */
+  readonly experimental: boolean;
+}
+
+/** The current time, refreshed every half minute while `active`, for relative texts. */
+function useNow(active: boolean): Date {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setInterval(() => {
+      setNow(new Date());
+    }, 30_000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [active]);
+  return now;
+}
+
 export interface AppProps {
   readonly loader: Loader;
   readonly title: string;
@@ -49,6 +72,10 @@ export interface AppProps {
   readonly notice: string | null;
   readonly pollIntervalMs?: number;
   readonly onCheckLiveNow?: () => Promise<void>;
+  /** The source when it is not a repository; its last-changed time is shown beside it. */
+  readonly source?: SourceIndicator;
+  /** Chooses another local folder; omitted when the browser cannot open folders. */
+  readonly onPickLocalFolder?: () => void;
   readonly onOpenSettings: () => void;
 }
 
@@ -61,8 +88,11 @@ export function App({
   pollIntervalMs,
   onOpenSettings,
   onCheckLiveNow,
+  source,
+  onPickLocalFolder,
 }: AppProps) {
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
+  const now = useNow(source !== undefined && snapshot.lastChanged !== null);
   const pollerRef = useRef<Poller | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
   const [view, setView] = useState<"chat" | "questions" | "files">("chat");
@@ -284,6 +314,24 @@ export function App({
     <div className="app">
       <header className="bar">
         <h1>{title}</h1>
+        {source !== undefined && (
+          <p className="source-indicator">
+            <span className="source-label">
+              {source.label}
+              {source.experimental && " · experimental"}
+            </span>
+            {snapshot.lastChanged === null ? (
+              <span className="last-changed">No file changes seen yet</span>
+            ) : (
+              <span
+                className="last-changed"
+                title={`${snapshot.lastChanged.toLocaleString()} (file modification time on this computer)`}
+              >
+                Last change seen {relativeTime(snapshot.lastChanged, now)}
+              </span>
+            )}
+          </p>
+        )}
         <div className="bar-actions">
           {onCheckLiveNow === undefined ? (
             <button
@@ -339,6 +387,11 @@ export function App({
           >
             Profile &amp; colors
           </button>
+          {onPickLocalFolder !== undefined && (
+            <button type="button" onClick={onPickLocalFolder}>
+              Local folder
+            </button>
+          )}
           <ThemeToggle />
           <button type="button" onClick={onOpenSettings}>
             Settings

@@ -98,6 +98,7 @@ describe("live demo transitions", () => {
             createSource={() => new FixtureSource({})}
             createDemoSource={() => new FixtureSource({})}
             createLiveDemoSource={createLiveDemoSource}
+            openLocalFolder={null}
           />
         </ThemeProvider>,
       );

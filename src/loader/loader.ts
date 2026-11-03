@@ -32,6 +32,8 @@ export interface LoaderSnapshot {
   readonly rosterKnown: boolean;
   /** Topics with pending/unavailable files, or null when their topics cannot be determined. */
   readonly incompleteTopics: readonly string[] | null;
+  /** When the source's data last changed, as of the latest successful read, or null. */
+  readonly lastChanged: Date | null;
 }
 
 export interface LoaderOptions {
@@ -163,6 +165,8 @@ export class Loader {
    * again with growing spacing: after 1, 2, 4, ... refreshes, at most 15.
    */
   private readonly unavailable = new Map<string, RetryState>();
+  /** Object id each loaded file was read at, to notice a file edited in place. */
+  private readonly loadedIds = new Map<string, string>();
   private readonly fresh = new Set<string>();
   private participants: readonly string[] = [];
   private formerParticipants: readonly string[] = [];
@@ -180,6 +184,7 @@ export class Loader {
     formerParticipants: [],
     rosterKnown: false,
     incompleteTopics: null,
+    lastChanged: null,
   };
   private queue: Promise<unknown> = Promise.resolve();
   private opening: Promise<void> | null = null;
@@ -283,8 +288,9 @@ export class Loader {
         const participantData = await this.readMarker(root);
         const inbox = await this.listOrEmpty(head.revision, "inbox");
         this.updateRetries(inbox);
+        this.updatePending(inbox);
         const found: DirectoryEntry[] = inbox.filter(
-          (entry) => isMessageFile(entry) && !this.isKnown(entry.name),
+          (entry) => isMessageFile(entry) && (!this.isKnown(entry.name) || this.isEdited(entry)),
         );
         const monthUpdates = new Map<string, string>();
         for (const month of inbox.filter(isMonth)) {
@@ -293,13 +299,24 @@ export class Loader {
           if (unlisted || listedId === month.objectId) continue;
           const entries = await this.source.listDirectory(head.revision, month.path);
           this.updateRetries(entries);
-          found.push(...entries.filter((e) => isMessageFile(e) && !this.isKnown(e.name)));
+          this.updatePending(entries);
+          found.push(
+            ...entries.filter(
+              (e) => isMessageFile(e) && (!this.isKnown(e.name) || this.isEdited(e)),
+            ),
+          );
           monthUpdates.set(month.name, month.objectId);
         }
         const retries = this.dueRetries();
+        // A file edited in place replaces its item; it is not a new arrival.
+        const edited = new Set(
+          found.filter((entry) => this.items.has(entry.name)).map((e) => e.name),
+        );
         const added = await this.readAll(found);
         const recovered = await this.readAll(retries);
-        const arrived = added.filter((item) => item.kind !== "unavailable");
+        const arrived = added.filter(
+          (item) => item.kind !== "unavailable" && !edited.has(itemName(item)),
+        );
         for (const [name, objectId] of monthUpdates) this.listedMonths.set(name, objectId);
         for (const item of arrived) this.fresh.add(itemPath(item));
         this.head = head;
@@ -350,6 +367,7 @@ export class Loader {
       try {
         const item = parseMessageFile(entry.path, await this.source.readFile(entry));
         this.unavailable.delete(entry.name);
+        this.loadedIds.set(entry.name, entry.objectId);
         return item;
       } catch (error) {
         if (error instanceof SourceError && PER_FILE_ERRORS.has(error.kind)) {
@@ -390,6 +408,20 @@ export class Loader {
     }
   }
 
+  /** A loaded file whose object id differs from the one it was read at was edited in place. */
+  private isEdited(entry: DirectoryEntry): boolean {
+    const loaded = this.loadedIds.get(entry.name);
+    return loaded !== undefined && loaded !== entry.objectId;
+  }
+
+  /** Keeps the newest listed entry of a file that is listed but not loaded yet. */
+  private updatePending(entries: readonly DirectoryEntry[]): void {
+    for (const entry of entries) {
+      const index = this.pending.findIndex((candidate) => candidate.name === entry.name);
+      if (index !== -1) this.pending[index] = entry;
+    }
+  }
+
   private isKnown(name: string): boolean {
     return this.items.has(name) || this.pending.some((entry) => entry.name === name);
   }
@@ -407,6 +439,7 @@ export class Loader {
       formerParticipants: this.formerParticipants,
       rosterKnown: this.rosterKnown,
       incompleteTopics: this.incompleteTopics(),
+      lastChanged: this.source.lastChanged?.() ?? null,
     };
     for (const listener of this.listeners) listener();
   }

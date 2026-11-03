@@ -35,6 +35,11 @@ export interface MessageSource {
   readFile(entry: DirectoryEntry): Promise<string>;
   /** Rate-limit state from the most recent response, or null if unknown. */
   rateLimit(): RateLimit | null;
+  /**
+   * When the data seen by the latest successful read last changed (for a local folder, the newest
+   * file modification time). Sources that cannot tell omit it.
+   */
+  lastChanged?(): Date | null;
   /** Bytes of a file entry, for image previews. Sources that cannot read bytes omit it. */
   readBytes?(entry: DirectoryEntry): Promise<Uint8Array>;
   /**

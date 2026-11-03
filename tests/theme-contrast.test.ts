@@ -168,6 +168,8 @@ describe("theme text contrast", () => {
         ["--text", "--inset"],
         ["--text", "--code"],
         ["--secondary", "--card"],
+        ["--secondary", "--toolbar"],
+        ["--warm-note", "--toolbar"],
         ["--muted", "--canvas"],
         ["--muted", "--card"],
         ["--muted", "--toolbar"],
