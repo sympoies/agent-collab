@@ -407,7 +407,19 @@ public blobs.
   tab with `rel="noopener noreferrer"`, and anything else stays plain text.
   Previews are text or the small Markdown subset in `src/ui/Markdown.tsx`,
   rendered as React elements: raw HTML stays text, Markdown images are shown as
-  their alt text, only http(s) links are links. The **Files** entry lists every
+  their alt text, only http(s) links are links. The Markdown scan has bounded
+  patterns and a line longer than 2,000 characters is shown as plain text, so a
+  hostile file cannot make rendering quadratic.
+
+  Limits of a preview: a file is downloaded only when the source reports its
+  size and the size is within the cap (200 KB, images 2 MB); the downloaded
+  text is checked again in bytes. An image must also have a readable PNG, GIF,
+  JPEG or WebP header and at most 25 megapixels, so a small file cannot decode
+  to a huge bitmap. A CSV shows at most 100 rows and 50 columns. A file is read
+  once per revision however often its card is opened (the failed read is not
+  remembered, and nothing retries by itself), which matters for the anonymous
+  request quota. A source that reports no size, such as the local folder
+  source today, shows metadata only until it reports one. The **Files** entry lists every
   file and link referenced in the current conversation (all topics or the
   selected one), newest reference first. It lists only loaded messages: it
   shows the same "Load older messages" control as the chat and a note while

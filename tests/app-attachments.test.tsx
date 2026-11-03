@@ -6,11 +6,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Loader } from "../src/loader/loader";
 import { FixtureSource } from "../src/source/fixture";
-import type { DirectoryEntry, MessageSource } from "../src/source/types";
+import { SourceError, type DirectoryEntry, type MessageSource } from "../src/source/types";
 import { App } from "../src/ui/App";
-import { CSV_PREVIEW_ROWS, formatSize, TEXT_PREVIEW_MAX_BYTES } from "../src/ui/Attachments";
+import {
+  CSV_PREVIEW_COLUMNS,
+  CSV_PREVIEW_ROWS,
+  formatSize,
+  IMAGE_PREVIEW_MAX_BYTES,
+  TEXT_PREVIEW_MAX_BYTES,
+} from "../src/ui/Attachments";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
-import { messageText } from "./support";
+import { messageText, pngBytes } from "./support";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -214,8 +220,45 @@ describe("attachments", () => {
     expect(host.querySelector(".files .file-from")?.textContent).toContain("alice-agent · #api");
   });
 
-  it("creates image blob URLs only from bytes read through the source and revokes them when the preview closes", async () => {
-    const IMG = "2026-10-02T0900-alice-agent-api-01";
+  const IMG = "2026-10-02T0900-alice-agent-api-01";
+  const imageRepo = (refs = "topics/api/pic.png, https://evil.example/remote.png") => ({
+    ".agent-collab": "collab-protocol: 1\n",
+    [`inbox/${IMG}.md`]: messageText(IMG, "alice-agent", "api", { refs }, "An image."),
+    "topics/api/pic.png": "x",
+    "topics/api/big.png": "y",
+  });
+
+  /** A source whose listed files have these bytes (and sizes), like a provider's binary blobs. */
+  function binarySource(binary: Record<string, Uint8Array>, sizes: Record<string, number> = {}) {
+    const base = new FixtureSource(imageRepo("topics/api/pic.png, topics/api/big.png"));
+    const reads: string[] = [];
+    const source: MessageSource = {
+      head: (previous) => base.head(previous),
+      listDirectory: async (revision, path) =>
+        (await base.listDirectory(revision, path)).map((entry) =>
+          entry.path in binary
+            ? { ...entry, size: sizes[entry.path] ?? binary[entry.path]?.length ?? 0 }
+            : entry,
+        ),
+      readFile: (entry) => base.readFile(entry),
+      readBytes: (entry) => {
+        reads.push(entry.path);
+        return Promise.resolve(binary[entry.path] ?? new Uint8Array());
+      },
+      rateLimit: () => null,
+    };
+    return { source, reads };
+  }
+
+  async function toggle(card: HTMLElement, open: boolean): Promise<void> {
+    await act(async () => {
+      (card as HTMLDetailsElement).open = open;
+      card.dispatchEvent(new Event("toggle"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  it("creates image blob URLs only from bytes read through the source, revokes them on close and never reuses a stale one", async () => {
     const created: Blob[] = [];
     const revoked: string[] = [];
     const createSpy = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
@@ -226,39 +269,166 @@ describe("attachments", () => {
       revoked.push(url);
     });
     try {
-      const source = new FixtureSource({
-        ".agent-collab": "collab-protocol: 1\n",
-        [`inbox/${IMG}.md`]: messageText(
-          IMG,
-          "alice-agent",
-          "api",
-          { refs: "topics/api/pic.png, https://evil.example/remote.png" },
-          "An image.",
-        ),
-        "topics/api/pic.png": "PNGDATA",
-      });
+      const png = pngBytes(10, 10);
+      const { source, reads } = binarySource({ "topics/api/pic.png": png });
       const host = await render(source);
       const card = await open(host, "pic.png");
-      const image = card.querySelector("img");
-      expect(image?.getAttribute("src")).toBe("blob:test-1");
-      expect(created).toHaveLength(1);
+      expect(card.querySelector("img")?.getAttribute("src")).toBe("blob:test-1");
       expect(created[0]?.type).toBe("image/png");
-      expect(new TextDecoder().decode(await created[0]?.arrayBuffer())).toBe("PNGDATA");
+      expect([...new Uint8Array((await created[0]?.arrayBuffer()) ?? new ArrayBuffer(0))]).toEqual([
+        ...png,
+      ]);
       // A URL in refs is a link chip; it never becomes an image source.
       expect(host.querySelector(`img[src^="https"]`)).toBeNull();
       expect(revoked).toEqual([]);
 
-      await act(async () => {
-        (card as HTMLDetailsElement).open = false;
-        card.dispatchEvent(new Event("toggle"));
-        await Promise.resolve();
-      });
+      await toggle(card, false);
       expect(card.querySelector("img")).toBeNull();
       expect(revoked).toEqual(["blob:test-1"]);
+
+      // Opening again reads nothing new from the source, and uses a fresh URL, not the revoked one.
+      await toggle(card, true);
+      expect(card.querySelector("img")?.getAttribute("src")).toBe("blob:test-2");
+      await toggle(card, false);
+      expect(revoked).toEqual(["blob:test-1", "blob:test-2"]);
+      expect(created).toHaveLength(2);
+      expect(reads).toEqual(["topics/api/pic.png"]);
     } finally {
       createSpy.mockRestore();
       revokeSpy.mockRestore();
     }
+  });
+
+  it("revokes the blob URL when the view goes away", async () => {
+    const revoked: string[] = [];
+    const createSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:gone-1");
+    const revokeSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation((url) => {
+      revoked.push(url);
+    });
+    try {
+      const { source } = binarySource({ "topics/api/pic.png": pngBytes(2, 2) });
+      const host = await render(source);
+      await open(host, "pic.png");
+      expect(revoked).toEqual([]);
+      act(() => {
+        mounted?.root.unmount();
+      });
+      mounted = null;
+      expect(revoked).toEqual(["blob:gone-1"]);
+    } finally {
+      createSpy.mockRestore();
+      revokeSpy.mockRestore();
+    }
+  });
+
+  it("refuses an image above the pixel cap, one with an unreadable header and one above the byte cap", async () => {
+    const createSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:never");
+    try {
+      const { source } = binarySource(
+        {
+          "topics/api/pic.png": pngBytes(8000, 8000),
+          "topics/api/big.png": pngBytes(1, 1),
+        },
+        { "topics/api/big.png": IMAGE_PREVIEW_MAX_BYTES + 1 },
+      );
+      const host = await render(source);
+      const bomb = await open(host, "pic.png");
+      expect(bomb.textContent).toContain("Too many pixels to preview (8000\u00d78000)");
+      expect(bomb.querySelector("img")).toBeNull();
+      const big = await open(host, "big.png");
+      expect(big.textContent).toContain("Too large to preview");
+      expect(createSpy).not.toHaveBeenCalled();
+
+      const bad = binarySource({ "topics/api/pic.png": Uint8Array.from([1, 2, 3, 4]) });
+      act(() => {
+        mounted?.root.unmount();
+      });
+      mounted = null;
+      document.body.replaceChildren();
+      const badHost = await render(bad.source);
+      const unreadable = await open(badHost, "pic.png");
+      expect(unreadable.textContent).toContain("The image size could not be read");
+      expect(createSpy).not.toHaveBeenCalled();
+    } finally {
+      createSpy.mockRestore();
+    }
+  });
+
+  it("does not preview a file whose size the source does not report", async () => {
+    const base = new FixtureSource(files);
+    const reads: string[] = [];
+    const source: MessageSource = {
+      head: (previous) => base.head(previous),
+      listDirectory: async (revision, path) =>
+        (await base.listDirectory(revision, path)).map((entry) => ({
+          name: entry.name,
+          path: entry.path,
+          kind: entry.kind,
+          objectId: entry.objectId,
+        })),
+      readFile: (entry) => {
+        if (entry.path.startsWith("topics/")) reads.push(entry.path);
+        return base.readFile(entry);
+      },
+      rateLimit: () => null,
+    };
+    const host = await render(source);
+    const card = await open(host, "fields.md");
+    expect(card.textContent).toContain("The file size is unknown, so it is not previewed.");
+    expect(card.querySelector("h1")).toBeNull();
+    expect(reads).toEqual([]);
+  });
+
+  it.each([
+    [
+      "a rate limit",
+      new SourceError("rate-limited", "topics/api/fields.md", 403),
+      "request limit is reached",
+    ],
+    [
+      "a failed read",
+      new SourceError("unreachable", "topics/api/fields.md"),
+      "Could not load this file.",
+    ],
+  ])("shows %s once, without retrying by itself", async (_name, error, message) => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
+    try {
+      const base = new FixtureSource(files);
+      let reads = 0;
+      const source: MessageSource = {
+        head: (previous) => base.head(previous),
+        listDirectory: (revision, path) => base.listDirectory(revision, path),
+        readFile: (entry) => {
+          if (!entry.path.startsWith("topics/")) return base.readFile(entry);
+          reads += 1;
+          return Promise.reject(error);
+        },
+        rateLimit: () => null,
+      };
+      vi.useRealTimers();
+      const host = await render(source);
+      const card = await open(host, "fields.md");
+      expect(card.textContent).toContain(message);
+      expect(card.querySelector("h1")).toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(reads).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("caps the columns of a wide CSV and says so", async () => {
+    const wide = Array.from({ length: CSV_PREVIEW_COLUMNS + 30 }, (_, i) => `c${String(i)}`).join(
+      ",",
+    );
+    const host = await render(
+      new FixtureSource({ ...files, "topics/api/data.csv": `${wide}\n${wide}` }),
+    );
+    const card = await open(host, "data.csv");
+    expect(card.querySelectorAll("th")).toHaveLength(CSV_PREVIEW_COLUMNS);
+    expect(card.textContent).toContain(
+      `Showing the first ${String(CSV_PREVIEW_COLUMNS)} of ${String(CSV_PREVIEW_COLUMNS + 30)} columns.`,
+    );
   });
 
   it("switches to the topic of a referenced message in another topic", async () => {

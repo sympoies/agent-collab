@@ -50,3 +50,33 @@ export function monthly(month: string, day: number, minute: number): string {
 export function flat(month: string, day: number, minute: number): string {
   return monthly(month, day, minute).replace(`inbox/${month}/`, "inbox/");
 }
+
+/** The first bytes of a PNG file: enough for a header reader, not a decodable image. */
+export function pngBytes(width: number, height: number): Uint8Array {
+  const u32 = (n: number) => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
+  return Uint8Array.from([
+    137,
+    80,
+    78,
+    71,
+    13,
+    10,
+    26,
+    10,
+    0,
+    0,
+    0,
+    13,
+    73,
+    72,
+    68,
+    82,
+    ...u32(width),
+    ...u32(height),
+    8,
+    6,
+    0,
+    0,
+    0,
+  ]);
+}

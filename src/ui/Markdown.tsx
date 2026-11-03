@@ -5,9 +5,14 @@ import type { ReactNode } from "react";
 
 import { classifyRef } from "../message/refs";
 
-const INLINE_RE = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|!?\[[^\]]*\]\([^)\s]*\))/;
+// Every quantifier is bounded so a hostile file cannot make the scan quadratic, and a line longer
+// than MAX_INLINE_LENGTH is shown as plain text without any scan at all.
+const INLINE_RE =
+  /(`[^`]{1,500}`|\*\*[^*]{1,500}\*\*|\*[^*\s][^*]{0,500}\*|!?\[[^\]]{0,500}\]\([^)\s]{0,2000}\))/;
+const MAX_INLINE_LENGTH = 2000;
 
 function inline(text: string, keyPrefix: string): ReactNode[] {
+  if (text.length > MAX_INLINE_LENGTH) return [text];
   return text.split(INLINE_RE).flatMap((part, index): ReactNode[] => {
     const key = `${keyPrefix}-${String(index)}`;
     if (part === "") return [];

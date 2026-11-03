@@ -60,4 +60,40 @@ describe("Markdown", () => {
     expect(out).not.toContain("<img");
     expect(out).toContain("chart");
   });
+
+  it("keeps unterminated markers, a lone backtick and an unclosed fence as text", () => {
+    expect(html("**not closed")).toContain("**not closed");
+    expect(html("a lone ` backtick")).toContain("a lone ` backtick");
+    const fenced = html("```\ncode without end\nmore");
+    expect(fenced).toContain("<pre><code>code without end\nmore</code></pre>");
+  });
+
+  it("shows a very long line as one plain paragraph", () => {
+    const line = `**bold** ${"x".repeat(10_000)}`;
+    const out = html(line);
+    expect(out).not.toContain("<strong>");
+    expect(out).toContain("x".repeat(10_000));
+  });
+
+  it("never mentions the target of an image or an unsafe link", () => {
+    const out = html("![chart](https://evil.example/x.png) [bad](javascript:alert(1))");
+    expect(out).not.toContain("evil.example");
+    expect(out).not.toContain("alert(1)");
+    expect(out).not.toContain("<a ");
+    expect(out).toContain("chart");
+    expect(out).toContain("bad");
+  });
+
+  it.each([
+    ["open brackets", "[".repeat(200_000)],
+    ["unclosed links", "[a](".repeat(50_000)],
+    ["unclosed bold", "**".repeat(100_000)],
+    ["backticks", "`".repeat(200_000)],
+    ["stars", "*a ".repeat(60_000)],
+    ["many short lines", "[a](\n".repeat(40_000)],
+  ])("renders %s in bounded time", (_name, text) => {
+    const started = performance.now();
+    html(text);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
 });

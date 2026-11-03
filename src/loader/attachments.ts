@@ -12,15 +12,20 @@ export interface FileInfo {
 
 export type TextRead =
   | { readonly state: "ready"; readonly text: string }
-  | { readonly state: "too-large"; readonly size: number };
+  | { readonly state: "too-large"; readonly size: number }
+  /** The source did not report a size, so the file is not downloaded for a preview. */
+  | { readonly state: "unknown-size" };
 
 export type BytesRead =
   | { readonly state: "ready"; readonly bytes: Uint8Array }
   | { readonly state: "too-large"; readonly size: number }
+  | { readonly state: "unknown-size" }
   | { readonly state: "unsupported" };
 
 export class AttachmentReader {
   private readonly listings = new Map<string, Promise<readonly DirectoryEntry[] | null>>();
+  /** Reads by object id and cap, so opening a card again never downloads the file again. */
+  private readonly reads = new Map<string, Promise<TextRead | BytesRead>>();
 
   constructor(
     private readonly source: MessageSource,
@@ -52,26 +57,29 @@ export class AttachmentReader {
     return { path, name: entry.name, size: entry.size ?? null };
   }
 
-  async readText(path: string, maxBytes: number): Promise<TextRead> {
-    const entry = await this.requireEntry(path);
-    if (entry.size !== undefined && entry.size > maxBytes) {
-      return { state: "too-large", size: entry.size };
-    }
-    const text = await this.source.readFile(entry);
-    const size = new TextEncoder().encode(text).length;
-    return size > maxBytes ? { state: "too-large", size } : { state: "ready", text };
+  /** Text of a file within `maxBytes`; a file without a reported size is not downloaded. */
+  readText(path: string, maxBytes: number): Promise<TextRead> {
+    return this.cachedRead("text", path, maxBytes, async (entry): Promise<TextRead> => {
+      if (entry.size === undefined) return { state: "unknown-size" };
+      if (entry.size > maxBytes) return { state: "too-large", size: entry.size };
+      const text = await this.source.readFile(entry);
+      // The listing's size can be wrong; the downloaded text is checked again, in bytes.
+      const size = new TextEncoder().encode(text).length;
+      return size > maxBytes ? { state: "too-large", size } : { state: "ready", text };
+    }) as Promise<TextRead>;
   }
 
-  async readBytes(path: string, maxBytes: number): Promise<BytesRead> {
-    const entry = await this.requireEntry(path);
-    if (this.source.readBytes === undefined) return { state: "unsupported" };
-    if (entry.size !== undefined && entry.size > maxBytes) {
-      return { state: "too-large", size: entry.size };
-    }
-    const bytes = await this.source.readBytes(entry);
-    return bytes.length > maxBytes
-      ? { state: "too-large", size: bytes.length }
-      : { state: "ready", bytes };
+  /** Bytes of a file within `maxBytes`; a file without a reported size is not downloaded. */
+  readBytes(path: string, maxBytes: number): Promise<BytesRead> {
+    return this.cachedRead("bytes", path, maxBytes, async (entry): Promise<BytesRead> => {
+      if (this.source.readBytes === undefined) return { state: "unsupported" };
+      if (entry.size === undefined) return { state: "unknown-size" };
+      if (entry.size > maxBytes) return { state: "too-large", size: entry.size };
+      const bytes = await this.source.readBytes(entry);
+      return bytes.length > maxBytes
+        ? { state: "too-large", size: bytes.length }
+        : { state: "ready", bytes };
+    }) as Promise<BytesRead>;
   }
 
   webLink(path: string): { readonly url: string; readonly label: string } | null {
@@ -82,5 +90,23 @@ export class AttachmentReader {
     const entry = await this.entry(path);
     if (entry === null) throw new SourceError("not-found", path);
     return entry;
+  }
+
+  private async cachedRead(
+    kind: "text" | "bytes",
+    path: string,
+    maxBytes: number,
+    read: (entry: DirectoryEntry) => Promise<TextRead | BytesRead>,
+  ): Promise<TextRead | BytesRead> {
+    const entry = await this.requireEntry(path);
+    const key = `${kind}\0${entry.objectId}\0${String(maxBytes)}`;
+    let result = this.reads.get(key);
+    if (result === undefined) {
+      result = read(entry);
+      this.reads.set(key, result);
+      // A failure is not remembered: the next explicit open tries again, never automatically.
+      result.catch(() => this.reads.delete(key));
+    }
+    return result;
   }
 }

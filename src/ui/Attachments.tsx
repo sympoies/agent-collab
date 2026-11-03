@@ -6,6 +6,7 @@ import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 
 import type { AttachmentReader, FileInfo } from "../loader/attachments";
 import { parseCsv } from "../message/csv";
+import { IMAGE_MAX_PIXELS, imageDimensions } from "../message/image";
 import { classifyRef, imageMime, type FileKind, type Ref } from "../message/refs";
 import type { Message } from "../message/types";
 import { SourceError } from "../source/types";
@@ -15,8 +16,9 @@ import { Markdown } from "./Markdown";
 export const TEXT_PREVIEW_MAX_BYTES = 200 * 1024;
 /** Largest image that is previewed. */
 export const IMAGE_PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
-/** CSV rows shown in a preview. */
+/** CSV rows and columns shown in a preview. */
 export const CSV_PREVIEW_ROWS = 100;
+export const CSV_PREVIEW_COLUMNS = 50;
 
 export interface AttachmentContext {
   readonly reader: AttachmentReader;
@@ -41,9 +43,13 @@ export function formatSize(size: number | null): string {
 }
 
 function failure(error: unknown): string {
-  return error instanceof SourceError && error.kind === "not-found"
-    ? "This file is not in the repository at this revision."
-    : "Could not load this file.";
+  if (error instanceof SourceError && error.kind === "not-found") {
+    return "This file is not in the repository at this revision.";
+  }
+  if (error instanceof SourceError && error.kind === "rate-limited") {
+    return "Could not load this file: the request limit is reached. Try again later.";
+  }
+  return "Could not load this file.";
 }
 
 type Load<T> =
@@ -111,6 +117,15 @@ function TextPreview({
   if (result.state === "loading") return <p className="note">Loading preview…</p>;
   if (result.state === "error") return <p className="note">{result.message}</p>;
   const read = result.value;
+  if (read.state === "unknown-size") {
+    return (
+      <NoPreview
+        reader={reader}
+        path={path}
+        reason="The file size is unknown, so it is not previewed."
+      />
+    );
+  }
   if (read.state === "too-large") {
     return (
       <NoPreview
@@ -126,6 +141,7 @@ function TextPreview({
       read.text,
       path.toLowerCase().endsWith(".tsv") ? "\t" : ",",
       CSV_PREVIEW_ROWS,
+      CSV_PREVIEW_COLUMNS,
     );
     return (
       <div className="csv-preview">
@@ -152,6 +168,11 @@ function TextPreview({
             Showing the first {String(CSV_PREVIEW_ROWS)} of {String(table.totalRows)} rows.
           </p>
         )}
+        {table.columnsTruncated && (
+          <p className="note">
+            Showing the first {String(CSV_PREVIEW_COLUMNS)} of {String(table.totalColumns)} columns.
+          </p>
+        )}
       </div>
     );
   }
@@ -171,22 +192,36 @@ function ImagePreview({
   const mime = imageMime(name);
   const bytes =
     result.state === "done" && result.value.state === "ready" ? result.value.bytes : null;
+  // A small file can decode to a huge bitmap, so the header size is checked before any decoding.
+  const size = bytes === null ? null : imageDimensions(bytes);
+  const pixels = size === null ? null : size.width * size.height;
+  const shown = bytes !== null && pixels !== null && pixels <= IMAGE_MAX_PIXELS ? bytes : null;
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
-    if (bytes === null || mime === null) return;
-    const objectUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mime }));
+    if (shown === null || mime === null) return;
+    const objectUrl = URL.createObjectURL(new Blob([new Uint8Array(shown)], { type: mime }));
     // The object URL exists only while the preview is mounted, so it has to be state.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setUrl(objectUrl);
     return () => {
       URL.revokeObjectURL(objectUrl);
+      setUrl(null);
     };
-  }, [bytes, mime]);
+  }, [shown, mime]);
   if (result.state === "loading") return <p className="note">Loading preview…</p>;
   if (result.state === "error") return <p className="note">{result.message}</p>;
   const read = result.value;
   if (read.state === "unsupported") {
     return <NoPreview reader={reader} path={path} reason="This source cannot preview images." />;
+  }
+  if (read.state === "unknown-size") {
+    return (
+      <NoPreview
+        reader={reader}
+        path={path}
+        reason="The file size is unknown, so it is not previewed."
+      />
+    );
   }
   if (read.state === "too-large") {
     return (
@@ -194,6 +229,24 @@ function ImagePreview({
         reader={reader}
         path={path}
         reason={`Too large to preview (${formatSize(read.size)}).`}
+      />
+    );
+  }
+  if (size === null) {
+    return (
+      <NoPreview
+        reader={reader}
+        path={path}
+        reason="The image size could not be read, so it is not previewed."
+      />
+    );
+  }
+  if (shown === null) {
+    return (
+      <NoPreview
+        reader={reader}
+        path={path}
+        reason={`Too many pixels to preview (${String(size.width)}\u00d7${String(size.height)}).`}
       />
     );
   }
