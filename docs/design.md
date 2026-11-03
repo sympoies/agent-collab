@@ -392,8 +392,26 @@ public blobs.
   questions the viewer ("Viewing as") still has to answer are marked "Waiting
   for you" and listed first. Choosing a question opens its topic at that
   message.
-- **Refs.** Listed under the body as text. Opening `topics/` documents is a
-  later slice.
+- **Refs and attachments.** Each `refs` entry becomes a chip under the body.
+  A safe `topics/` path (repository-relative segments only; no `.`, `..`,
+  empty segments, backslashes, `%` escapes or control characters) is a file
+  card with a type badge (MD, TXT, CSV, IMG, FILE) and its name. Opening the
+  card reads its directory listing once per revision, for the size, so a long
+  thread makes no request until a card is opened; the card then shows the size,
+  the path and an "Open in GitHub" link from the source
+  (`MessageSource.webLink`) to the file at the revision being viewed, which keeps provider details out of the UI. A
+  message id jumps to and highlights that message (`:target`), a URL shows its
+  host and opens in a new tab with `rel="noopener noreferrer"`, and anything
+  else stays plain text. The **Files** entry lists every file and link
+  referenced in the current conversation (all topics or the selected one),
+  newest reference first. It lists only loaded messages: it shows the same
+  "Load older messages" control as the chat and a note while older pages are
+  not loaded, so attachments of older messages are not silently missing.
+  Inline previews of Markdown, text, CSV and images
+  are a later slice.
+
+  Out of scope (follow-up): a "sidecar note" for data files, because the
+  repository documents no naming convention for it; it is not invented here.
 - **Body.** Plain text with preserved line breaks. No Markdown-to-HTML and no
   `innerHTML`: message text cannot inject markup.
 - **States.** `locked` bodies show a lock placeholder ("Encrypted message.

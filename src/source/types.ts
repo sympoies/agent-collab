@@ -16,6 +16,8 @@ export interface DirectoryEntry {
   readonly kind: "file" | "directory";
   /** Stable identity for this listed version; content hashes or source metadata may provide it. */
   readonly objectId: string;
+  /** Size in bytes when the source knows it without reading the file. */
+  readonly size?: number;
 }
 
 export interface RateLimit {
@@ -33,6 +35,14 @@ export interface MessageSource {
   readFile(entry: DirectoryEntry): Promise<string>;
   /** Rate-limit state from the most recent response, or null if unknown. */
   rateLimit(): RateLimit | null;
+  /**
+   * A link to the file on the provider's web page at `revision` (a branch or default is used when
+   * it is null); the label names the provider.
+   */
+  webLink?(
+    path: string,
+    revision: string | null,
+  ): { readonly url: string; readonly label: string } | null;
 }
 
 export type SourceErrorKind =

@@ -20,6 +20,7 @@ function makeMessage(
   body: string,
   to = "bob-agent",
   replyTo = "",
+  refs = "",
 ): MessageFixture {
   const id = `${date}T${time}-${from}-${topic}-${String(sequence).padStart(2, "0")}`;
   return {
@@ -32,7 +33,7 @@ function makeMessage(
       `topic: ${topic}`,
       `type: ${type}`,
       `reply_to: ${replyTo}`,
-      "refs:",
+      `refs: ${refs}`.trimEnd(),
       "needs: none",
       "due:",
       "---",
@@ -219,6 +220,58 @@ function questionThread(): MessageFixture[] {
   ];
 }
 
+const PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+const TOPIC_FILES: Readonly<Record<string, { sha: string; body: string | Buffer }>> = {
+  "fields-v1.md": {
+    sha: "topic-md",
+    body: "# Field list\n\n- **id** is required\n- `note` is optional\n\n<script>window.pwned = true</script>\n",
+  },
+  "results.csv": { sha: "topic-csv", body: 'name,score\nalice,"9, great"\nbob,7\n' },
+  "diagram.png": { sha: "topic-png", body: Buffer.from(PNG_BASE64, "base64") },
+  "archive.bin": { sha: "topic-bin", body: "opaque bytes" },
+};
+
+function attachmentThread(): MessageFixture[] {
+  const first = makeMessage(
+    "2026-10-08",
+    "0900",
+    "alice-agent",
+    "api",
+    1,
+    "info",
+    "The review files are attached.",
+    "bob-agent",
+    "",
+    "topics/api/fields-v1.md, topics/api/results.csv, topics/api/diagram.png, topics/api/archive.bin, https://docs.example.com/guide, topics/api/other.md, topics/api/an-extraordinarily-long-file-name-that-keeps-going-and-going-for-the-phone-viewport-check-0123456789.md, https://a-very-long-host-name-for-the-wrapping-check-at-phone-width.example.invalid/path, 2026-10-08T0910-alice-agent-ops-01",
+  );
+  return [
+    first,
+    makeMessage(
+      "2026-10-08",
+      "0910",
+      "alice-agent",
+      "ops",
+      1,
+      "info",
+      "An operations note in another topic.",
+    ),
+    makeMessage(
+      "2026-10-08",
+      "0905",
+      "bob-agent",
+      "api",
+      2,
+      "info",
+      "Looks good; see my earlier message.",
+      "alice-agent",
+      "",
+      first.id,
+    ),
+  ];
+}
+
 function treeEntry(path: string, sha: string, type: "blob" | "tree") {
   return { path, sha, type, mode: type === "tree" ? "040000" : "100644" };
 }
@@ -232,8 +285,18 @@ function json(route: Route, value: unknown, status = 200, headers: Record<string
   });
 }
 
-async function installApiStub(page: Page, mode: "long" | "questions" | "empty" | "error") {
-  const messages = mode === "long" ? longThread() : mode === "questions" ? questionThread() : [];
+async function installApiStub(
+  page: Page,
+  mode: "long" | "questions" | "attachments" | "empty" | "error",
+) {
+  const messages =
+    mode === "long"
+      ? longThread()
+      : mode === "questions"
+        ? questionThread()
+        : mode === "attachments"
+          ? attachmentThread()
+          : [];
   const arrivalOne = makeMessage(
     "2026-10-09",
     "1030",
@@ -258,6 +321,7 @@ async function installApiStub(page: Page, mode: "long" | "questions" | "empty" |
     ["marker", "collab-protocol: 1\nparticipants: alice-agent, bob-agent\n"],
   ]);
   const unhandled: string[] = [];
+  const topicBlobRequests: string[] = [];
   let headCalls = 0;
   let completedHeadCalls = 0;
 
@@ -303,6 +367,7 @@ async function installApiStub(page: Page, mode: "long" | "questions" | "empty" |
         tree: [
           treeEntry(".agent-collab", "marker", "blob"),
           treeEntry("inbox", `inbox-${version}`, "tree"),
+          ...(mode === "attachments" ? [treeEntry("topics", "topics-tree", "tree")] : []),
         ],
       });
       return;
@@ -325,6 +390,29 @@ async function installApiStub(page: Page, mode: "long" | "questions" | "empty" |
       return;
     }
 
+    if (path.endsWith("/git/trees/topics-tree")) {
+      await json(route, { truncated: false, tree: [treeEntry("api", "api-tree", "tree")] });
+      return;
+    }
+    if (path.endsWith("/git/trees/api-tree")) {
+      await json(route, {
+        truncated: false,
+        tree: Object.entries(TOPIC_FILES).map(([name, file]) => ({
+          ...treeEntry(name, file.sha, "blob"),
+          size: Buffer.byteLength(file.body),
+        })),
+      });
+      return;
+    }
+    const topicFile = Object.values(TOPIC_FILES).find((file) =>
+      path.endsWith(`/git/blobs/${file.sha}`),
+    );
+    if (topicFile !== undefined) {
+      topicBlobRequests.push(path);
+      await route.fulfill({ status: 200, body: topicFile.body });
+      return;
+    }
+
     const blob = /\/git\/blobs\/([^/]+)$/.exec(path)?.[1];
     if (blob !== undefined && blobs.has(blob)) {
       await route.fulfill({
@@ -344,11 +432,17 @@ async function installApiStub(page: Page, mode: "long" | "questions" | "empty" |
     () => {
       expect(unhandled, "the app must make only fixture-backed API requests").toEqual([]);
     },
-    { completedHeadCalls: () => completedHeadCalls },
+    {
+      completedHeadCalls: () => completedHeadCalls,
+      topicBlobRequests: () => topicBlobRequests.length,
+    },
   );
 }
 
-async function openViewer(page: Page, mode: "long" | "questions" | "empty" | "error") {
+async function openViewer(
+  page: Page,
+  mode: "long" | "questions" | "attachments" | "empty" | "error",
+) {
   const assertRequests = await installApiStub(page, mode);
   await page.goto("/");
   await page.getByRole("button", { name: "Open another repository" }).click();
@@ -556,8 +650,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   expect(focused.outlineStyle).toBe("solid");
   expect(focused.outlineWidth).toBe("3px");
 
-  // Viewing as, Profile & colors, theme, Settings, Questions, All, then the first topic.
-  for (let tab = 0; tab < 7; tab += 1) await page.keyboard.press("Tab");
+  // Viewing as, Profile & colors, theme, Settings, Questions, Files, All, then the first topic.
+  for (let tab = 0; tab < 8; tab += 1) await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "#release" })).toHaveAttribute(
     "aria-pressed",
@@ -953,6 +1047,94 @@ for (const identity of identityCases) {
     const jumped = page.locator("#msg-2026-10-08T0910-alice-agent-ops-01");
     await expect(jumped).toBeInViewport();
     await expect(jumped.locator(".conclusion")).toContainText("We chose North.");
+    assertRequests();
+  });
+}
+
+for (const identity of identityCases) {
+  test(`attachments and the Files view work on ${identity.label} in ${identity.theme}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: identity.scheme });
+    await page.setViewportSize(identity.viewport);
+    const assertRequests = await openViewer(page, "attachments");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", identity.theme);
+    const phone = identity.viewport.width < 721;
+    await page.getByRole("button", { name: /^#api/ }).click();
+
+    const first = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
+    await expect(first.locator(".file-card")).toHaveCount(6);
+    await expect(first.locator(".file-badge")).toHaveText(["MD", "CSV", "IMG", "FILE", "MD", "MD"]);
+    const guide = first.getByRole("link", { name: "docs.example.com" });
+    await expect(guide).toHaveAttribute("rel", "noopener noreferrer");
+    await expect(guide).toHaveAttribute("target", "_blank");
+    // No file content was requested before a card was opened.
+    expect(assertRequests.topicBlobRequests()).toBe(0);
+
+    const card = (name: string) => first.locator(".file-card", { hasText: name });
+    await card("fields-v1.md").locator("summary").click();
+    await expect(card("fields-v1.md").locator(".file-meta")).toContainText(
+      "topics/api/fields-v1.md",
+    );
+    await expect(card("fields-v1.md").locator(".file-meta")).toContainText("94 B");
+    await expect(card("results.csv").locator(".file-meta")).toHaveCount(0);
+
+    await card("archive.bin").locator("summary").click();
+    // The link points at the revision being viewed, not at a moving branch.
+    await expect(card("archive.bin").getByRole("link", { name: "Open in GitHub" })).toHaveAttribute(
+      "href",
+      /^https:\/\/github\.com\/alice-agent\/fixture-repo\/blob\/revision-\d+\/topics\/api\/archive\.bin$/,
+    );
+
+    await card("other.md").locator("summary").click();
+    await expect(card("other.md")).toContainText("not in the repository at this revision");
+    // Opening cards lists directories only; no file content was ever downloaded.
+    expect(assertRequests.topicBlobRequests()).toBe(0);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `attachments-${identity.label}-${identity.theme}.png`);
+
+    // A message id jumps to that message and highlights it.
+    await page
+      .locator("#msg-2026-10-08T0905-bob-agent-api-02")
+      .getByRole("link", { name: /^Message 2026-10-08 09:00/ })
+      .click();
+    await expect(page.locator("#msg-2026-10-08T0900-alice-agent-api-01")).toHaveCSS(
+      "outline-style",
+      "solid",
+    );
+
+    // A reference to a message of another topic switches to that topic.
+    await first.getByRole("link", { name: /^Message 2026-10-08 09:10/ }).click();
+    await expect(page.locator("#conversation-heading")).toHaveText("#ops");
+    await expect(page.locator("#msg-2026-10-08T0910-alice-agent-ops-01")).toHaveCSS(
+      "outline-style",
+      "solid",
+    );
+
+    if (phone) await page.getByRole("button", { name: "Back to conversations" }).click();
+    await page.getByRole("button", { name: "All" }).click();
+    if (phone) await page.getByRole("button", { name: "Back to conversations" }).click();
+    await page.getByRole("button", { name: "Files" }).click();
+    await expect(page.locator("#conversation-heading")).toHaveText("Files");
+    await expect(page.locator(".files .file-name")).toHaveCount(6);
+    await expect(page.locator(".files .file-from").first()).toContainText("alice-agent · #api");
+    await expect(page.locator(".files a.chip")).toHaveCount(2);
+    const filesOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(filesOverflow).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `files-${identity.label}-${identity.theme}.png`);
+
+    // The sender line of a file jumps back to the chat at that message.
+    await page.locator(".files .file-from").first().click();
+    await expect(page.locator("#conversation-heading")).toHaveText("All conversations");
+    await expect(page.locator("#msg-2026-10-08T0900-alice-agent-api-01")).toHaveCSS(
+      "outline-style",
+      "solid",
+    );
     assertRequests();
   });
 }

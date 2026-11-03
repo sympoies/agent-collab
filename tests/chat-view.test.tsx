@@ -30,7 +30,13 @@ async function render(): Promise<string> {
   });
   const { participants, formerParticipants } = loader.getSnapshot();
   const people = buildPeople([...participants, ...formerParticipants], EMPTY_PREFERENCES);
-  return renderToStaticMarkup(<ChatView rows={rows} people={people} />);
+  return renderToStaticMarkup(
+    <ChatView
+      rows={rows}
+      people={people}
+      attachments={{ reader: loader.attachments, loadedIds: new Set(), onJump: () => undefined }}
+    />,
+  );
 }
 
 describe("ChatView with the demo repository", () => {

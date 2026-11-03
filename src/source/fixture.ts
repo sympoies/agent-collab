@@ -64,7 +64,13 @@ export class FixtureSource implements MessageSource {
       const name = slash === -1 ? rest : rest.slice(0, slash);
       const childPath = `${prefix}${name}`;
       if (slash === -1) {
-        children.set(name, { name, path: childPath, kind: "file", objectId: hash(content) });
+        children.set(name, {
+          name,
+          path: childPath,
+          kind: "file",
+          objectId: hash(content),
+          size: new TextEncoder().encode(content).length,
+        });
       } else if (!children.has(name)) {
         const tree = [...this.files]
           .filter(([candidate]) => candidate.startsWith(`${childPath}/`))
