@@ -69,7 +69,9 @@ function contrast(foreground: string, background: string): number {
 }
 
 function disabledButtonRule(): string {
-  return css.match(/button:disabled\s*\{([^}]*)\}/)?.[1] ?? "";
+  const rule = css.match(/button:disabled\s*\{([^}]*)\}/);
+  if (rule === null) throw new Error("Missing button:disabled CSS rule.");
+  return rule[1] ?? "";
 }
 
 describe("theme text contrast", () => {

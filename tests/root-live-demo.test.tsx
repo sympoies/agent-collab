@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Secret } from "../src/credentials/secret";
 import { MemoryStore } from "../src/credentials/store";
 import { Root } from "../src/ui/Root";
-import { ThemeProvider } from "../src/ui/ThemeProvider";
+import { ThemeProvider, ThemeToggle } from "../src/ui/ThemeProvider";
 import type { MessageSource } from "../src/source/types";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -173,5 +173,52 @@ describe("Root live demo", () => {
     act(() => {
       root.unmount();
     });
+  });
+});
+
+describe("ThemeProvider storage errors", () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+    delete document.documentElement.dataset.theme;
+  });
+
+  it("keeps the theme toggle usable when its injected storage throws", () => {
+    document.documentElement.dataset.theme = "night-owl";
+    const setItem = vi.fn(() => {
+      throw new DOMException("Theme preference is read-only", "QuotaExceededError");
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const uncaught: string[] = [];
+    const onError = (event: ErrorEvent) => {
+      uncaught.push(event.message);
+      event.preventDefault();
+    };
+    window.addEventListener("error", onError);
+
+    try {
+      act(() => {
+        root.render(
+          <ThemeProvider storage={{ getItem: () => null, setItem }}>
+            <ThemeToggle />
+          </ThemeProvider>,
+        );
+      });
+      const toggle = host.querySelector<HTMLButtonElement>('button[aria-label="Use Paper theme"]');
+      expect(toggle).not.toBeNull();
+      act(() => {
+        toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+
+      expect(setItem).toHaveBeenCalledWith("agent-collab-viewer.theme", "paper");
+      expect(document.documentElement.dataset.theme).toBe("paper");
+      expect(uncaught).toEqual([]);
+    } finally {
+      window.removeEventListener("error", onError);
+      act(() => {
+        root.unmount();
+      });
+    }
   });
 });

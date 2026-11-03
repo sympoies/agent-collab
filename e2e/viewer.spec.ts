@@ -538,6 +538,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   await expect(storagePage.locator("html")).toHaveAttribute("data-theme", "paper");
 
   const writeFailurePage = await page.context().newPage();
+  const writeFailurePageErrors: string[] = [];
+  writeFailurePage.on("pageerror", (error) => writeFailurePageErrors.push(error.message));
   await writeFailurePage.addInitScript(() => {
     const original = Storage.prototype.setItem.bind(localStorage);
     Storage.prototype.setItem = function (key: string, value: string) {
@@ -553,5 +555,31 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   await expect(
     writeFailurePage.getByRole("textbox", { name: "Repository", exact: true }),
   ).toHaveValue("alice-agent/fixture-repo");
+  expect(writeFailurePageErrors).toEqual([]);
   assertWriteFailureRequests();
+
+  const settingsFailurePage = await page.context().newPage();
+  const settingsFailurePageErrors: string[] = [];
+  settingsFailurePage.on("pageerror", (error) => settingsFailurePageErrors.push(error.message));
+  await settingsFailurePage.addInitScript(() => {
+    const original = Storage.prototype.setItem.bind(localStorage);
+    const failedKeys = new Set(["agent-collab-viewer.theme", "agent-collab-viewer.settings"]);
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (failedKeys.has(key)) {
+        throw new DOMException("Viewer setting is read-only", "QuotaExceededError");
+      }
+      original(key, value);
+    };
+  });
+  const assertSettingsFailureRequests = await openViewer(settingsFailurePage, "empty");
+  await expect(
+    settingsFailurePage.getByRole("heading", { name: "alice-agent/fixture-repo" }),
+  ).toBeVisible();
+  await settingsFailurePage.getByRole("button", { name: /Use (Paper|Night Owl) theme/ }).click();
+  await settingsFailurePage.getByRole("button", { name: "Settings" }).click();
+  await expect(
+    settingsFailurePage.getByRole("textbox", { name: "Repository", exact: true }),
+  ).toHaveValue("alice-agent/fixture-repo");
+  expect(settingsFailurePageErrors).toEqual([]);
+  assertSettingsFailureRequests();
 });
