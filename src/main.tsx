@@ -11,6 +11,7 @@ import { GitHubSource } from "./source/github";
 import { CachedDemoSource } from "./source/cached-demo";
 import type { MessageSource } from "./source/types";
 import { Root } from "./ui/Root";
+import { LocaleProvider } from "./i18n/LocaleProvider";
 import { ThemeProvider } from "./ui/ThemeProvider";
 import "./ui/styles.css";
 
@@ -107,18 +108,20 @@ const storage = safeBrowserStorage();
 
 createRoot(root).render(
   <StrictMode>
-    <ThemeProvider storage={storage}>
-      <Root
-        storage={storage}
-        stores={{
-          memory: new MemoryStore(),
-          "browser-encrypted": new BrowserEncryptedStore(indexedDbRecords()),
-        }}
-        createSource={createSource}
-        createDemoSource={() => new FixtureSource(demoFiles)}
-        createLiveDemoSource={createLiveDemoSource}
-        openLocalFolder={folderPicker()}
-      />
-    </ThemeProvider>
+    <LocaleProvider storage={storage}>
+      <ThemeProvider storage={storage}>
+        <Root
+          storage={storage}
+          stores={{
+            memory: new MemoryStore(),
+            "browser-encrypted": new BrowserEncryptedStore(indexedDbRecords()),
+          }}
+          createSource={createSource}
+          createDemoSource={() => new FixtureSource(demoFiles)}
+          createLiveDemoSource={createLiveDemoSource}
+          openLocalFolder={folderPicker()}
+        />
+      </ThemeProvider>
+    </LocaleProvider>
   </StrictMode>,
 );

@@ -31,6 +31,7 @@ import {
 } from "../settings/live-demo";
 import { demoFiles } from "../demo/fixtures";
 import { SourceError, type MessageSource } from "../source/types";
+import { LanguageSwitcher, useT } from "../i18n/LocaleProvider";
 import { App, type AppProps, type SourceIndicator } from "./App";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
@@ -86,6 +87,7 @@ type Screen =
   | ViewerScreen;
 
 export function Root(props: RootProps) {
+  const t = useT();
   const { createSource, createDemoSource, createLiveDemoSource, openLocalFolder } = props;
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
@@ -264,19 +266,17 @@ export function Root(props: RootProps) {
       return (
         <div className="app settings">
           <header className="bar settings-bar">
-            <h1>Agent collaboration viewer</h1>
+            <h1>{t("app.title")}</h1>
             <div className="bar-actions">
+              <LanguageSwitcher />
               <ThemeToggle />
             </div>
           </header>
           <button type="button" onClick={showLiveDemo}>
-            Open live demo
+            {t("welcome.openLiveDemo")}
           </button>
           {openLocalFolder === null ? (
-            <p className="local-unsupported note">
-              Opening a local folder needs a browser that can open folders, such as Chrome or Edge
-              on a computer.
-            </p>
+            <p className="local-unsupported note">{t("welcome.localUnsupported")}</p>
           ) : (
             <button
               type="button"
@@ -284,7 +284,7 @@ export function Root(props: RootProps) {
                 void chooseLocalFolder(null);
               }}
             >
-              Open local folder (experimental)
+              {t("welcome.openLocal")}
             </button>
           )}
           {localMessage !== null && (
@@ -293,7 +293,7 @@ export function Root(props: RootProps) {
             </p>
           )}
           <button type="button" onClick={() => void openSavedRepository()}>
-            Open saved repository
+            {t("welcome.openSaved")}
           </button>
           <button
             type="button"
@@ -301,7 +301,7 @@ export function Root(props: RootProps) {
               void showSettings(null);
             }}
           >
-            Open another repository
+            {t("welcome.openAnother")}
           </button>
         </div>
       );
@@ -310,8 +310,9 @@ export function Root(props: RootProps) {
       return (
         <div className="app">
           <header className="bar settings-bar">
-            <h1>Collab Viewer</h1>
+            <h1>{t("app.settingsTitle")}</h1>
             <div className="bar-actions">
+              <LanguageSwitcher />
               <ThemeToggle />
             </div>
           </header>

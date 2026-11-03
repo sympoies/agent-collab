@@ -1,3 +1,4 @@
+import { useT } from "../i18n/LocaleProvider";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 type Theme = "night-owl" | "paper";
@@ -77,9 +78,14 @@ export function ThemeProvider({
 export function ThemeToggle() {
   const context = useContext(ThemeContext);
   if (context === null) throw new Error("ThemeToggle must be inside ThemeProvider.");
-  const next = context.theme === "night-owl" ? "Paper" : "Night Owl";
+  const t = useT();
+  const next = t(context.theme === "night-owl" ? "theme.paper" : "theme.nightOwl");
   return (
-    <button type="button" aria-label={`Use ${next} theme`} onClick={context.toggleTheme}>
+    <button
+      type="button"
+      aria-label={t("theme.use", { theme: next })}
+      onClick={context.toggleTheme}
+    >
       {next}
     </button>
   );

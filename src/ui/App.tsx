@@ -21,6 +21,7 @@ import type { Message } from "../message/types";
 import { SourceError } from "../source/types";
 import { FilesView, type AttachmentContext } from "./Attachments";
 import { ChatView } from "./ChatView";
+import { LanguageSwitcher, useT } from "../i18n/LocaleProvider";
 import { buildPeople } from "./people";
 import { relativeTime } from "./relativeTime";
 import { ProfilePanel } from "./ProfilePanel";
@@ -91,6 +92,7 @@ export function App({
   source,
   onPickLocalFolder,
 }: AppProps) {
+  const t = useT();
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const now = useNow(source !== undefined && snapshot.lastChanged !== null);
   const pollerRef = useRef<Poller | null>(null);
@@ -342,7 +344,7 @@ export function App({
                 run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
               }}
             >
-              Refresh
+              {t("bar.refresh")}
             </button>
           ) : (
             <button
@@ -356,11 +358,11 @@ export function App({
                 });
               }}
             >
-              Check live now
+              {t("bar.checkLive")}
             </button>
           )}
           <label className="viewing-as">
-            <span>Viewing as</span>
+            <span>{t("bar.viewingAs")}</span>
             <select
               value={viewer ?? ""}
               onChange={(event) => {
@@ -369,7 +371,7 @@ export function App({
                 );
               }}
             >
-              <option value="">Observer</option>
+              <option value="">{t("bar.observer")}</option>
               {snapshot.participants.map((name) => (
                 <option key={name} value={name}>
                   {people.label(name)}
@@ -385,16 +387,17 @@ export function App({
               setProfileOpen(!profileOpen);
             }}
           >
-            Profile &amp; colors
+            {t("bar.profile")}
           </button>
           {onPickLocalFolder !== undefined && (
             <button type="button" onClick={onPickLocalFolder}>
-              Local folder
+              {t("bar.localFolder")}
             </button>
           )}
+          <LanguageSwitcher />
           <ThemeToggle />
           <button type="button" onClick={onOpenSettings}>
-            Settings
+            {t("bar.settings")}
           </button>
         </div>
       </header>
@@ -431,8 +434,8 @@ export function App({
       </p>
       <div className="workspace" data-mobile-view={mobileConversation ? "conversation" : "topics"}>
         <aside className="topics-pane">
-          <h2>Conversations</h2>
-          <nav className="topics" aria-label="Topics">
+          <h2>{t("nav.conversations")}</h2>
+          <nav className="topics" aria-label={t("nav.topics")}>
             <button
               type="button"
               aria-pressed={view === "questions"}
@@ -443,8 +446,10 @@ export function App({
                 setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
               }}
             >
-              <span>Questions</span>
-              <span className="count">{questionGroups.open.length} open</span>
+              <span>{t("nav.questions")}</span>
+              <span className="count">
+                {t("nav.questionsOpen", { count: questionGroups.open.length })}
+              </span>
             </button>
             <button
               type="button"
@@ -456,7 +461,7 @@ export function App({
                 setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
               }}
             >
-              <span>Files</span>
+              <span>{t("nav.files")}</span>
             </button>
             <button
               type="button"
@@ -469,7 +474,7 @@ export function App({
                 setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
               }}
             >
-              All
+              {t("nav.all")}
             </button>
             {topics.map((summary) => (
               <button
@@ -486,7 +491,9 @@ export function App({
               >
                 <span>#{summary.topic}</span>
                 <span className="count">{summary.count}</span>
-                {summary.fresh > 0 && <span className="fresh">{summary.fresh} new</span>}
+                {summary.fresh > 0 && (
+                  <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>
+                )}
               </button>
             ))}
           </nav>
@@ -499,17 +506,17 @@ export function App({
               setMobileConversation(false);
             }}
           >
-            Back to conversations
+            {t("nav.back")}
           </button>
           <h2 id="conversation-heading" ref={conversationHeading} tabIndex={-1}>
             {view === "questions"
-              ? "Questions"
+              ? t("heading.questions")
               : view === "files"
                 ? topic === null
-                  ? "Files"
-                  : `Files in #${topic}`
+                  ? t("heading.files")
+                  : t("heading.filesIn", { topic })
                 : topic === null
-                  ? "All conversations"
+                  ? t("heading.all")
                   : `#${topic}`}
           </h2>
           {view === "questions" && (
@@ -524,7 +531,7 @@ export function App({
                 run(() => loader.loadOlder(), 0, "load-older");
               }}
             >
-              Load older messages
+              {t("nav.loadOlder")}
             </button>
           )}
           {view === "files" && (
@@ -545,7 +552,7 @@ export function App({
         data-mobile-view={mobileConversation ? "conversation" : "topics"}
         href="#latest-message"
       >
-        Jump to latest
+        {t("nav.jumpLatest")}
       </a>
     </div>
   );
