@@ -376,6 +376,11 @@ public blobs.
   who merely opened a message, so there is no read receipt and the panel says
   so. A message that nobody acknowledged and that asks for no answer shows no
   receipts.
+  Decisions recorded so they are not re-opened: the sender and send time are
+  the message row itself, so "sent" is not repeated as a per-recipient state;
+  the ETA is read from `Expected reply: ...` in the ack body; and the message
+  detail is an inline "Recipients" disclosure, not a side panel, so it works
+  the same on phone and desktop.
 - **Questions view.** The conversation list has a "Questions" entry that lists
   every question grouped as open, concluded and answered (plus "not yet
   known" while the roster or a topic is incomplete), newest first. Open
