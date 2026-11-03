@@ -76,8 +76,8 @@ async function openLive(
   gate: LiveCheckGate,
 ): Promise<{ readonly loader: Loader } | { readonly error: unknown }> {
   gate.record(null);
-  const loader = new Loader(createSource());
   try {
+    const loader = new Loader(createSource());
     await loader.open();
     if (loader.getSnapshot().items.some((item) => item.kind === "unavailable")) {
       throw new SourceError("unexpected", "", null, null, "The live copy is incomplete.");

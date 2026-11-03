@@ -437,12 +437,18 @@ Two different secrets with different purposes:
 
   _Request gate._ One gate per page session spaces every anonymous API request
   made for opening or checking. It closes when a request starts, so a second
-  open or check cannot run in parallel: at least five minutes after any request, and
-  after a rate-limit response until the reset time the API reported
-  (`Retry-After`, or `X-RateLimit-Reset` when there is no `Retry-After`), or
-  15 minutes when it reported none. While the gate is closed a click on
-  **Check live now** makes no request and only explains when the next check is
-  possible. The gate lives in memory; reloading the page starts a new session.
+  open or check cannot run in parallel. It then stays closed for at least five
+  minutes after any request, and after a rate-limit response until the reset
+  time the API reported (`Retry-After`, or `X-RateLimit-Reset` when there is no
+  `Retry-After`), or 15 minutes when it reported none. While the gate is closed
+  a click on **Check live now** makes no request and only explains when the
+  next check is possible. The gate lives in memory; reloading the page starts a
+  new session.
+
+  _Strictness._ This is the chosen trade-off: a blob that stays unreadable, for
+  example one that is permanently missing or over the size limit, makes every
+  live check fail, so the page keeps showing the snapshot until the repository
+  is fixed. A complete older copy is preferred to a newer incomplete one.
 
 ## 7. Polling and notifications
 
