@@ -23,9 +23,9 @@ import { FilesView, type AttachmentContext } from "./Attachments";
 import { ChatView } from "./ChatView";
 import type { MessageKey } from "../i18n/catalog";
 import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
-import type { Params } from "../i18n/translate";
+import type { MessageRef, Params } from "../i18n/translate";
 import { buildPeople } from "./people";
-import { errorText } from "./errorText";
+import { errorText, say } from "./errorText";
 import { relativeTime } from "./relativeTime";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
@@ -68,7 +68,7 @@ export interface AppProps {
   /** Where identity preferences live; null keeps them in memory for this view only. */
   readonly identity: { readonly storage: PreferenceStorage | null; readonly key: string };
   /** A one-off message from opening the viewer, such as a settings warning. */
-  readonly notice: string | null;
+  readonly notice: string | MessageRef | null;
   readonly pollIntervalMs?: number;
   readonly onCheckLiveNow?: () => Promise<void>;
   /** The source when it is not a repository; its last-changed time is shown beside it. */
@@ -413,7 +413,7 @@ export function App({
       )}
       {notice !== null && (
         <p className="notice" role="status">
-          {notice}
+          {say(notice, t)}
         </p>
       )}
       {error !== null && (

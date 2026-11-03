@@ -1408,7 +1408,9 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
     ).fakeClone.state.permission = "prompt";
   });
   await revoked.clock.fastForward(61_000);
-  await expect(revoked.getByRole("alert")).toContainText("choose the folder again");
+  await expect(revoked.getByRole("alert")).toContainText(
+    "Local folder permission needs to be granted again. Choose the folder again from the toolbar.",
+  );
   // The messages stay on screen, and choosing the folder again recovers.
   await expect(revoked.getByText("The first message from the local clone.")).toBeVisible();
   await revoked.evaluate(() => {
@@ -1423,14 +1425,38 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
 
 const catalogsByLocale = { en, ja, "zh-TW": zhTW } as const;
 
-/** Nothing may be clipped: every matching element must fit inside its own box. */
-async function expectNoClipping(page: Page, selector: string) {
-  const clipped = await page.$$eval(selector, (elements) =>
-    elements
-      .filter((element) => element.scrollWidth > element.clientWidth + 1)
-      .map((element) => `${element.tagName} ${element.textContent.slice(0, 40)}`),
-  );
-  expect(clipped, `clipped elements for ${selector}`).toEqual([]);
+/**
+ * Nothing may be clipped or pushed outside the viewport. Every comma-separated selector must match
+ * at least one element, so a renamed class cannot turn the check into a silent no-op. Block-level
+ * elements are measured by scroll width, inline ones by their own box against the viewport; a
+ * deliberately scrolling row (overflow-x) may extend past it.
+ */
+async function expectNoClipping(page: Page, selectors: string) {
+  for (const selector of selectors.split(",").map((part) => part.trim())) {
+    const result = await page.$$eval(selector, (elements) => ({
+      count: elements.length,
+      clipped: elements
+        .filter((element) => {
+          const box = element.getBoundingClientRect();
+          const inline = getComputedStyle(element).display === "inline";
+          // A chip row that scrolls sideways on purpose may extend past the viewport.
+          let scroller = element.parentElement;
+          while (
+            scroller !== null &&
+            !["auto", "scroll"].includes(getComputedStyle(scroller).overflowX)
+          ) {
+            scroller = scroller.parentElement;
+          }
+          return (
+            (!inline && element.scrollWidth > element.clientWidth + 1) ||
+            (scroller === null && (box.right > window.innerWidth + 1 || box.left < -1))
+          );
+        })
+        .map((element) => `${element.tagName} ${element.textContent.slice(0, 40)}`),
+    }));
+    expect(result.count, `"${selector}" matched nothing`).toBeGreaterThan(0);
+    expect(result.clipped, `clipped elements for "${selector}"`).toEqual([]);
+  }
 }
 
 for (const code of LOCALES) {
@@ -1455,7 +1481,7 @@ for (const code of LOCALES) {
         page.getByRole("button", { name: messages["welcome.openLiveDemo"] }),
       ).toBeVisible();
       await expect(page.getByRole("button", { name: messages["welcome.openLocal"] })).toBeVisible();
-      await expectNoClipping(page, ".settings button, .settings h1, .settings p");
+      await expectNoClipping(page, ".settings button, .settings h1");
       await saveScreenshot(page, `i18n-welcome-${code}-${view.label}.png`);
 
       // The choice survives a reload and reaches the viewer.
@@ -1510,6 +1536,80 @@ for (const code of LOCALES) {
         await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
       ).toBeLessThanOrEqual(0);
       await saveScreenshot(page, `i18n-profile-${code}-${view.label}.png`);
+
+      // The Files view and an attachment card.
+      if (view.size.width < 721) {
+        await page.getByRole("button", { name: messages["nav.back"] }).click();
+      }
+      await page.getByRole("button", { name: messages["nav.files"], exact: true }).click();
+      const card = page.locator(".files .file-card").first();
+      await card.locator("summary").click();
+      await expect(card.locator(".file-body")).toBeVisible();
+      await expectNoClipping(page, ".files .file-card, .file-body, .file-badge, .conversation h2");
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `i18n-files-${code}-${view.label}.png`);
+    });
+
+    test(`errors and notices fit in ${LOCALE_NAMES[code]} on ${view.label}`, async ({ page }) => {
+      await page.setViewportSize(view.size);
+      await page.addInitScript((locale) => {
+        localStorage.setItem("agent-collab-viewer.locale", locale);
+      }, code);
+      await installFakeFolder(page, { picker: "cancels" });
+      await page.route("**/demo-snapshot.json", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            schemaVersion: 1,
+            generatedAt: "2026-11-03T08:00:00.000Z",
+            revision: "snapshot-tree",
+            files: [
+              { path: ".agent-collab", text: "collab-protocol: 1\nparticipants: alice-agent\n" },
+              {
+                path: "inbox/2026-11-03T0900-alice-agent-api-01.md",
+                text: cloneMessage(
+                  "2026-11-03T0900-alice-agent-api-01",
+                  "alice-agent",
+                  "From the snapshot.",
+                ),
+              },
+            ],
+          }),
+        }),
+      );
+      await page.route("https://api.github.com/**", (route) =>
+        route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          headers: {
+            "access-control-allow-origin": "*",
+            "access-control-expose-headers":
+              "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset",
+            "x-ratelimit-limit": "60",
+            "x-ratelimit-remaining": "0",
+            "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3600),
+            "retry-after": "3600",
+          },
+          body: JSON.stringify({ message: "Synthetic rate limit" }),
+        }),
+      );
+      await page.goto("/");
+      await page.getByRole("button", { name: messages["welcome.openLocal"] }).click();
+      await expect(page.getByRole("alert")).toHaveText(messages["local.noFolder"]);
+      await expectNoClipping(page, '[role="alert"]');
+      await saveScreenshot(page, `i18n-alert-${code}-${view.label}.png`);
+
+      await page.getByRole("button", { name: messages["welcome.openLiveDemo"] }).click();
+      await page.getByRole("button", { name: messages["bar.checkLive"] }).click();
+      await expect(page.locator(".notice")).toContainText(messages["live.hitLimit"]);
+      await expectNoClipping(page, ".notice, .bar-actions button");
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `i18n-notice-${code}-${view.label}.png`);
     });
   }
 }

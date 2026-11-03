@@ -1,6 +1,6 @@
 // Chat timeline. Message text is always rendered as React text, never as HTML.
 
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import type { MessageReceipts } from "../message/receipts";
 import type { Message } from "../message/types";
@@ -45,12 +45,25 @@ function firstLine(message: Message, t: Translate): string {
   return message.body.lines.find((line) => line.trim() !== "") ?? "";
 }
 
+/** "Reply to <id> (parent not shown)", with the id in monospace wherever the language puts it. */
+function replyMissing(id: string, t: Translate): ReactNode {
+  const marker = "\uE000";
+  const [before = "", after = ""] = t("chat.replyMissing", { id: marker }).split(marker);
+  return (
+    <>
+      {before}
+      <code>{id}</code>
+      {after}
+    </>
+  );
+}
+
 function Quote({ view }: { view: MessageView }) {
   const t = useT();
   const replyTo = view.message.replyTo;
   if (replyTo === null) return null;
   if (view.parent === null) {
-    return <p className="quote missing">{t("chat.replyMissing", { id: replyTo })}</p>;
+    return <p className="quote missing">{replyMissing(replyTo, t)}</p>;
   }
   return (
     <a className="quote" href={`#msg-${view.parent.id}`}>

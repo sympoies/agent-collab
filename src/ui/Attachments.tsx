@@ -28,12 +28,12 @@ export interface AttachmentContext {
   readonly onJump: (id: string) => void;
 }
 
-const BADGES: Readonly<Record<FileKind, string>> = {
+/** Format abbreviations read the same in every language; the generic badge is a word. */
+const FORMAT_BADGES: Readonly<Record<Exclude<FileKind, "other">, string>> = {
   markdown: "MD",
   text: "TXT",
   csv: "CSV",
   image: "IMG",
-  other: "FILE",
 };
 
 export function formatSize(size: number | null, t: Translate): string {
@@ -51,11 +51,10 @@ function failure(error: unknown, t: Translate): string {
 
 type Load<T> =
   | { readonly state: "loading" }
-  | { readonly state: "error"; readonly message: string }
+  | { readonly state: "error"; readonly error: unknown }
   | { readonly state: "done"; readonly value: T };
 
 function useLoad<T>(load: () => Promise<T>): Load<T> {
-  const t = useT();
   const [result, setResult] = useState<Load<T>>({ state: "loading" });
   useEffect(() => {
     let current = true;
@@ -64,7 +63,7 @@ function useLoad<T>(load: () => Promise<T>): Load<T> {
         if (current) setResult({ state: "done", value });
       },
       (error: unknown) => {
-        if (current) setResult({ state: "error", message: failure(error, t) });
+        if (current) setResult({ state: "error", error });
       },
     );
     return () => {
@@ -115,7 +114,7 @@ function TextPreview({
   const t = useT();
   const result = useLoad(() => reader.readText(path, TEXT_PREVIEW_MAX_BYTES));
   if (result.state === "loading") return <p className="note">{t("file.loadingPreview")}</p>;
-  if (result.state === "error") return <p className="note">{result.message}</p>;
+  if (result.state === "error") return <p className="note">{failure(result.error, t)}</p>;
   const read = result.value;
   if (read.state === "unknown-size") {
     return <NoPreview reader={reader} path={path} reason={t("file.unknownSize")} />;
@@ -204,7 +203,7 @@ function ImagePreview({
     };
   }, [shown, mime]);
   if (result.state === "loading") return <p className="note">{t("file.loadingPreview")}</p>;
-  if (result.state === "error") return <p className="note">{result.message}</p>;
+  if (result.state === "error") return <p className="note">{failure(result.error, t)}</p>;
   const read = result.value;
   if (read.state === "unsupported") {
     return <NoPreview reader={reader} path={path} reason={t("file.imageUnsupported")} />;
@@ -247,7 +246,7 @@ function Details({
   const info = useLoad<FileInfo | null>(() => reader.info(file.path));
   let body: ReactNode;
   if (info.state === "loading") body = <p className="note">{t("file.loading")}</p>;
-  else if (info.state === "error") body = <p className="note">{info.message}</p>;
+  else if (info.state === "error") body = <p className="note">{failure(info.error, t)}</p>;
   else if (info.value === null) {
     body = <p className="note">{t("file.notFound")}</p>;
   } else {
@@ -278,6 +277,7 @@ export function FileCard({
   file: Extract<Ref, { kind: "file" }>;
   reader: AttachmentReader;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   return (
     <details
@@ -287,7 +287,9 @@ export function FileCard({
       }}
     >
       <summary>
-        <span className="file-badge">{BADGES[file.fileKind]}</span>
+        <span className="file-badge">
+          {file.fileKind === "other" ? t("file.badgeOther") : FORMAT_BADGES[file.fileKind]}
+        </span>
         <span className="file-name">{file.name}</span>
       </summary>
       {open && <Details file={file} reader={reader} />}

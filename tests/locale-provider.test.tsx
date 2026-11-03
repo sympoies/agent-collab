@@ -12,6 +12,8 @@ import {
   LocaleProvider,
   useLocale,
 } from "../src/i18n/LocaleProvider";
+import { Loader } from "../src/loader/loader";
+import { App } from "../src/ui/App";
 import { Root } from "../src/ui/Root";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 
@@ -170,5 +172,54 @@ describe("LocaleProvider", () => {
     );
     expect(formatted).toContain("2026");
     expect(formatted).not.toMatch(/Nov/);
+  });
+
+  describe("a message already on screen when the language changes", () => {
+    async function renderApp(notice: string | { key: "live.checked" }) {
+      languages("en");
+      const loader = new Loader(new FixtureSource({ ".agent-collab": "collab-protocol: 1\n" }));
+      await loader.open();
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      mounted = { host, root };
+      await act(async () => {
+        root.render(
+          <LocaleProvider storage={memoryStorage()}>
+            <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+              <App
+                loader={loader}
+                title="Repo"
+                selfNames={new Set()}
+                identity={{ storage: null, key: "test" }}
+                notice={notice}
+                onOpenSettings={() => undefined}
+              />
+            </ThemeProvider>
+          </LocaleProvider>,
+        );
+        await Promise.resolve();
+      });
+      return host;
+    }
+
+    it("follows the new language when it is a catalog message, and keeps its language when it is already composed text", async () => {
+      const keyed = await renderApp({ key: "live.checked" });
+      expect(keyed.querySelector(".notice")?.textContent).toBe("Checked the live repository.");
+      await choose(keyed, "ja");
+      expect(keyed.querySelector(".notice")?.textContent).toBe(
+        "ライブのリポジトリを確認しました。",
+      );
+
+      act(() => {
+        mounted?.root.unmount();
+      });
+      document.body.replaceChildren();
+      const composed = await renderApp("Already composed in English.");
+      await choose(composed, "ja");
+      // Documented limitation (docs/i18n.md): composed live-demo notices keep the language they
+      // were made in until the next action replaces them.
+      expect(composed.querySelector(".notice")?.textContent).toBe("Already composed in English.");
+    });
   });
 });

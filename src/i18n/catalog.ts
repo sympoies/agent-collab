@@ -67,7 +67,7 @@ export const en = {
     "{count, plural, one {# new message arrived.} other {# new messages arrived.}} {total, plural, one {# new message since opening this view.} other {# new messages since opening this view.}}",
   "error.unexpected": "Unexpected error while loading messages.",
   "error.unauthorized": "The token was rejected. Check that it is valid and has not expired.",
-  "error.forbidden": "Access is not allowed. Check the permissions, or choose the folder again.",
+  "error.forbidden": "Access was denied. Check repository visibility or token permissions.",
   "error.notFound": "Not found. Check the repository name and branch.",
   "error.rateLimited": "The request limit is reached. Try again after {time}.",
   "error.rateLimitedLater": "The request limit is reached. Try again later.",
@@ -220,6 +220,11 @@ export const en = {
     "Sibling GitHub Pages projects under the same account share this origin and can access the saved token and key. Prefer In memory only. A dedicated custom domain removes this sibling-project exposure.",
   "settings.oldCopyWarning":
     "Saved, but an old copy of the token could not be removed from this browser.",
+  "error.forbiddenAnonymous": "Access was denied. Check that the repository is public.",
+  "error.localPermission":
+    "Local folder permission needs to be granted again. Choose the folder again from the toolbar.",
+  "error.needsToken": "This repository needs a token or does not exist.",
+  "file.badgeOther": "FILE",
 } as const;
 
 export type MessageKey = keyof typeof en;

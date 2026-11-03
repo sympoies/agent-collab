@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { LocaleProvider } from "../src/i18n/LocaleProvider";
+import { parseMessageFile } from "../src/message/parse";
+import { messageText } from "./support";
 import { demoFiles } from "../src/demo/fixtures";
 import { Loader } from "../src/loader/loader";
 import { FixtureSource } from "../src/source/fixture";
@@ -80,5 +83,39 @@ describe("ChatView with the demo repository", () => {
     const html = await render();
     expect(html).toContain("&lt;b&gt;");
     expect(html).not.toContain("<b>");
+  });
+});
+
+describe("a reply whose parent is not loaded", () => {
+  it.each([
+    ["en", "Reply to <code>2026-10-01T0900-bob-agent-api-01</code> (parent not shown)"],
+    ["ja", "<code>2026-10-01T0900-bob-agent-api-01</code> への返信（元のメッセージは未表示）"],
+    ["zh-TW", "回覆 <code>2026-10-01T0900-bob-agent-api-01</code>（未顯示原訊息）"],
+  ] as const)("keeps the id in monospace in %s", (locale, expected) => {
+    const id = "2026-10-01T0901-alice-agent-api-01";
+    const parsed = parseMessageFile(
+      `inbox/${id}.md`,
+      messageText(id, "alice-agent", "api", { reply_to: "2026-10-01T0900-bob-agent-api-01" }),
+    );
+    const rows = buildRows([parsed], {
+      viewer: null,
+      topic: null,
+      today: "2026-10-05",
+      fresh: new Set(),
+    });
+    const html = renderToStaticMarkup(
+      <LocaleProvider storage={{ getItem: () => locale, setItem: () => undefined }}>
+        <ChatView
+          rows={rows}
+          people={buildPeople(["alice-agent"], EMPTY_PREFERENCES)}
+          attachments={{
+            reader: new Loader(new FixtureSource({})).attachments,
+            loadedIds: new Set(),
+            onJump: () => undefined,
+          }}
+        />
+      </LocaleProvider>,
+    );
+    expect(html).toContain(`<p class="quote missing">${expected}</p>`);
   });
 });

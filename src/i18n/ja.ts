@@ -55,7 +55,7 @@ export const ja: Messages = {
   "error.unexpected": "メッセージの読み込み中に予期しないエラーが起きました。",
   "error.unauthorized": "トークンが拒否されました。有効で期限切れでないか確認してください。",
   "error.forbidden":
-    "アクセスが許可されていません。権限を確認するか、フォルダーを選び直してください。",
+    "アクセスが拒否されました。リポジトリの公開設定かトークンの権限を確認してください。",
   "error.notFound": "見つかりません。リポジトリ名とブランチを確認してください。",
   "error.rateLimited": "リクエスト数の上限に達しました。{time} 以降にもう一度お試しください。",
   "error.rateLimitedLater":
@@ -98,7 +98,7 @@ export const ja: Messages = {
   "chat.needs": "必要なこと:",
   "chat.due": "期限 {date}",
   "chat.dueOverdue": "期限 {date}（期限切れ）",
-  "chat.you": "自分",
+  "chat.you": "あなた",
   "chat.unreadable": "読み取れないメッセージファイル",
   "chat.rawText": "元のテキスト",
   "chat.couldNotDownload": "ダウンロードできません",
@@ -112,11 +112,11 @@ export const ja: Messages = {
   "receipt.progress": "{answered}/{target} 件回答済み",
   "receipt.state.open": "未回答",
   "receipt.state.answered": "回答済み",
-  "receipt.state.concluded": "完了",
+  "receipt.state.concluded": "結論済み",
   "receipt.state.unknown": "不明",
   "receipt.acknowledged": "{name} が {time} に受領",
   "receipt.eta": " · 返信予定: {eta}",
-  "receipt.concluded": "{name} が {time} に完了",
+  "receipt.concluded": "{name} が {time} に結論を出しました",
   "receipt.recipients": "宛先一覧",
   "receipt.recipientsUnknown": "参加者の一覧を読み込むまで、宛先は不明です。",
   "receipt.recipientAnswered": "{time} に回答",
@@ -127,7 +127,7 @@ export const ja: Messages = {
   "questions.waiting": "あなたの回答待ち",
   "questions.empty": "質問はまだありません。",
   "questions.open": "未回答",
-  "questions.concluded": "完了",
+  "questions.concluded": "結論済み",
   "questions.answered": "回答済み",
   "questions.unknown": "不明（読み込み中）",
   "questions.progress": "{answered}/{target} 件回答済み",
@@ -204,10 +204,10 @@ export const ja: Messages = {
   "settings.error.gitlab": "GitLab にはまだ対応していません。",
   "settings.error.repository": "owner/repository の形式で入力してください。",
   "settings.error.branch": "有効なブランチ名ではありません。",
-  "settings.error.names": "名前には小文字、数字、ハイフンを使えます。",
+  "settings.error.names": "名前に使えるのは小文字、数字、ハイフンだけです。",
   "settings.error.tokenMissing": "読み取り専用のアクセストークンを入力してください。",
   "settings.error.tokenEndpoint": "このエンドポイント用のトークンを入力してください。",
-  "settings.error.tokenSpaces": "トークンに空白は含まれません。",
+  "settings.error.tokenSpaces": "トークンに空白を含めないでください。",
   "receipt.acknowledgedChip": "受領済み",
   "settings.encryptedNote":
     "トークンは暗号化され、このブラウザープロファイル内のこのサイト用に保存されます。サイトのストレージに平文のトークンが残ることは避けられますが、このブラウザープロファイルのコピー、このサイト上のスクリプト、プロファイルを使う人は、トークンを使えてしまいます。同じオリジンを共有するサイトは、暗号化されたトークンとその鍵の両方にアクセスできます。",
@@ -215,4 +215,10 @@ export const ja: Messages = {
     "同じアカウントの GitHub Pages の他のプロジェクトは、このオリジンを共有し、保存したトークンと鍵にアクセスできます。「メモリ内のみ」をおすすめします。専用のカスタムドメインを使うと、この露出はなくなります。",
   "settings.oldCopyWarning":
     "保存しましたが、このブラウザーから古いトークンのコピーを削除できませんでした。",
+  "error.forbiddenAnonymous":
+    "アクセスが拒否されました。リポジトリが公開されているか確認してください。",
+  "error.localPermission":
+    "ローカルフォルダーの権限をもう一度許可する必要があります。ツールバーからフォルダーを選び直してください。",
+  "error.needsToken": "このリポジトリはトークンが必要か、存在しません。",
+  "file.badgeOther": "ファイル",
 };

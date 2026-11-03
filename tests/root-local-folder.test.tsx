@@ -233,21 +233,15 @@ describe("Root with a local folder", () => {
     let denied = false;
     source.head = (previous) =>
       denied
-        ? Promise.reject(
-            new SourceError(
-              "forbidden",
-              "",
-              null,
-              null,
-              "Local folder permission needs to be granted again.",
-            ),
-          )
+        ? Promise.reject(new SourceError("forbidden", "", null, null, "x", "local-permission"))
         : head(previous);
     const host = await render(() => Promise.resolve({ source, name: "clone" }));
     await click(button(host, "Open local folder"));
     denied = true;
     await click(button(host, "Refresh"));
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain("choose the folder again");
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      "Local folder permission needs to be granted again. Choose the folder again from the toolbar.",
+    );
     expect(host.textContent).toContain("From the local clone.");
     expect(button(host, "Local folder")).toBeDefined();
   });

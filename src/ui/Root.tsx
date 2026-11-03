@@ -30,8 +30,10 @@ import {
   type StaticDemoView,
 } from "../settings/live-demo";
 import { demoFiles } from "../demo/fixtures";
+import type { MessageRef } from "../i18n/translate";
 import { SourceError, type MessageSource } from "../source/types";
 import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
+import { say } from "./errorText";
 import { App, type AppProps, type SourceIndicator } from "./App";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
@@ -58,7 +60,7 @@ interface ViewerScreen {
   readonly title: AppProps["title"];
   readonly selfNames: ReadonlySet<string>;
   readonly identity: AppProps["identity"];
-  readonly notice: string | null;
+  readonly notice: string | MessageRef | null;
   readonly pollIntervalMs: number | undefined;
   /** The static demo copy on screen, or null for every other viewer, live demo included. */
   readonly liveDemo: StaticDemoView | null;
@@ -91,14 +93,14 @@ export function Root(props: RootProps) {
   const [liveGate] = useState(() => new LiveCheckGate());
   const liveLoader = useRef<Loader | null>(null);
   /** Why a folder could not be opened, shown on the welcome screen. */
-  const [localMessage, setLocalMessage] = useState<string | null>(null);
+  const [localMessage, setLocalMessage] = useState<MessageRef | null>(null);
 
   const viewer = (
     loader: Loader,
     title: AppProps["title"],
     selfNames: readonly string[],
     identity: ViewerScreen["identity"],
-    notice: string | null = null,
+    notice: string | MessageRef | null = null,
     pollIntervalMs?: number,
     liveDemo: StaticDemoView | null = null,
     source: SourceIndicator | null = null,
@@ -118,7 +120,7 @@ export function Root(props: RootProps) {
     };
   };
 
-  const open = ({ settings, token }: OpenSettings, notice: string | null = null) =>
+  const open = ({ settings, token }: OpenSettings, notice: string | MessageRef | null = null) =>
     viewer(
       new Loader(createSource(settings, token)),
       settings.repository,
@@ -215,7 +217,7 @@ export function Root(props: RootProps) {
     // Picking and reading a large clone take time; if the user went elsewhere meanwhile, the
     // result is dropped instead of replacing what they are looking at.
     const operation = ++navigation.current;
-    const refuse = (message: string) => {
+    const refuse = (message: MessageRef) => {
       if (operation !== navigation.current) return;
       if (current === null) setLocalMessage(message);
       else {
@@ -234,8 +236,8 @@ export function Root(props: RootProps) {
       // the browser does not trust with folders is told apart from a cancelled picker.
       refuse(
         error instanceof DOMException && error.name === "SecurityError"
-          ? t("local.blocked")
-          : t("local.noFolder"),
+          ? { key: "local.blocked" }
+          : { key: "local.noFolder" },
       );
       return;
     }
@@ -245,10 +247,10 @@ export function Root(props: RootProps) {
     } catch (error) {
       refuse(
         error instanceof SetupError
-          ? t("local.notClone")
+          ? { key: "local.notClone" }
           : error instanceof SourceError && error.kind === "too-large"
-            ? t("local.tooLarge")
-            : t("local.unreadable"),
+            ? { key: "local.tooLarge" }
+            : { key: "local.unreadable" },
       );
       return;
     }
@@ -276,7 +278,7 @@ export function Root(props: RootProps) {
     const result = await apply(props, draft);
     if (operation !== navigation.current) return null;
     if (!result.ok) return result.errors;
-    setScreen(open(result.open, result.warning === null ? null : t(result.warning)));
+    setScreen(open(result.open, result.warning === null ? null : { key: result.warning }));
     return null;
   };
 
@@ -308,7 +310,7 @@ export function Root(props: RootProps) {
           )}
           {localMessage !== null && (
             <p className="error" role="alert">
-              {localMessage}
+              {say(localMessage, t)}
             </p>
           )}
           <button type="button" onClick={() => void openSavedRepository()}>
