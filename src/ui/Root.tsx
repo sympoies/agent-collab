@@ -30,7 +30,7 @@ import {
   type StaticDemoView,
 } from "../settings/live-demo";
 import { demoFiles } from "../demo/fixtures";
-import type { MessageSource } from "../source/types";
+import { SourceError, type MessageSource } from "../source/types";
 import { App, type AppProps, type SourceIndicator } from "./App";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
@@ -42,6 +42,8 @@ export interface LocalFolderOpen {
 }
 
 const NO_FOLDER = "No folder selected, or the browser does not allow this folder.";
+const BLOCKED = "The browser blocked folder access for this page.";
+const TOO_LARGE_FOLDER = "This folder is too large to read. Choose the clone folder itself.";
 const NOT_A_CLONE =
   "This folder is not a collaboration clone (no .agent-collab file). Choose the clone folder itself.";
 
@@ -202,7 +204,11 @@ export function Root(props: RootProps) {
    */
   const chooseLocalFolder = async (current: ViewerScreen | null): Promise<void> => {
     if (openLocalFolder === null) return;
+    // Picking and reading a large clone take time; if the user went elsewhere meanwhile, the
+    // result is dropped instead of replacing what they are looking at.
+    const operation = ++navigation.current;
     const refuse = (message: string) => {
+      if (operation !== navigation.current) return;
       if (current === null) setLocalMessage(message);
       else {
         setScreen((previous) =>
@@ -215,20 +221,27 @@ export function Root(props: RootProps) {
     let opened: LocalFolderOpen;
     try {
       opened = await openLocalFolder();
-    } catch {
-      // Cancelling and a refused sensitive folder both reject; the reason is never shown.
-      refuse(NO_FOLDER);
+    } catch (error) {
+      // Cancelling and a refused sensitive folder both reject; the reason is never shown. A page
+      // the browser does not trust with folders is told apart from a cancelled picker.
+      refuse(error instanceof DOMException && error.name === "SecurityError" ? BLOCKED : NO_FOLDER);
       return;
     }
     const loader = new Loader(opened.source);
     try {
       await loader.open();
     } catch (error) {
-      refuse(error instanceof SetupError ? NOT_A_CLONE : "This folder could not be read.");
+      refuse(
+        error instanceof SetupError
+          ? NOT_A_CLONE
+          : error instanceof SourceError && error.kind === "too-large"
+            ? TOO_LARGE_FOLDER
+            : "This folder could not be read.",
+      );
       return;
     }
+    if (operation !== navigation.current) return;
     setLocalMessage(null);
-    navigation.current += 1;
     setScreen(
       viewer(loader, `Local folder: ${opened.name}`, [], MEMORY_ONLY, null, undefined, null, {
         label: "Local folder",

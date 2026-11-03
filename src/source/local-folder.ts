@@ -30,6 +30,12 @@ export interface LocalFileHandle extends LocalHandle {
 }
 
 const MAX_FILE_BYTES = 1024 * 1024;
+/** Entries a scan or listing may enumerate before the folder counts as too large. */
+const MAX_SCAN_ENTRIES = 50_000;
+/** A modification time later than now plus this is clock skew or a hostile file, not a change. */
+const FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
+const MONTH_RE = /^\d{4}-\d{2}$/;
+const TOO_LARGE = "This folder is too large to read. Choose the clone folder itself.";
 const METADATA_CONCURRENCY = 6;
 
 async function mapLimit<T, R>(values: readonly T[], limit: number, fn: (value: T) => Promise<R>) {
@@ -156,7 +162,17 @@ export class LocalFolderSource implements MessageSource {
   private readonly metadataFailures = new Map<string, SourceError>();
   private scan: Scan | null = null;
 
-  constructor(private readonly root: LocalDirectoryHandle) {}
+  private scanning: Promise<Scan> | null = null;
+  private readonly now: () => number;
+  private readonly maxEntries: number;
+
+  constructor(
+    private readonly root: LocalDirectoryHandle,
+    options: { readonly now?: () => number; readonly maxEntries?: number } = {},
+  ) {
+    this.now = options.now ?? Date.now;
+    this.maxEntries = options.maxEntries ?? MAX_SCAN_ENTRIES;
+  }
 
   /** The newest modification time seen by the latest successful scan. */
   lastChanged(): Date | null {
@@ -175,7 +191,11 @@ export class LocalFolderSource implements MessageSource {
           "Local folder permission needs to be granted again. Choose the folder again from the toolbar.",
         );
       }
-      const scan = await this.scanTree();
+      // A poll that arrives while a scan is still running shares it instead of starting another.
+      this.scanning ??= this.scanTree().finally(() => {
+        this.scanning = null;
+      });
+      const scan = await this.scanning;
       this.scan = scan;
       if (previous?.validator === scan.revision) return "not-modified";
       return { revision: scan.revision, validator: scan.revision };
@@ -188,12 +208,15 @@ export class LocalFolderSource implements MessageSource {
   /**
    * One walk of the collaboration files: every inbox directory is listed once and every file's
    * metadata read once. The revision covers all of it, so any edit, addition or removal changes
-   * it. Topic files are not part of the scan; they are read when a card is opened.
+   * it. Only the inbox and its month folders are walked, and at most `maxEntries` entries are
+   * enumerated, so a hostile clone fails fast instead of hanging. Topic files are not part of the
+   * scan; they are read when a card is opened.
    */
   private async scanTree(): Promise<Scan> {
     const listings = new Map<string, readonly DirectoryEntry[]>();
     const withMetadata = createLimiter(METADATA_CONCURRENCY);
-    const seen: { newest: number | null } = { newest: null };
+    const seen: { newest: number | null; entries: number } = { newest: null, entries: 0 };
+    const latestTrusted = this.now() + FUTURE_SKEW_MS;
 
     const scanDirectory = async (
       directory: LocalDirectoryHandle,
@@ -201,6 +224,9 @@ export class LocalFolderSource implements MessageSource {
     ): Promise<readonly DirectoryEntry[]> => {
       const handles: LocalHandle[] = [];
       for await (const handle of directory.values()) {
+        seen.entries += 1;
+        if (seen.entries > this.maxEntries)
+          throw new SourceError("too-large", path, null, null, TOO_LARGE);
         if (!safeSegment(handle.name)) continue;
         const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
         if (validRepoPath(entryPath)) handles.push(handle);
@@ -209,7 +235,11 @@ export class LocalFolderSource implements MessageSource {
         const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
         if (isFileHandle(handle)) {
           const meta = await this.fileMetadata(entryPath, handle, withMetadata);
-          if (meta.modified !== null && (seen.newest === null || meta.modified > seen.newest)) {
+          if (
+            meta.modified !== null &&
+            meta.modified <= latestTrusted &&
+            (seen.newest === null || meta.modified > seen.newest)
+          ) {
             seen.newest = meta.modified;
           }
           return {
@@ -221,8 +251,9 @@ export class LocalFolderSource implements MessageSource {
           };
         }
         if (isDirectoryHandle(handle)) {
-          // Only the inbox is scanned eagerly; topics are listed on demand.
-          const scanned = entryPath === "inbox" || entryPath.startsWith("inbox/");
+          // Only the inbox and its month folders are walked; anything deeper, and topics, are
+          // listed on demand.
+          const scanned = entryPath === "inbox" || (path === "inbox" && MONTH_RE.test(handle.name));
           const children = scanned ? await scanDirectory(handle, entryPath) : null;
           return {
             name: handle.name,
@@ -264,6 +295,9 @@ export class LocalFolderSource implements MessageSource {
         const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
         if (!validRepoPath(entryPath)) continue;
         handles.push({ handle, path: entryPath });
+        if (handles.length > this.maxEntries) {
+          throw new SourceError("too-large", path, null, null, TOO_LARGE);
+        }
       }
       const withMetadata = createLimiter(METADATA_CONCURRENCY);
       const entries = await mapLimit(

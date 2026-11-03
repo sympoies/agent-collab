@@ -1309,16 +1309,23 @@ for (const view of [
     );
     expect(overflow).toBeLessThanOrEqual(0);
 
-    // A poll of an unchanged folder reads no message text and publishes nothing new.
-    const textReads = () =>
+    // A poll of an unchanged folder reads no message text and publishes nothing new. The metadata
+    // counter proves a poll really ran: it rises by one read per scanned file.
+    const counts = () =>
       page.evaluate(
         () =>
-          (window as unknown as { fakeClone: { counts: { textReads: number } } }).fakeClone.counts
-            .textReads,
+          (
+            window as unknown as {
+              fakeClone: { counts: { textReads: number; metadataReads: number } };
+            }
+          ).fakeClone.counts,
       );
-    const before = await textReads();
+    const messagesBefore = await page.locator(".message").count();
+    const before = await counts();
     await page.clock.fastForward(61_000);
-    await expect.poll(textReads).toBe(before);
+    await expect.poll(async () => (await counts()).metadataReads).toBe(before.metadataReads + 2);
+    expect((await counts()).textReads).toBe(before.textReads);
+    await expect(page.locator(".message")).toHaveCount(messagesBefore);
 
     // The clone changes on disk (like a background git pull); the page picks it up by itself.
     await page.evaluate(() => {

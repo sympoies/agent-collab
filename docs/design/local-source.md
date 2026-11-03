@@ -103,8 +103,12 @@ No fallback helper or topic preview is part of this spike.
 - **Label.** The source is shown as "Local folder · experimental" until the dedicated-origin and CSP
   slice lands. The viewer keeps no identity preferences for a local folder, so the folder name is
   never written to browser storage.
-- **One scan per poll.** A poll walks the root, the inbox and every inbox directory once and reads
-  each file's metadata once. The revision covers the whole scan, so an unchanged folder answers
+- **One scan per poll.** A poll walks the root, the inbox and its month folders once and reads each
+  file's metadata once; deeper directories are listed but not walked. At most 50,000 entries are
+  enumerated per scan: a larger or hostile folder (very deep, or hundreds of thousands of files)
+  fails with a neutral "too large" state instead of hanging, and the entry-count cap replaces the
+  spike's "no entry-count cap". A poll that arrives while a scan is still running shares it, so a
+  scan slower than the interval never overlaps itself. The revision covers the whole scan, so an unchanged folder answers
   "not modified": the loader lists nothing, reads nothing and does not republish. Listings for the
   same revision come from the scan, so the loader's later requests cost no further metadata reads.
   Topic files are not scanned; they are read when an attachment card is opened, and entries carry
@@ -113,12 +117,15 @@ No fallback helper or topic preview is part of this spike.
   their children), so an edited file changes its directory and the loader replaces the loaded item;
   it is not counted as a new arrival. Same-size edits within the filesystem's timestamp precision can
   still be missed (accepted); a 53-bit hash makes an accidental collision very unlikely.
-- **Last change.** The newest file modification time of the latest successful scan, shown near the
+- **Last change.** The newest file modification time of the marker and message files in the latest
+  successful scan (topic files are not scanned); a time more than a day in the future is ignored as
+  clock skew, so a far-future file cannot pin the indicator to "just now", shown near the
   source name as relative text with the exact time on hover and no warning thresholds. A failed scan
   does not advance it.
 - **Measurement.** `tests/local-folder.test.ts` builds a clone of 3,000 messages in 24 month folders
   and counts calls on the handle fake: an unchanged poll costs exactly 3,001 metadata reads (one per
   file, plus the marker), 26 directory enumerations (root, inbox, 24 months) and zero content
-  reads; before this change the same poll cost a metadata walk for the inbox listing, another for
+  reads. Deleting or renaming a file changes the revision; a loaded message is never removed (the
+  inbox is an append-only log), and a renamed file arrives as a new message. Before this change the same poll cost a metadata walk for the inbox listing, another for
   each month listing, and a full republish. Measured timings on real disks are part of the
   Chromium acceptance slice.

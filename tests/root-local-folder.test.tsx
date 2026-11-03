@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MemoryStore } from "../src/credentials/store";
 import { FixtureSource } from "../src/source/fixture";
+import { SourceError } from "../src/source/types";
 import { Root, type LocalFolderOpen } from "../src/ui/Root";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { flat, MARKER, messageText } from "./support";
@@ -76,7 +77,9 @@ describe("Root with a local folder", () => {
     expect(element).toBeDefined();
     await act(async () => {
       element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      // Under fake timers a real zero-delay wait would never end.
+      if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(0);
+      else await new Promise((resolve) => setTimeout(resolve, 0));
     });
   }
 
@@ -171,11 +174,127 @@ describe("Root with a local folder", () => {
     );
   });
 
-  it("has no folder button or source indicator on other sources", async () => {
-    const host = await render(null);
+  it("puts the folder button in every viewer's toolbar when a picker exists, but the indicator only on the local source", async () => {
+    const host = await render(() => Promise.resolve({ source: folder(() => null), name: "clone" }));
     await click(button(host, "Open another repository"));
     await click(button(host, "Open offline demo"));
-    expect(button(host, "Local folder")).toBeUndefined();
+    expect(button(host, "Local folder")).toBeDefined();
     expect(host.querySelector(".source-indicator")).toBeNull();
+
+    const without = await (async () => {
+      act(() => {
+        mounted?.root.unmount();
+      });
+      document.body.replaceChildren();
+      return render(null);
+    })();
+    await click(button(without, "Open another repository"));
+    await click(button(without, "Open offline demo"));
+    expect(button(without, "Local folder")).toBeUndefined();
+  });
+
+  it("tells a blocked page apart from a cancelled picker", async () => {
+    const blocked = await render(() => Promise.reject(new DOMException("x", "SecurityError")));
+    await click(button(blocked, "Open local folder"));
+    expect(blocked.querySelector('[role="alert"]')?.textContent).toBe(
+      "The browser blocked folder access for this page.",
+    );
+  });
+
+  it("refuses an enormous folder with a neutral message", async () => {
+    const source = folder(() => null);
+    source.head = () => Promise.reject(new SourceError("too-large", "", null, null, "x"));
+    const host = await render(() => Promise.resolve({ source, name: "huge" }));
+    await click(button(host, "Open local folder"));
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("too large");
+  });
+
+  it("does not take over the screen when the user went elsewhere while the folder was being read", async () => {
+    let finish: (value: LocalFolderOpen) => void = () => undefined;
+    const pending = new Promise<LocalFolderOpen>((resolve) => {
+      finish = resolve;
+    });
+    const host = await render(() => pending);
+    await click(button(host, "Open local folder"));
+    await click(button(host, "Open another repository"));
+    expect(host.querySelector("h1")?.textContent).toBe("Collab Viewer");
+    await act(async () => {
+      finish({ source: folder(() => null), name: "late" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(host.querySelector("h1")?.textContent).toBe("Collab Viewer");
+    expect(host.textContent).not.toContain("Local folder: late");
+  });
+
+  it("keeps the messages and the folder button when a later poll loses permission", async () => {
+    const source = folder(() => null);
+    const head = source.head.bind(source);
+    let denied = false;
+    source.head = (previous) =>
+      denied
+        ? Promise.reject(
+            new SourceError(
+              "forbidden",
+              "",
+              null,
+              null,
+              "Local folder permission needs to be granted again.",
+            ),
+          )
+        : head(previous);
+    const host = await render(() => Promise.resolve({ source, name: "clone" }));
+    await click(button(host, "Open local folder"));
+    denied = true;
+    await click(button(host, "Refresh"));
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      "needs to be granted again",
+    );
+    expect(host.textContent).toContain("From the local clone.");
+    expect(button(host, "Local folder")).toBeDefined();
+  });
+
+  describe("polling lifecycle", () => {
+    function countingFolder() {
+      const source = folder(() => null);
+      const head = source.head.bind(source);
+      const calls = { head: 0 };
+      source.head = (previous) => {
+        calls.head += 1;
+        return head(previous);
+      };
+      return { source, calls };
+    }
+
+    it("polls every minute while visible, every five minutes while hidden, and stops when the viewer is left", async () => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      const { source, calls } = countingFolder();
+      const host = await render(() => Promise.resolve({ source, name: "clone" }));
+      await click(button(host, "Open local folder"));
+      const opened = calls.head;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(61_000);
+      });
+      expect(calls.head).toBe(opened + 1);
+
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      document.dispatchEvent(new Event("visibilitychange"));
+      const hiddenFrom = calls.head;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(61_000);
+      });
+      expect(calls.head).toBe(hiddenFrom);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5 * 60_000);
+      });
+      expect(calls.head).toBe(hiddenFrom + 1);
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+
+      await click(button(host, "Settings"));
+      const stopped = calls.head;
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+      });
+      expect(calls.head).toBe(stopped);
+    });
   });
 });

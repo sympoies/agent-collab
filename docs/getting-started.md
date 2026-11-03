@@ -31,8 +31,8 @@ viewer re-reads the folder by itself about every minute (every five minutes
 while the tab is hidden), shows new messages without a manual refresh, and does
 nothing when nothing changed. **Refresh** reads the folder right away.
 
-Next to the source name the toolbar shows when a file in the folder last
-changed, for example "Last change seen 12 minutes ago"; hover it for the exact
+Next to the source name the toolbar shows when the marker or a message file in
+the folder last changed (topic files are not scanned), for example "Last change seen 12 minutes ago"; hover it for the exact
 time. This is the newest file modification time on your computer, not a commit
 time, so a stale clone is visible at a glance. The feature is labelled
 experimental until the viewer is served from its own origin with a stricter
