@@ -42,6 +42,11 @@ export function fileKindOf(name: string): FileKind {
   return "other";
 }
 
+/** MIME type of a raster image; SVG is deliberately not previewed. */
+export function imageMime(name: string): string | null {
+  return IMAGE_MIME[extension(name)] ?? null;
+}
+
 function safeTopicsPath(ref: string): string[] | null {
   // eslint-disable-next-line no-control-regex -- control characters are rejected on purpose
   if (/[\\%\u0000-\u001f\u007f]/.test(ref)) return null;

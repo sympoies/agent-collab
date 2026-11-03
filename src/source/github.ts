@@ -159,6 +159,11 @@ export class GitHubSource implements MessageSource {
     });
   }
 
+  async readBytes(entry: DirectoryEntry): Promise<Uint8Array> {
+    const response = await this.request(`/git/blobs/${entry.objectId}`, entry.path, RAW_MEDIA);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
   webLink(
     path: string,
     revision: string | null,

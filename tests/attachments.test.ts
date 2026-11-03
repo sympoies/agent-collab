@@ -38,6 +38,37 @@ describe("AttachmentReader", () => {
     expect(await reader.info("topics/nope/x.md")).toBeNull();
   });
 
+  it("reads text within the cap and refuses a larger file without downloading it", async () => {
+    const { source, reader } = await open();
+    expect(await reader.readText("topics/api/fields.md", 100)).toEqual({
+      state: "ready",
+      text: "# Fields\n",
+    });
+    expect(await reader.readText("topics/api/big.txt", 10)).toEqual({
+      state: "too-large",
+      size: 50,
+    });
+    expect(source.reads).not.toContain("topics/api/big.txt");
+  });
+
+  it("reads bytes when the source can, and says so when it cannot", async () => {
+    const { reader } = await open();
+    const bytes = await reader.readBytes("topics/api/fields.md", 100);
+    expect(bytes.state === "ready" && bytes.bytes.length).toBe(9);
+
+    const textOnly: MessageSource = {
+      head: () => Promise.resolve({ revision: "r", validator: null }),
+      listDirectory: () =>
+        Promise.resolve([
+          { name: "a.png", path: "topics/a.png", kind: "file", objectId: "1", size: 3 },
+        ]),
+      readFile: () => Promise.resolve(""),
+      rateLimit: () => null,
+    };
+    const unsupported = new AttachmentReader(textOnly, () => "r");
+    expect(await unsupported.readBytes("topics/a.png", 100)).toEqual({ state: "unsupported" });
+  });
+
   it("does nothing before the repository was opened", async () => {
     const reader = new AttachmentReader(new FixtureSource(files), () => null);
     await expect(reader.info("topics/api/fields.md")).rejects.toMatchObject({ kind: "unexpected" });

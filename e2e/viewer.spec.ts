@@ -1052,7 +1052,7 @@ for (const identity of identityCases) {
 }
 
 for (const identity of identityCases) {
-  test(`attachments and the Files view work on ${identity.label} in ${identity.theme}`, async ({
+  test(`attachments, previews and the Files view work on ${identity.label} in ${identity.theme}`, async ({
     page,
   }) => {
     await page.emulateMedia({ colorScheme: identity.scheme });
@@ -1068,19 +1068,27 @@ for (const identity of identityCases) {
     const guide = first.getByRole("link", { name: "docs.example.com" });
     await expect(guide).toHaveAttribute("rel", "noopener noreferrer");
     await expect(guide).toHaveAttribute("target", "_blank");
-    // No file content was requested before a card was opened.
+    // No file was requested before a card was opened.
     expect(assertRequests.topicBlobRequests()).toBe(0);
 
     const card = (name: string) => first.locator(".file-card", { hasText: name });
     await card("fields-v1.md").locator("summary").click();
-    await expect(card("fields-v1.md").locator(".file-meta")).toContainText(
-      "topics/api/fields-v1.md",
-    );
-    await expect(card("fields-v1.md").locator(".file-meta")).toContainText("94 B");
-    await expect(card("results.csv").locator(".file-meta")).toHaveCount(0);
+    await expect(card("fields-v1.md").getByRole("heading", { name: "Field list" })).toBeVisible();
+    await expect(card("fields-v1.md").locator("strong")).toHaveText("id");
+    await expect(card("fields-v1.md")).toContainText("<script>window.pwned = true</script>");
+    expect(await page.evaluate(() => "pwned" in window)).toBe(false);
+
+    await card("results.csv").locator("summary").click();
+    await expect(card("results.csv").locator("td")).toHaveText(["alice", "9, great", "bob", "7"]);
+
+    await card("diagram.png").locator("summary").click();
+    const image = card("diagram.png").locator("img");
+    await expect(image).toBeVisible();
+    expect(await image.evaluate((node: HTMLImageElement) => node.naturalWidth)).toBeGreaterThan(0);
 
     await card("archive.bin").locator("summary").click();
     // The link points at the revision being viewed, not at a moving branch.
+    await expect(card("archive.bin")).toContainText("No preview for this file type.");
     await expect(card("archive.bin").getByRole("link", { name: "Open in GitHub" })).toHaveAttribute(
       "href",
       /^https:\/\/github\.com\/alice-agent\/fixture-repo\/blob\/revision-\d+\/topics\/api\/archive\.bin$/,
@@ -1088,8 +1096,6 @@ for (const identity of identityCases) {
 
     await card("other.md").locator("summary").click();
     await expect(card("other.md")).toContainText("not in the repository at this revision");
-    // Opening cards lists directories only; no file content was ever downloaded.
-    expect(assertRequests.topicBlobRequests()).toBe(0);
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );

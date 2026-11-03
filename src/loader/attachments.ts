@@ -1,5 +1,5 @@
 // On-demand access to files that messages reference (topics/ documents): directory listings are
-// read only when a card is opened, once per revision and directory.
+// read only when a preview or detail is requested, once per revision and directory.
 
 import { SourceError, type DirectoryEntry, type MessageSource } from "../source/types";
 
@@ -9,6 +9,15 @@ export interface FileInfo {
   /** Size in bytes, or null when the source does not know it. */
   readonly size: number | null;
 }
+
+export type TextRead =
+  | { readonly state: "ready"; readonly text: string }
+  | { readonly state: "too-large"; readonly size: number };
+
+export type BytesRead =
+  | { readonly state: "ready"; readonly bytes: Uint8Array }
+  | { readonly state: "too-large"; readonly size: number }
+  | { readonly state: "unsupported" };
 
 export class AttachmentReader {
   private readonly listings = new Map<string, Promise<readonly DirectoryEntry[] | null>>();
@@ -43,7 +52,35 @@ export class AttachmentReader {
     return { path, name: entry.name, size: entry.size ?? null };
   }
 
+  async readText(path: string, maxBytes: number): Promise<TextRead> {
+    const entry = await this.requireEntry(path);
+    if (entry.size !== undefined && entry.size > maxBytes) {
+      return { state: "too-large", size: entry.size };
+    }
+    const text = await this.source.readFile(entry);
+    const size = new TextEncoder().encode(text).length;
+    return size > maxBytes ? { state: "too-large", size } : { state: "ready", text };
+  }
+
+  async readBytes(path: string, maxBytes: number): Promise<BytesRead> {
+    const entry = await this.requireEntry(path);
+    if (this.source.readBytes === undefined) return { state: "unsupported" };
+    if (entry.size !== undefined && entry.size > maxBytes) {
+      return { state: "too-large", size: entry.size };
+    }
+    const bytes = await this.source.readBytes(entry);
+    return bytes.length > maxBytes
+      ? { state: "too-large", size: bytes.length }
+      : { state: "ready", bytes };
+  }
+
   webLink(path: string): { readonly url: string; readonly label: string } | null {
     return this.source.webLink?.(path, this.revision()) ?? null;
+  }
+
+  private async requireEntry(path: string): Promise<DirectoryEntry> {
+    const entry = await this.entry(path);
+    if (entry === null) throw new SourceError("not-found", path);
+    return entry;
   }
 }

@@ -1,13 +1,22 @@
-// Attachment chips under a message, file cards with on-demand details, and the Files view.
-// Nothing here creates HTML from file content, loads remote images, or follows a link without
-// rel="noopener noreferrer".
+// Attachment chips under a message, file cards with on-demand previews, and the Files view.
+// Previews are text or the small Markdown subset only; nothing here creates HTML from file
+// content, loads remote images, or follows a link without rel="noopener noreferrer".
 
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 
 import type { AttachmentReader, FileInfo } from "../loader/attachments";
-import { classifyRef, type FileKind, type Ref } from "../message/refs";
+import { parseCsv } from "../message/csv";
+import { classifyRef, imageMime, type FileKind, type Ref } from "../message/refs";
 import type { Message } from "../message/types";
 import { SourceError } from "../source/types";
+import { Markdown } from "./Markdown";
+
+/** Largest text, Markdown or CSV file that is previewed. */
+export const TEXT_PREVIEW_MAX_BYTES = 200 * 1024;
+/** Largest image that is previewed. */
+export const IMAGE_PREVIEW_MAX_BYTES = 2 * 1024 * 1024;
+/** CSV rows shown in a preview. */
+export const CSV_PREVIEW_ROWS = 100;
 
 export interface AttachmentContext {
   readonly reader: AttachmentReader;
@@ -73,6 +82,124 @@ function OpenLink({ reader, path }: { reader: AttachmentReader; path: string }) 
   );
 }
 
+function NoPreview({
+  reader,
+  path,
+  reason,
+}: {
+  reader: AttachmentReader;
+  path: string;
+  reason: string;
+}) {
+  return (
+    <p className="note">
+      {reason} <OpenLink reader={reader} path={path} />
+    </p>
+  );
+}
+
+function TextPreview({
+  reader,
+  path,
+  kind,
+}: {
+  reader: AttachmentReader;
+  path: string;
+  kind: "markdown" | "text" | "csv";
+}) {
+  const result = useLoad(() => reader.readText(path, TEXT_PREVIEW_MAX_BYTES));
+  if (result.state === "loading") return <p className="note">Loading preview…</p>;
+  if (result.state === "error") return <p className="note">{result.message}</p>;
+  const read = result.value;
+  if (read.state === "too-large") {
+    return (
+      <NoPreview
+        reader={reader}
+        path={path}
+        reason={`Too large to preview (${formatSize(read.size)}).`}
+      />
+    );
+  }
+  if (kind === "markdown") return <Markdown text={read.text} />;
+  if (kind === "csv") {
+    const table = parseCsv(
+      read.text,
+      path.toLowerCase().endsWith(".tsv") ? "\t" : ",",
+      CSV_PREVIEW_ROWS,
+    );
+    return (
+      <div className="csv-preview">
+        <table>
+          <thead>
+            <tr>
+              {table.header.map((cell, index) => (
+                <th key={index}>{cell}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row, rowIndex) => (
+              <tr key={rowIndex}>
+                {row.map((cell, cellIndex) => (
+                  <td key={cellIndex}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {table.truncated && (
+          <p className="note">
+            Showing the first {String(CSV_PREVIEW_ROWS)} of {String(table.totalRows)} rows.
+          </p>
+        )}
+      </div>
+    );
+  }
+  return <pre className="text-preview">{read.text}</pre>;
+}
+
+function ImagePreview({
+  reader,
+  path,
+  name,
+}: {
+  reader: AttachmentReader;
+  path: string;
+  name: string;
+}) {
+  const result = useLoad(() => reader.readBytes(path, IMAGE_PREVIEW_MAX_BYTES));
+  const mime = imageMime(name);
+  const bytes =
+    result.state === "done" && result.value.state === "ready" ? result.value.bytes : null;
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (bytes === null || mime === null) return;
+    const objectUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: mime }));
+    // The object URL exists only while the preview is mounted, so it has to be state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setUrl(objectUrl);
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [bytes, mime]);
+  if (result.state === "loading") return <p className="note">Loading preview…</p>;
+  if (result.state === "error") return <p className="note">{result.message}</p>;
+  const read = result.value;
+  if (read.state === "unsupported") {
+    return <NoPreview reader={reader} path={path} reason="This source cannot preview images." />;
+  }
+  if (read.state === "too-large") {
+    return (
+      <NoPreview
+        reader={reader}
+        path={path}
+        reason={`Too large to preview (${formatSize(read.size)}).`}
+      />
+    );
+  }
+  return url === null ? null : <img className="image-preview" src={url} alt={name} />;
+}
+
 function Details({
   file,
   reader,
@@ -92,9 +219,15 @@ function Details({
         <p className="file-meta">
           {formatSize(info.value.size)} · <code>{file.path}</code>
         </p>
-        <p className="note">
-          <OpenLink reader={reader} path={file.path} />
-        </p>
+        {file.fileKind === "other" ? (
+          <NoPreview reader={reader} path={file.path} reason="No preview for this file type." />
+        ) : file.fileKind === "image" ? (
+          imageMime(file.name) === null ? null : (
+            <ImagePreview reader={reader} path={file.path} name={file.name} />
+          )
+        ) : (
+          <TextPreview reader={reader} path={file.path} kind={file.fileKind} />
+        )}
       </>
     );
   }

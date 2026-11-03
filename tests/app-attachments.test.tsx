@@ -2,13 +2,13 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Loader } from "../src/loader/loader";
 import { FixtureSource } from "../src/source/fixture";
 import type { DirectoryEntry, MessageSource } from "../src/source/types";
 import { App } from "../src/ui/App";
-import { formatSize } from "../src/ui/Attachments";
+import { CSV_PREVIEW_ROWS, formatSize, TEXT_PREVIEW_MAX_BYTES } from "../src/ui/Attachments";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { messageText } from "./support";
 
@@ -22,6 +22,7 @@ const refs = [
   "topics/api/data.csv",
   "topics/api/notes.txt",
   "topics/api/blob.bin",
+  "topics/api/huge.txt",
   "topics/api/gone.md",
   "https://docs.example.com/guide?x=1",
   SECOND,
@@ -35,9 +36,13 @@ const files: Record<string, string> = {
   [`inbox/${FIRST}.md`]: messageText(FIRST, "alice-agent", "api", { refs }, "See the files."),
   [`inbox/${SECOND}.md`]: messageText(SECOND, "bob-agent", "ops", {}, "Ops note."),
   "topics/api/fields.md": "# Field list\n\n- **id** is required\n\n<script>alert(1)</script>\n",
-  "topics/api/data.csv": 'name,note\nrow,"a, b"\n',
+  "topics/api/data.csv": [
+    "name,note",
+    ...Array.from({ length: 150 }, (_, i) => `row${String(i)},"a, b"`),
+  ].join("\n"),
   "topics/api/notes.txt": "plain <b>text</b> notes",
   "topics/api/blob.bin": "binary",
+  "topics/api/huge.txt": "x".repeat(TEXT_PREVIEW_MAX_BYTES + 1),
 };
 
 describe("attachments", () => {
@@ -101,12 +106,13 @@ describe("attachments", () => {
     const list = host.querySelector(`#msg-${FIRST} .refs`);
     expect(
       [...(list?.querySelectorAll(".file-card .file-name") ?? [])].map((n) => n.textContent),
-    ).toEqual(["fields.md", "data.csv", "notes.txt", "blob.bin", "gone.md"]);
+    ).toEqual(["fields.md", "data.csv", "notes.txt", "blob.bin", "huge.txt", "gone.md"]);
     expect([...(list?.querySelectorAll(".file-badge") ?? [])].map((n) => n.textContent)).toEqual([
       "MD",
       "CSV",
       "TXT",
       "FILE",
+      "TXT",
       "MD",
     ]);
     const link = list?.querySelector<HTMLAnchorElement>('a[href^="https://docs.example.com"]');
@@ -122,17 +128,36 @@ describe("attachments", () => {
     expect(list?.querySelector(".file-body")).toBeNull();
   });
 
-  it("shows the size and path when a card is opened, and renders no file content", async () => {
+  it("previews Markdown as sanitized elements and CSV as a capped table", async () => {
     const host = await render();
     const md = await open(host, "fields.md");
     expect(md.querySelector(".file-meta")?.textContent).toContain("topics/api/fields.md");
-    expect(md.querySelector(".file-meta")?.textContent).toMatch(/\d+ B/);
-    // Content is not previewed in this slice: no headings, elements from the file, or images.
-    expect(md.querySelector("h1, script, img, pre")).toBeNull();
-    expect(md.textContent).not.toContain("Field list");
+    expect(md.querySelector("h1")?.textContent).toBe("Field list");
+    expect(md.querySelector("strong")?.textContent).toBe("id");
+    expect(md.querySelector("script")).toBeNull();
+    expect(md.textContent).toContain("<script>alert(1)</script>");
 
+    const csv = await open(host, "data.csv");
+    expect(csv.querySelectorAll("th")).toHaveLength(2);
+    expect(csv.querySelectorAll("tbody tr")).toHaveLength(CSV_PREVIEW_ROWS);
+    expect(csv.querySelector("tbody td:nth-child(2)")?.textContent).toBe("a, b");
+    expect(csv.textContent).toContain("Showing the first 100 of 150 rows.");
+
+    const txt = await open(host, "notes.txt");
+    expect(txt.querySelector("pre")?.textContent).toBe("plain <b>text</b> notes");
+    expect(txt.querySelector("b")).toBeNull();
+  });
+
+  it("shows metadata for an unknown type, a too-large file and a missing file", async () => {
+    const host = await render();
     const other = await open(host, "blob.bin");
     expect(other.textContent).toContain("6 B");
+    expect(other.textContent).toContain("No preview for this file type.");
+
+    const huge = await open(host, "huge.txt");
+    expect(huge.textContent).toContain("Too large to preview");
+    expect(huge.querySelector("pre")).toBeNull();
+
     const gone = await open(host, "gone.md");
     expect(gone.textContent).toContain("not in the repository at this revision");
   });
@@ -165,6 +190,7 @@ describe("attachments", () => {
       await Promise.resolve();
     });
     expect(window.location.hash).toBe(`#msg-${SECOND}`);
+    expect(host.querySelector(`#msg-${SECOND}`)).not.toBeNull();
   });
 
   it("lists every file and link of the conversation in the Files view, once each", async () => {
@@ -176,9 +202,63 @@ describe("attachments", () => {
     });
     expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
     const names = [...host.querySelectorAll(".files .file-name")].map((node) => node.textContent);
-    expect(names.sort()).toEqual(["blob.bin", "data.csv", "fields.md", "gone.md", "notes.txt"]);
+    expect(names.sort()).toEqual([
+      "blob.bin",
+      "data.csv",
+      "fields.md",
+      "gone.md",
+      "huge.txt",
+      "notes.txt",
+    ]);
     expect(host.querySelectorAll(".files a.chip")).toHaveLength(1);
     expect(host.querySelector(".files .file-from")?.textContent).toContain("alice-agent · #api");
+  });
+
+  it("creates image blob URLs only from bytes read through the source and revokes them when the preview closes", async () => {
+    const IMG = "2026-10-02T0900-alice-agent-api-01";
+    const created: Blob[] = [];
+    const revoked: string[] = [];
+    const createSpy = vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+      created.push(blob as Blob);
+      return `blob:test-${String(created.length)}`;
+    });
+    const revokeSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation((url) => {
+      revoked.push(url);
+    });
+    try {
+      const source = new FixtureSource({
+        ".agent-collab": "collab-protocol: 1\n",
+        [`inbox/${IMG}.md`]: messageText(
+          IMG,
+          "alice-agent",
+          "api",
+          { refs: "topics/api/pic.png, https://evil.example/remote.png" },
+          "An image.",
+        ),
+        "topics/api/pic.png": "PNGDATA",
+      });
+      const host = await render(source);
+      const card = await open(host, "pic.png");
+      const image = card.querySelector("img");
+      expect(image?.getAttribute("src")).toBe("blob:test-1");
+      expect(created).toHaveLength(1);
+      expect(created[0]?.type).toBe("image/png");
+      expect(new TextDecoder().decode(await created[0]?.arrayBuffer())).toBe("PNGDATA");
+      // A URL in refs is a link chip; it never becomes an image source.
+      expect(host.querySelector(`img[src^="https"]`)).toBeNull();
+      expect(revoked).toEqual([]);
+
+      await act(async () => {
+        (card as HTMLDetailsElement).open = false;
+        card.dispatchEvent(new Event("toggle"));
+        await Promise.resolve();
+      });
+      expect(card.querySelector("img")).toBeNull();
+      expect(revoked).toEqual(["blob:test-1"]);
+    } finally {
+      createSpy.mockRestore();
+      revokeSpy.mockRestore();
+    }
   });
 
   it("switches to the topic of a referenced message in another topic", async () => {
