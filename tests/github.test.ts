@@ -379,6 +379,16 @@ describe("GitHubSource attachments", () => {
     ]);
   });
 
+  it("reads the bytes of a blob with the raw media type", async () => {
+    const bytes = new Uint8Array([137, 80, 78, 71, 0, 255]);
+    const { fetch, calls } = fakeFetch({
+      [`${REPO}/git/blobs/b-img`]: new Response(bytes, { status: 200, headers: RATE }),
+    });
+    const entry = { name: "a.png", path: "topics/a.png", kind: "file", objectId: "b-img" } as const;
+    expect([...(await source(fetch).readBytes(entry))]).toEqual([137, 80, 78, 71, 0, 255]);
+    expect(header(calls[0], "accept")).toBe("application/vnd.github.raw+json");
+  });
+
   it("links a file at the opened revision for github.com and an enterprise host with its port", () => {
     const { fetch } = fakeFetch({});
     expect(

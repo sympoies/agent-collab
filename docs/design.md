@@ -396,19 +396,36 @@ public blobs.
   A safe `topics/` path (repository-relative segments only; no `.`, `..`,
   empty segments, backslashes, `%` escapes or control characters) is a file
   card with a type badge (MD, TXT, CSV, IMG, FILE) and its name. Opening the
-  card reads its directory listing once per revision, for the size, so a long
-  thread makes no request until a card is opened; the card then shows the size,
-  the path and an "Open in GitHub" link from the source
-  (`MessageSource.webLink`) to the file at the revision being viewed, which keeps provider details out of the UI. A
-  message id jumps to and highlights that message (`:target`), a URL shows its
-  host and opens in a new tab with `rel="noopener noreferrer"`, and anything
-  else stays plain text. The **Files** entry lists every file and link
-  referenced in the current conversation (all topics or the selected one),
-  newest reference first. It lists only loaded messages: it shows the same
-  "Load older messages" control as the chat and a note while older pages are
-  not loaded, so attachments of older messages are not silently missing.
-  Inline previews of Markdown, text, CSV and images
-  are a later slice.
+  card reads its directory listing once per revision (for the size) and the
+  file on demand, so a long thread makes no request until a card is opened.
+  Markdown, text, JSON/YAML, CSV/TSV and PNG/JPEG/GIF/WebP files preview
+  inline up to 200 KB (images 2 MB; CSV shows the first 100 rows); a larger
+  file, an SVG or any other type shows its size and an "Open in GitHub" link
+  from the source (`MessageSource.webLink`) to the file at the revision being
+  viewed, which keeps provider details out of the UI. A message id jumps to and
+  highlights that message (`:target`), a URL shows its host and opens in a new
+  tab with `rel="noopener noreferrer"`, and anything else stays plain text.
+  Previews are text or the small Markdown subset in `src/ui/Markdown.tsx`,
+  rendered as React elements: raw HTML stays text, Markdown images are shown as
+  their alt text, only http(s) links are links. The Markdown scan has bounded
+  patterns and a line longer than 2,000 characters is shown as plain text, so a
+  hostile file cannot make rendering quadratic.
+
+  Limits of a preview: a file is downloaded only when the source reports its
+  size and the size is within the cap (200 KB, images 2 MB); the downloaded
+  text is checked again in bytes. An image must also have a readable PNG, GIF,
+  JPEG or WebP header and at most 25 megapixels, so a small file cannot decode
+  to a huge bitmap. A GIF counts the larger of its screen and its first frame; the frame counts of animated GIF and WebP are not capped, and the 2 MB size cap is the accepted bound. A CSV shows at most 100 rows and 50 columns. A file is read
+  once per revision however often its card is opened (the failed read is not
+  remembered, and nothing retries by itself), which matters for the anonymous
+  request quota. A source that reports no size, such as the local folder
+  source today, shows metadata only until it reports one. The **Files** entry lists every
+  file and link referenced in the current conversation (all topics or the
+  selected one), newest reference first. It lists only loaded messages: it
+  shows the same "Load older messages" control as the chat and a note while
+  older pages are not loaded, so attachments of older messages are not silently
+  missing. Sources that cannot read bytes (the static snapshot) show images as
+  metadata only.
 
   Out of scope (follow-up): a "sidecar note" for data files, because the
   repository documents no naming convention for it; it is not invented here.
@@ -473,7 +490,14 @@ Two different secrets with different purposes:
     After saving, settings show "configured" and a replace/remove action, not
     the value or a fragment of it.
   - The production build carries a Content Security Policy:
-    `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'self' https:`.
+    `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; img-src 'self' blob:; connect-src 'self' https:`.
+    `img-src` allows only same-origin images and the `blob:` URLs of image
+    previews; no remote image is ever loaded. A blob URL is created only from
+    bytes fetched through the message source (`MessageSource.readBytes`) for a
+    validated `topics/` path, never from a URL that a message or file supplies
+    (a URL in `refs` is only a link), and it is revoked when the preview
+    closes (`ImagePreview` in `src/ui/Attachments.tsx`;
+    `tests/app-attachments.test.tsx` checks both).
     The browser build cannot know the configured endpoint when it is built,
     so `connect-src` allows same-origin requests and any `https:` origin; packaged builds narrow it to
     the configured endpoint. The dev server runs without it because hot

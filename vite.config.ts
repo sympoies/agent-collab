@@ -6,7 +6,7 @@ import { defineConfig } from "vitest/config";
 // build gets it: the dev server injects inline scripts for hot reload.
 const CSP =
   "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; " +
-  "connect-src 'self' https:";
+  "img-src 'self' blob:; connect-src 'self' https:";
 
 const contentSecurityPolicy: Plugin = {
   name: "content-security-policy",

@@ -931,6 +931,70 @@ span.chip {
   color: var(--link);
 }
 
+.text-preview,
+.markdown pre {
+  max-height: 320px;
+  margin: 4px 0;
+  padding: 8px;
+  overflow: auto;
+  background: var(--code);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown {
+  color: var(--text);
+}
+
+.markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: 8px 0 4px;
+  font-size: 1rem;
+}
+
+.markdown p,
+.markdown ul,
+.markdown ol,
+.markdown blockquote {
+  margin: 4px 0;
+}
+
+.markdown a {
+  color: var(--link);
+}
+
+.markdown blockquote {
+  padding-left: 8px;
+  border-left: 3px solid var(--accent);
+}
+
+.csv-preview {
+  max-width: 100%;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.csv-preview table {
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.csv-preview th,
+.csv-preview td {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.csv-preview th {
+  background: var(--code);
+}
+
+.image-preview {
+  max-width: 100%;
+  max-height: 320px;
+}
+
 .files {
   display: flex;
   flex-direction: column;

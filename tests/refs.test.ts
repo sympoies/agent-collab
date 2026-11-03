@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyRef, fileKindOf } from "../src/message/refs";
+import { classifyRef, fileKindOf, imageMime } from "../src/message/refs";
 
 describe("classifyRef", () => {
   it("recognises a message id", () => {
@@ -70,5 +70,12 @@ describe("fileKindOf", () => {
     ["Makefile", "other"],
   ])("%s is %s", (name, kind) => {
     expect(fileKindOf(name)).toBe(kind);
+  });
+
+  it("gives raster images a MIME type and nothing else", () => {
+    expect(imageMime("a.png")).toBe("image/png");
+    expect(imageMime("a.jpg")).toBe("image/jpeg");
+    expect(imageMime("a.svg")).toBeNull();
+    expect(imageMime("a.md")).toBeNull();
   });
 });

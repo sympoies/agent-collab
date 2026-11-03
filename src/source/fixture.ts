@@ -97,6 +97,10 @@ export class FixtureSource implements MessageSource {
     return Promise.resolve(content);
   }
 
+  async readBytes(entry: DirectoryEntry): Promise<Uint8Array> {
+    return new TextEncoder().encode(await this.readFile(entry));
+  }
+
   rateLimit(): null {
     return null;
   }
