@@ -15,10 +15,14 @@ import {
   type IdentityPreferences,
   type PreferenceStorage,
 } from "../identity/preferences";
+import { deriveQuestionStates } from "../message/questions";
+import { buildReceipts, groupQuestions } from "../message/receipts";
+import type { Message } from "../message/types";
 import { SourceError } from "../source/types";
 import { ChatView } from "./ChatView";
 import { buildPeople } from "./people";
 import { ProfilePanel } from "./ProfilePanel";
+import { QuestionsView } from "./QuestionsView";
 import { ThemeToggle } from "./ThemeProvider";
 import { buildRows, topicSummaries } from "./timeline";
 
@@ -60,6 +64,8 @@ export function App({
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const pollerRef = useRef<Poller | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
+  const [view, setView] = useState<"chat" | "questions">("chat");
+  const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
   const conversationHeading = useRef<HTMLHeadingElement | null>(null);
   const lastTopicButton = useRef<HTMLButtonElement | null>(null);
@@ -157,6 +163,33 @@ export function App({
     [snapshot.participants, snapshot.formerParticipants, snapshot.items],
   );
   const people = useMemo(() => buildPeople(order, preferences), [order, preferences]);
+  const messages = useMemo(
+    () => snapshot.items.flatMap((item) => (item.kind === "message" ? [item.message] : [])),
+    [snapshot.items],
+  );
+  const questionStates = useMemo(
+    () =>
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+        incompleteTopics: snapshot.incompleteTopics,
+      }),
+    [
+      messages,
+      snapshot.participants,
+      snapshot.formerParticipants,
+      snapshot.rosterKnown,
+      snapshot.incompleteTopics,
+    ],
+  );
+  const receipts = useMemo(
+    () =>
+      buildReceipts(messages, snapshot.participants, snapshot.formerParticipants, questionStates),
+    [messages, snapshot.participants, snapshot.formerParticipants, questionStates],
+  );
+  const questionGroups = useMemo(
+    () => groupQuestions(questionStates, viewer),
+    [questionStates, viewer],
+  );
   const rows = useMemo(
     () =>
       buildRows(snapshot.items, {
@@ -164,9 +197,20 @@ export function App({
         topic,
         today: localDate(new Date()),
         fresh: snapshot.fresh,
+        receipts,
       }),
-    [snapshot.items, snapshot.fresh, viewer, topic],
+    [snapshot.items, snapshot.fresh, viewer, topic, receipts],
   );
+  const openQuestion = (question: Message) => {
+    setView("chat");
+    setTopic(question.topic);
+    pendingJump.current = question.id;
+  };
+  useEffect(() => {
+    if (pendingJump.current === null || view !== "chat") return;
+    document.getElementById(`msg-${pendingJump.current}`)?.scrollIntoView();
+    pendingJump.current = null;
+  }, [view, rows]);
   useEffect(() => {
     const arrivals = [...snapshot.fresh].filter((path) => !announcedMessages.current.has(path));
     for (const path of snapshot.fresh) announcedMessages.current.add(path);
@@ -307,8 +351,21 @@ export function App({
           <nav className="topics" aria-label="Topics">
             <button
               type="button"
-              aria-pressed={topic === null}
+              aria-pressed={view === "questions"}
               onClick={(event) => {
+                setView("questions");
+                lastTopicButton.current = event.currentTarget;
+                setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+              }}
+            >
+              <span>Questions</span>
+              <span className="count">{questionGroups.open.length} open</span>
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "chat" && topic === null}
+              onClick={(event) => {
+                setView("chat");
                 setTopic(null);
                 lastTopicButton.current = event.currentTarget;
                 setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
@@ -320,8 +377,9 @@ export function App({
               <button
                 key={summary.topic}
                 type="button"
-                aria-pressed={topic === summary.topic}
+                aria-pressed={view === "chat" && topic === summary.topic}
                 onClick={(event) => {
+                  setView("chat");
                   setTopic(summary.topic);
                   lastTopicButton.current = event.currentTarget;
                   setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
@@ -345,9 +403,16 @@ export function App({
             Back to conversations
           </button>
           <h2 id="conversation-heading" ref={conversationHeading} tabIndex={-1}>
-            {topic === null ? "All conversations" : `#${topic}`}
+            {view === "questions"
+              ? "Questions"
+              : topic === null
+                ? "All conversations"
+                : `#${topic}`}
           </h2>
-          {snapshot.hasOlder && (
+          {view === "questions" && (
+            <QuestionsView groups={questionGroups} people={people} onOpen={openQuestion} />
+          )}
+          {view === "chat" && snapshot.hasOlder && (
             <button
               type="button"
               className="older"
@@ -359,7 +424,7 @@ export function App({
               Load older messages
             </button>
           )}
-          <ChatView rows={rows} people={people} />
+          {view === "chat" && <ChatView rows={rows} people={people} />}
         </main>
       </div>
       <a
