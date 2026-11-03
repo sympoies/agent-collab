@@ -45,12 +45,22 @@ export function translate(
 export function detectLocale(languages: readonly string[]): Locale {
   for (const language of languages) {
     const tag = language.toLowerCase();
-    if (tag === "en" || tag.startsWith("en-")) return "en";
-    if (tag === "ja" || tag.startsWith("ja-")) return "ja";
-    // Traditional Chinese: Taiwan, Hong Kong, Macau and the Hant script.
-    if (/^zh-(tw|hk|mo|hant)/.test(tag)) return "zh-TW";
+    if (/^en(-|$)/.test(tag)) return "en";
+    if (/^ja(-|$)/.test(tag)) return "ja";
+    // Traditional Chinese: Taiwan, Hong Kong, Macau and the Hant script, as a whole subtag.
+    // Simplified Chinese (zh, zh-CN, zh-Hans) is not supported and is skipped.
+    if (/^zh-(tw|hk|mo|hant)(-|$)/.test(tag)) return "zh-TW";
   }
   return "en";
+}
+
+/** A date and time in `locale` from `Intl`; `timeZone` pins the zone (the default is the user's). */
+export function formatDateTime(locale: Locale, date: Date, timeZone?: string): string {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    ...(timeZone === undefined ? {} : { timeZone }),
+  }).format(date);
 }
 
 export { LOCALES };

@@ -4,7 +4,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { LOCALE_NAMES, LOCALES, type Locale, type MessageKey } from "./catalog";
-import { detectLocale, translate, type Params } from "./translate";
+import { detectLocale, formatDateTime, translate, type Params } from "./translate";
 
 type LocaleStorage = Pick<Storage, "getItem" | "setItem">;
 
@@ -25,8 +25,7 @@ function value(locale: Locale, setLocale: (locale: Locale) => void): LocaleConte
     locale,
     setLocale,
     t: (key, params) => translate(locale, key, params),
-    formatDateTime: (date) =>
-      new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(date),
+    formatDateTime: (date) => formatDateTime(locale, date),
   };
 }
 

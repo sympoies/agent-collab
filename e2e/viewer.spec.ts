@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-import { en } from "../src/i18n/catalog";
+import { en, LOCALE_NAMES, LOCALES } from "../src/i18n/catalog";
 import { ja } from "../src/i18n/ja";
 import { zhTW } from "../src/i18n/zh-TW";
 
@@ -1420,65 +1420,72 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
   await expect(revoked.getByText("The first message from the local clone.")).toBeVisible();
 });
 
-const languageCases = [
-  { code: "en", name: "English", messages: en },
-  { code: "ja", name: "日本語", messages: ja },
-  { code: "zh-TW", name: "繁體中文", messages: zhTW },
-] as const;
+const catalogsByLocale = { en, ja, "zh-TW": zhTW } as const;
 
-for (const language of languageCases) {
+/** Nothing may be clipped: every matching element must fit inside its own box. */
+async function expectNoClipping(page: Page, selector: string) {
+  const clipped = await page.$$eval(selector, (elements) =>
+    elements
+      .filter((element) => element.scrollWidth > element.clientWidth + 1)
+      .map((element) => `${element.tagName} ${element.textContent.slice(0, 40)}`),
+  );
+  expect(clipped, `clipped elements for ${selector}`).toEqual([]);
+}
+
+for (const code of LOCALES) {
+  const messages = catalogsByLocale[code];
   for (const view of [
     { label: "desktop", size: { width: 1280, height: 800 } },
     { label: "phone", size: { width: 390, height: 844 } },
   ] as const) {
-    test(`the interface switches to ${language.name} and fits on ${view.label}`, async ({
+    test(`the interface switches to ${LOCALE_NAMES[code]} and fits on ${view.label}`, async ({
       page,
     }) => {
       await page.setViewportSize(view.size);
       await page.goto("/");
-      await page.getByLabel(en["language.label"]).selectOption(language.code);
-      await expect(page.locator("html")).toHaveAttribute("lang", language.code);
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-        language.messages["app.title"],
-      );
+      // Switch away first, then to the language under test, so English is proven too.
+      const other = code === "ja" ? "zh-TW" : "ja";
+      await page.getByLabel(en["language.label"]).selectOption(other);
+      await expect(page.locator("html")).toHaveAttribute("lang", other);
+      await page.getByLabel(catalogsByLocale[other]["language.label"]).selectOption(code);
+      await expect(page.locator("html")).toHaveAttribute("lang", code);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(messages["app.title"]);
       await expect(
-        page.getByRole("button", { name: language.messages["welcome.openLiveDemo"] }),
+        page.getByRole("button", { name: messages["welcome.openLiveDemo"] }),
       ).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: language.messages["welcome.openLocal"] }),
-      ).toBeVisible();
-      await saveScreenshot(page, `i18n-welcome-${language.code}-${view.label}.png`);
+      await expect(page.getByRole("button", { name: messages["welcome.openLocal"] })).toBeVisible();
+      await expectNoClipping(page, ".settings button, .settings h1, .settings p");
+      await saveScreenshot(page, `i18n-welcome-${code}-${view.label}.png`);
 
       // The choice survives a reload and reaches the viewer.
       await page.reload();
-      await expect(page.locator("html")).toHaveAttribute("lang", language.code);
-      await page.getByRole("button", { name: language.messages["welcome.openAnother"] }).click();
+      await expect(page.locator("html")).toHaveAttribute("lang", code);
+      await page.getByRole("button", { name: messages["welcome.openAnother"] }).click();
       await page.getByRole("button", { name: "Open offline demo" }).click();
       const toolbar = page.locator(".bar-actions");
-      await expect(
-        toolbar.getByRole("button", { name: language.messages["bar.refresh"] }),
-      ).toBeVisible();
-      await expect(
-        toolbar.getByRole("button", { name: language.messages["bar.settings"] }),
-      ).toBeVisible();
-      await expect(toolbar.getByLabel(language.messages["bar.viewingAs"])).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: language.messages["nav.questions"] }),
-      ).toBeVisible();
-      if (view.size.width < 721) {
-        await page.getByRole("button", { name: language.messages["nav.all"] }).click();
-        await expect(
-          page.getByRole("button", { name: language.messages["nav.back"] }),
-        ).toBeVisible();
-      }
-      await expect(
-        page.getByRole("link", { name: language.messages["nav.jumpLatest"] }),
-      ).toBeAttached();
-      const overflow = await page.evaluate(
-        () => document.documentElement.scrollWidth - window.innerWidth,
+      await expect(toolbar.getByRole("button", { name: messages["bar.refresh"] })).toBeVisible();
+      await expect(toolbar.getByRole("button", { name: messages["bar.settings"] })).toBeVisible();
+      await expect(toolbar.getByLabel(messages["bar.viewingAs"])).toBeVisible();
+      await expect(page.getByRole("button", { name: messages["nav.questions"] })).toBeVisible();
+      // On the phone this is the topics list with its counters, before any topic is chosen.
+      await expectNoClipping(
+        page,
+        ".bar-actions button, .bar-actions select, .topics button, .topics-pane h2",
       );
-      expect(overflow).toBeLessThanOrEqual(0);
-      await saveScreenshot(page, `i18n-viewer-${language.code}-${view.label}.png`);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `i18n-topics-${code}-${view.label}.png`);
+      if (view.size.width < 721) {
+        await page.getByRole("button", { name: messages["nav.all"] }).click();
+        await expect(page.getByRole("button", { name: messages["nav.back"] })).toBeVisible();
+        await expectNoClipping(page, ".back-to-topics, .conversation h2");
+      }
+      await expect(page.getByRole("link", { name: messages["nav.jumpLatest"] })).toBeAttached();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `i18n-viewer-${code}-${view.label}.png`);
     });
   }
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ja } from "../src/i18n/ja";
 import { en, LOCALES, type Locale } from "../src/i18n/catalog";
-import { detectLocale, translate } from "../src/i18n/translate";
+import { detectLocale, formatDateTime, translate } from "../src/i18n/translate";
 import { zhTW } from "../src/i18n/zh-TW";
 
 const catalogs: Record<Locale, Record<string, string>> = { en, ja, "zh-TW": zhTW };
@@ -80,6 +80,52 @@ describe("translate", () => {
   });
 });
 
+describe("plural edge cases and real messages", () => {
+  const plural = {
+    en: { n: "{count, plural, one {# item} other {# items}}" },
+    ja: {},
+    "zh-TW": { n: "{count, plural, other {# 項}}" },
+  };
+  const run = (locale: Locale, params: Record<string, string | number>) =>
+    translate(locale, "n" as never, params, plural);
+
+  it("keeps the visible template when the count is missing or not a number", () => {
+    expect(run("en", {})).toBe("{count, plural, one {# item} other {# items}}");
+    expect(run("en", { count: "3" })).toBe("{count, plural, one {# item} other {# items}}");
+  });
+
+  it("uses the single form of Traditional Chinese", () => {
+    expect(run("zh-TW", { count: 1 })).toBe("1 項");
+    expect(run("zh-TW", { count: 7 })).toBe("7 項");
+  });
+
+  it("renders the real counted messages in every locale", () => {
+    const expected = {
+      en: ["3 open", "2 new"],
+      ja: ["未回答 3 件", "新着 2 件"],
+      "zh-TW": ["3 則未回覆", "2 則新訊息"],
+    } as const;
+    for (const locale of LOCALES) {
+      expect(translate(locale, "nav.questionsOpen", { count: 3 }), locale).toBe(
+        expected[locale][0],
+      );
+      expect(translate(locale, "nav.fresh", { count: 2 }), locale).toBe(expected[locale][1]);
+    }
+  });
+
+  it("uses # in every plural form of every catalog", () => {
+    for (const locale of LOCALES) {
+      for (const [key, text] of Object.entries(catalogs[locale])) {
+        for (const form of text.matchAll(/(\w+)\s*\{([^}]*)\}/g)) {
+          if (text.includes(", plural,") && /^(zero|one|two|few|many|other)$/.test(form[1] ?? "")) {
+            expect(form[2], `${locale}: ${key} (${form[1] ?? ""})`).toContain("#");
+          }
+        }
+      }
+    }
+  });
+});
+
 describe("detectLocale", () => {
   it.each([
     [["ja"], "ja"],
@@ -87,12 +133,37 @@ describe("detectLocale", () => {
     [["zh-TW"], "zh-TW"],
     [["zh-Hant-HK"], "zh-TW"],
     [["zh-HK"], "zh-TW"],
+    [["zh-MO"], "zh-TW"],
+    [["zh-Hant"], "zh-TW"],
+    [["ZH-tw"], "zh-TW"],
+    [["JA-jp"], "ja"],
     [["fr", "ja"], "ja"],
     [["fr", "de"], "en"],
     [["zh-CN"], "en"],
+    [["zh"], "en"],
+    [["zh-Hans"], "en"],
+    [["zh-CN", "ja"], "ja"],
     [["en-GB", "ja"], "en"],
+    [["en-US"], "en"],
+    [[""], "en"],
+    [["", "ja"], "ja"],
+    [["not a language", "zh-TW"], "zh-TW"],
+    [["zh-twx"], "en"],
+    [["zh-hantx"], "en"],
+    [["jaa"], "en"],
+    [["j"], "en"],
     [[], "en"],
   ])("picks the first supported language of %j: %s", (languages, expected) => {
     expect(detectLocale(languages)).toBe(expected);
+  });
+});
+
+describe("date formatting", () => {
+  it.each([
+    ["en", /^Nov 3, 2026, 8:05\sAM$/],
+    ["ja", /^2026\/11\/03 8:05$/],
+    ["zh-TW", /^2026年11月3日 上午8:05$/],
+  ] as const)("formats a fixed time in UTC for %s", (locale, expected) => {
+    expect(formatDateTime(locale, new Date("2026-11-03T08:05:00Z"), "UTC")).toMatch(expected);
   });
 });
