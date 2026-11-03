@@ -5,6 +5,8 @@ import { demoFiles } from "../src/demo/fixtures";
 import { Loader } from "../src/loader/loader";
 import { FixtureSource } from "../src/source/fixture";
 import { ChatView } from "../src/ui/ChatView";
+import { EMPTY_PREFERENCES } from "../src/identity/preferences";
+import { buildPeople } from "../src/ui/people";
 import { buildRows } from "../src/ui/timeline";
 
 async function render(): Promise<string> {
@@ -12,12 +14,14 @@ async function render(): Promise<string> {
   await loader.open();
   const { items, fresh } = loader.getSnapshot();
   const rows = buildRows(items, {
-    selfNames: new Set(["alice-agent"]),
+    viewer: "alice-agent",
     topic: null,
     today: "2026-10-20",
     fresh,
   });
-  return renderToStaticMarkup(<ChatView rows={rows} />);
+  const { participants, formerParticipants } = loader.getSnapshot();
+  const people = buildPeople([...participants, ...formerParticipants], EMPTY_PREFERENCES);
+  return renderToStaticMarkup(<ChatView rows={rows} people={people} />);
 }
 
 describe("ChatView with the demo repository", () => {

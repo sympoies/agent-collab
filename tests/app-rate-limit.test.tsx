@@ -81,6 +81,7 @@ describe("App rate-limit recovery for older messages", () => {
             loader={loader}
             title="Live demo"
             selfNames={new Set()}
+            identity={{ storage: null, key: "test" }}
             notice={null}
             pollIntervalMs={5 * MINUTE}
             onOpenSettings={() => undefined}

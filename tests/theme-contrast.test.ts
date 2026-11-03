@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
+import { PALETTE_SIZE } from "../src/identity/preferences";
+
 const css = readFileSync(new URL("../src/ui/styles.css", import.meta.url), "utf8");
 
 type Channels = {
@@ -19,7 +21,7 @@ function declarations(theme: "night-owl" | "paper"): Map<string, string> {
   const bodyEnd = css.indexOf("}", bodyStart);
   const body = css.slice(bodyStart + 1, bodyEnd);
   return new Map(
-    [...body.matchAll(/(--[a-z-]+):\s*(#[0-9a-fA-F]{6}|rgba?\([^)]+\))/g)].map(
+    [...body.matchAll(/(--[a-z0-9-]+):\s*(#[0-9a-fA-F]{6}|rgba?\([^)]+\))/g)].map(
       ([, name, value]) => [name ?? "", value ?? ""],
     ),
   );
@@ -97,7 +99,15 @@ describe("theme text contrast", () => {
       "--chip-border": "rgba(31, 37, 32, 0.22)",
       "--hover": "rgba(31, 37, 32, 0.06)",
       "--hover-strong": "rgba(31, 37, 32, 0.09)",
-      "--bubble-own-text": "#1f2520",
+      "--on-person": "#ffffff",
+      "--person-0": "#af4e1c",
+      "--person-1": "#2d6c3f",
+      "--person-2": "#6d4aa8",
+      "--person-3": "#2457a7",
+      "--person-4": "#0a7685",
+      "--person-5": "#a43c2e",
+      "--person-6": "#855b00",
+      "--person-7": "#596b79",
     });
     expect(css).toContain("--popover-shadow: 0 8px 18px rgba(31, 37, 32, 0.18);");
   });
@@ -119,10 +129,15 @@ describe("theme text contrast", () => {
       "--error": "#ef5350",
       "--cyan": "#7fdbca",
       "--purple": "#c792ea",
-      "--bubble-other": "#1b3a55",
-      "--bubble-other-text": "#e6edf4",
-      "--bubble-own": "#2a548c",
-      "--bubble-own-text": "#f4f8fd",
+      "--on-person": "#011627",
+      "--person-0": "#f78c6c",
+      "--person-1": "#addb67",
+      "--person-2": "#c792ea",
+      "--person-3": "#82aaff",
+      "--person-4": "#7fdbca",
+      "--person-5": "#ef5350",
+      "--person-6": "#ffcb8b",
+      "--person-7": "#8ba1b8",
     });
     expect(channels(tokens.get("--border") ?? "")).toMatchObject({ alpha: 0.4 });
     expect(channels(tokens.get("--border-soft") ?? "")).toMatchObject({ alpha: 0.2 });
@@ -148,12 +163,8 @@ describe("theme text contrast", () => {
         ["--accent", "--card"],
         ["--accent", "--floating"],
         ["--warn", "--canvas"],
-        ["--warn", "--bubble-other"],
-        ["--warn", "--bubble-own"],
         ["--warm-note", "--canvas"],
         ["--error", "--canvas"],
-        ["--bubble-other-text", "--bubble-other"],
-        ["--bubble-own-text", "--bubble-own"],
       ];
 
       for (const [foreground, background] of pairs) {
@@ -181,16 +192,42 @@ describe("theme text contrast", () => {
         }
       }
 
-      for (const [foreground, bubble] of [
-        ["--bubble-other-text", "--bubble-other"],
-        ["--bubble-own-text", "--bubble-own"],
-      ] as const) {
-        const chip = composite(tokens.get("--chip-bg") ?? "", tokens.get(bubble) ?? "");
+      // The viewer's highlighted rows paint --selected over the conversation surface.
+      const highlighted = composite(tokens.get("--selected") ?? "", tokens.get("--card") ?? "");
+      for (const foreground of ["--text", "--secondary", "--muted", "--accent"] as const) {
         expect(
-          contrast(tokens.get(foreground) ?? "", chip),
-          `${theme} ${foreground} on chip over ${bubble}`,
+          contrast(tokens.get(foreground) ?? "", highlighted),
+          `${theme} ${foreground} on a highlighted message`,
         ).toBeGreaterThanOrEqual(4.5);
       }
+      for (const surface of [tokens.get("--card") ?? "", highlighted]) {
+        const chip = composite(tokens.get("--chip-bg") ?? "", surface);
+        expect(
+          contrast(tokens.get("--text") ?? "", chip),
+          `${theme} --text on a chip over ${surface}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
+    it(`${theme} person colors reach WCAG AA as names on the canvas, conversation and profile panel and under avatar text`, () => {
+      const tokens = declarations(theme);
+      for (let slot = 0; slot < PALETTE_SIZE; slot += 1) {
+        const person = tokens.get(`--person-${String(slot)}`) ?? "";
+        expect(person, `${theme} --person-${String(slot)}`).not.toBe("");
+        for (const surface of ["--canvas", "--card", "--inset"] as const) {
+          expect(
+            contrast(person, tokens.get(surface) ?? ""),
+            `${theme} --person-${String(slot)} name on ${surface}`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+        expect(
+          contrast(tokens.get("--on-person") ?? "", person),
+          `${theme} avatar text on --person-${String(slot)}`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(tokens.has(`--person-${String(PALETTE_SIZE)}`), "slots match PALETTE_SIZE").toBe(
+        false,
+      );
     });
 
     it(`${theme} keeps disabled-button text at WCAG AA after compositing`, () => {

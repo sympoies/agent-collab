@@ -1,19 +1,10 @@
 // Chat timeline. Message text is always rendered as React text, never as HTML.
 
-import { Fragment, type CSSProperties } from "react";
+import { Fragment } from "react";
 
 import type { Message } from "../message/types";
+import { personStyle, type People } from "./people";
 import type { MessageView, Row } from "./timeline";
-
-function senderHue(name: string): number {
-  let hue = 0;
-  for (const char of name) hue = (hue * 31 + char.charCodeAt(0)) % 360;
-  return hue;
-}
-
-function senderStyle(name: string): CSSProperties {
-  return { "--sender-hue": senderHue(name) } as CSSProperties;
-}
 
 function initials(name: string): string {
   return name
@@ -24,9 +15,9 @@ function initials(name: string): string {
     .join("");
 }
 
-function recipientLabel(to: readonly string[]): string {
-  if (to.length === 0 || (to.length === 1 && to[0] === "all")) return "everyone";
-  return to.join(", ");
+function recipients(to: readonly string[], people: People): readonly string[] {
+  if (to.length === 0 || (to.length === 1 && to[0] === "all")) return ["everyone"];
+  return to.map((name) => people.label(name));
 }
 
 function typeLabel(type: Message["type"]): string {
@@ -56,16 +47,17 @@ function Quote({ view }: { view: MessageView }) {
   );
 }
 
-function Bubble({ view }: { view: MessageView }) {
+function MessageRow({ view, people }: { view: MessageView; people: People }) {
   const { message } = view;
   const compact = message.type === "ack";
   return (
     <article
       id={`msg-${message.id}`}
-      className="bubble"
+      className="message"
       data-type={message.type ?? "unknown"}
       data-compact={compact}
       data-fresh={view.fresh}
+      data-addressed={view.addressed}
     >
       <header className="meta">
         <time
@@ -80,7 +72,12 @@ function Bubble({ view }: { view: MessageView }) {
           </span>
         </time>
         <span className="badge">{typeLabel(message.type)}</span>
-        <span className="to">to {recipientLabel(message.to)}</span>
+        <span className="to-label">to</span>
+        {recipients(message.to, people).map((name, index) => (
+          <span key={`${String(index)}-${name}`} className="to">
+            {name}
+          </span>
+        ))}
         {message.issues.length > 0 && (
           <details className="issues">
             <summary title="This message does not follow the protocol">
@@ -126,7 +123,7 @@ function Bubble({ view }: { view: MessageView }) {
   );
 }
 
-function RowView({ row }: { row: Row }) {
+function RowView({ row, people }: { row: Row; people: People }) {
   switch (row.kind) {
     case "day":
       return (
@@ -136,19 +133,30 @@ function RowView({ row }: { row: Row }) {
       );
     case "group":
       return (
-        <li className="group" data-align={row.align} style={senderStyle(row.from)}>
-          <div className="group-header">
-            <span className="avatar" aria-hidden="true">
-              {initials(row.from)}
-            </span>
-            <span className="sender" title={row.from} aria-label={row.from}>
-              {row.from}
-            </span>
-            <span className="topic">#{row.topic}</span>
+        <li className="group" data-own={row.own} style={personStyle(people.slot(row.from))}>
+          <span className="avatar" aria-hidden="true">
+            {initials(row.from)}
+          </span>
+          <div className="group-body">
+            <div className="group-header">
+              <span
+                className="sender"
+                title={row.from}
+                aria-label={
+                  people.label(row.from) === row.from
+                    ? row.from
+                    : `${people.label(row.from)} (${row.from})`
+                }
+              >
+                {people.label(row.from)}
+              </span>
+              {row.own && <span className="you">You</span>}
+              <span className="topic">#{row.topic}</span>
+            </div>
+            {row.messages.map((view) => (
+              <MessageRow key={view.message.path} view={view} people={people} />
+            ))}
           </div>
-          {row.messages.map((view) => (
-            <Bubble key={view.message.path} view={view} />
-          ))}
         </li>
       );
     case "malformed":
@@ -188,7 +196,7 @@ function rowKey(row: Row, index: number): string {
   }
 }
 
-export function ChatView({ rows }: { rows: readonly Row[] }) {
+export function ChatView({ rows, people }: { rows: readonly Row[]; people: People }) {
   if (rows.length === 0) return <p className="empty">No messages yet.</p>;
   const newMarkerIndex = rows.findIndex(
     (row) => row.kind === "group" && row.messages.some((view) => view.fresh),
@@ -204,7 +212,7 @@ export function ChatView({ rows }: { rows: readonly Row[] }) {
                 <span>New messages</span>
               </li>
             )}
-            <RowView row={row} />
+            <RowView row={row} people={people} />
           </Fragment>
         );
       })}

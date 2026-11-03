@@ -12,6 +12,8 @@ export interface MessageView {
   readonly parent: Message | null;
   readonly overdue: boolean;
   readonly fresh: boolean;
+  /** Named recipient is the viewer ("Viewing as"); a broadcast does not count. */
+  readonly addressed: boolean;
 }
 
 export type Row =
@@ -21,7 +23,8 @@ export type Row =
       readonly key: string;
       readonly from: string;
       readonly topic: string;
-      readonly align: "start" | "end";
+      /** Sent by the viewer ("Viewing as"). */
+      readonly own: boolean;
       readonly messages: readonly MessageView[];
     }
   | {
@@ -33,8 +36,8 @@ export type Row =
   | { readonly kind: "unavailable"; readonly path: string; readonly error: SourceErrorKind };
 
 export interface RowOptions {
-  /** Senders shown on the end side ("my names"). */
-  readonly selfNames: ReadonlySet<string>;
+  /** The person the viewer is ("Viewing as"), or null as Observer. */
+  readonly viewer: string | null;
   /** Only show this topic; null shows everything. */
   readonly topic: string | null;
   /** Today as YYYY-MM-DD, for overdue checks. */
@@ -106,6 +109,10 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
         message.type !== "ack" &&
         !answered.has(message.id),
       fresh: options.fresh.has(message.path),
+      addressed:
+        options.viewer !== null &&
+        message.from !== options.viewer &&
+        message.to.includes(options.viewer),
     };
     if (
       group !== null &&
@@ -130,7 +137,7 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
       key: message.path,
       from: message.from,
       topic: message.topic,
-      align: options.selfNames.has(message.from) ? "end" : "start",
+      own: message.from === options.viewer,
       messages: group.messages,
     });
   }

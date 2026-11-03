@@ -31,7 +31,7 @@ import {
 } from "../settings/live-demo";
 import { demoFiles } from "../demo/fixtures";
 import type { MessageSource } from "../source/types";
-import { App } from "./App";
+import { App, type AppProps } from "./App";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
 
@@ -48,11 +48,15 @@ interface ViewerScreen {
   readonly loader: Loader;
   readonly title: string;
   readonly selfNames: ReadonlySet<string>;
+  readonly identity: AppProps["identity"];
   readonly notice: string | null;
   readonly pollIntervalMs: number | undefined;
   /** The static demo copy on screen, or null for every other viewer, live demo included. */
   readonly liveDemo: StaticDemoView | null;
 }
+
+/** The demos neither read nor write browser storage, so identity choices last for the view. */
+const MEMORY_ONLY = { storage: null, key: "demo" } as const;
 
 type Screen =
   | { readonly kind: "welcome" }
@@ -79,6 +83,7 @@ export function Root(props: RootProps) {
     loader: Loader,
     title: string,
     selfNames: readonly string[],
+    identity: ViewerScreen["identity"],
     notice: string | null = null,
     pollIntervalMs?: number,
     liveDemo: StaticDemoView | null = null,
@@ -90,6 +95,7 @@ export function Root(props: RootProps) {
       loader,
       title,
       selfNames: new Set(selfNames),
+      identity,
       notice,
       pollIntervalMs,
       liveDemo,
@@ -101,6 +107,10 @@ export function Root(props: RootProps) {
       new Loader(createSource(settings, token)),
       settings.repository,
       settings.selfNames,
+      {
+        storage: props.storage,
+        key: `${settings.platform}:${settings.endpoint}/${settings.repository}`,
+      },
       notice,
     );
 
@@ -127,7 +137,7 @@ export function Root(props: RootProps) {
   };
 
   const liveViewer = (loader: Loader, notice: string): ViewerScreen =>
-    viewer(loader, "Live demo", [], notice, LIVE_DEMO_POLL_INTERVAL_MS);
+    viewer(loader, "Live demo", [], MEMORY_ONLY, notice, LIVE_DEMO_POLL_INTERVAL_MS);
 
   const showLiveDemo = () => {
     const operation = ++navigation.current;
@@ -145,6 +155,7 @@ export function Root(props: RootProps) {
               result.loader,
               "Live demo",
               [],
+              MEMORY_ONLY,
               result.banner,
               LIVE_DEMO_POLL_INTERVAL_MS,
               result.view,
@@ -235,7 +246,14 @@ export function Root(props: RootProps) {
                   }
             }
             onOpenDemo={() => {
-              setScreen(viewer(new Loader(createDemoSource()), "Demo repository", ["alice-agent"]));
+              setScreen(
+                viewer(
+                  new Loader(createDemoSource()),
+                  "Demo repository",
+                  ["alice-agent"],
+                  MEMORY_ONLY,
+                ),
+              );
             }}
             onOpenLiveDemo={() => {
               showLiveDemo();
@@ -251,6 +269,7 @@ export function Root(props: RootProps) {
           loader={screen.loader}
           title={screen.title}
           selfNames={screen.selfNames}
+          identity={screen.identity}
           notice={screen.notice}
           {...(screen.pollIntervalMs === undefined
             ? {}

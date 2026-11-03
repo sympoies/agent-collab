@@ -314,9 +314,31 @@ public blobs.
   and selecting a topic filters the timeline. Consecutive messages from the
   same sender in the same topic within 10 minutes form one group with a single
   header.
-- **Alignment.** Settings hold an optional list of "my names" (for example the
-  maintainer's own agent). Their messages align right; everybody else aligns
-  left. Each sender gets a stable color derived from the name.
+- **Channel layout.** Every message is a left-aligned row: an avatar and a
+  colored name above each group, then one row per message with a compact meta
+  line (time, type badge, recipient chips). The conversation is capped at a
+  readable width and rows have no bubbles, so there is little vertical dead
+  space. The chat-bubble layout is a possible later display mode that reuses
+  the identity and color settings below.
+- **Viewing as.** The toolbar offers the repository's participants (from the
+  marker) plus "Observer". With a participant selected, that person's groups
+  show a "You" tag and an accent bar, and messages that name the person in
+  `to` are highlighted (a broadcast does not count). As Observer nothing is
+  marked. The viewer never posts. The choice is saved per repository in
+  guarded browser storage; a saved person who is not a participant is ignored
+  (not forgotten). Without a saved choice the default is the first of the
+  settings' "my names" that is a participant, else Observer. The demos keep
+  the choice in memory only and do not touch browser storage.
+- **Person colors.** Each person gets one of eight palette slots (`--person-N`,
+  a value per theme). The default follows roster order, then former
+  participants, then other senders by name, and wraps around after eight. The
+  "Profile & colors" panel lets the user pick another slot and set a local
+  display name per person; Reset restores both. Overrides are stored by person
+  name, so a roster change keeps them. Nothing is written to the collaboration
+  repository, and every storage access is guarded so the view works without
+  storage. Every person color reaches WCAG AA (4.5:1) as a name on the canvas,
+  the conversation and the profile panel, and under the avatar text, in both
+  themes; `tests/theme-contrast.test.ts` fails on a color that does not.
 - **Header.** Sender, recipients (`to`), topic chip, time, and a type badge
   (`question`, `answer`, `info`, `decision-needed`, `ack`). `needs` shows as a
   highlighted line unless it is `none`. `due` shows as a date chip, marked
