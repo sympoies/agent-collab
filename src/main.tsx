@@ -7,6 +7,7 @@ import { demoFiles } from "./demo/fixtures";
 import type { ViewerSettings } from "./settings/model";
 import { FixtureSource } from "./source/fixture";
 import { GitHubSource } from "./source/github";
+import { CachedDemoSource } from "./source/cached-demo";
 import type { MessageSource } from "./source/types";
 import { Root } from "./ui/Root";
 import { ThemeProvider } from "./ui/ThemeProvider";
@@ -68,13 +69,20 @@ function createSource(settings: ViewerSettings, token: Secret): MessageSource {
 }
 
 function createLiveDemoSource(): MessageSource {
-  return new GitHubSource({
+  const source = new GitHubSource({
     apiBase: "https://api.github.com",
     owner: "sympoies",
     repo: "agent-collab-demo",
     branch: null,
     token: null,
   });
+  let storage: Pick<Storage, "getItem" | "setItem"> | null = null;
+  try {
+    storage = window.localStorage;
+  } catch {
+    // Public demo blob caching is optional.
+  }
+  return new CachedDemoSource(source, storage);
 }
 
 const root = document.getElementById("root");

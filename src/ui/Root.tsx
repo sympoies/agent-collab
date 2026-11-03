@@ -23,7 +23,10 @@ import {
   type SettingsDeps,
 } from "../settings/session";
 import { LIVE_DEMO_POLL_INTERVAL_MS, openLiveDemo } from "../settings/live-demo";
-import type { MessageSource } from "../source/types";
+import type { LiveDemoOpen } from "../settings/live-demo";
+import { demoFiles } from "../demo/fixtures";
+import { DemoFallbackSource } from "../source/demo-fallback";
+import { SourceError, type MessageSource } from "../source/types";
 import { App } from "./App";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
@@ -43,6 +46,24 @@ interface ViewerScreen {
   readonly selfNames: ReadonlySet<string>;
   readonly notice: string | null;
   readonly pollIntervalMs: number | undefined;
+  readonly liveDemo: {
+    readonly fallbackSource: MessageSource;
+    readonly generatedAt: string | null;
+  } | null;
+}
+
+function fallbackBanner(error: SourceError, generatedAt: string | null): string {
+  const reason =
+    error.kind === "rate-limited"
+      ? "The live check hit GitHub's API limit"
+      : "The live check is unavailable";
+  const content =
+    generatedAt === null
+      ? "showing the bundled sample"
+      : `showing the snapshot generated at ${generatedAt}`;
+  return error.retryAt === null
+    ? `${reason}; ${content}.`
+    : `${reason}. Reset at ${error.retryAt.toLocaleString()}; ${content}.`;
 }
 
 type Screen =
@@ -68,16 +89,19 @@ export function Root(props: RootProps) {
     selfNames: readonly string[],
     notice: string | null = null,
     pollIntervalMs?: number,
+    liveDemo: ViewerScreen["liveDemo"] = null,
+    existingLoader?: Loader,
   ): ViewerScreen => {
     viewers.current += 1;
     return {
       kind: "viewer",
       id: viewers.current,
-      loader: new Loader(source),
+      loader: existingLoader ?? new Loader(source),
       title,
       selfNames: new Set(selfNames),
       notice,
       pollIntervalMs,
+      liveDemo,
     };
   };
 
@@ -107,9 +131,55 @@ export function Root(props: RootProps) {
   };
 
   const showLiveDemo = () => {
-    navigation.current += 1;
-    openLiveDemo(createLiveDemoSource, (source) => {
-      setScreen(viewer(source, "Live demo", [], null, LIVE_DEMO_POLL_INTERVAL_MS));
+    const operation = ++navigation.current;
+    void openLiveDemo(createLiveDemoSource, demoFiles).then((result: LiveDemoOpen) => {
+      if (operation !== navigation.current) return;
+      setScreen(
+        viewer(
+          result.fallbackSource,
+          "Live demo",
+          [],
+          result.banner,
+          LIVE_DEMO_POLL_INTERVAL_MS,
+          { fallbackSource: result.fallbackSource, generatedAt: result.generatedAt },
+          result.loader,
+        ),
+      );
+    });
+  };
+
+  const checkLiveNow = async (current: ViewerScreen): Promise<void> => {
+    if (current.liveDemo === null) return;
+    const nextId = ++viewers.current;
+    let fallbackError: SourceError | null = null;
+    const source = new DemoFallbackSource(
+      createLiveDemoSource(),
+      current.liveDemo.fallbackSource,
+      (error) => {
+        fallbackError = error;
+        setScreen((previous) =>
+          previous.kind === "viewer" && previous.id === nextId
+            ? { ...previous, notice: fallbackBanner(error, current.liveDemo?.generatedAt ?? null) }
+            : previous,
+        );
+      },
+    );
+    let loader = new Loader(source);
+    try {
+      await loader.open();
+    } catch (error) {
+      fallbackError = error instanceof SourceError ? error : null;
+      loader = new Loader(current.liveDemo.fallbackSource);
+      await loader.open();
+    }
+    setScreen({
+      ...current,
+      id: nextId,
+      loader,
+      notice:
+        fallbackError === null
+          ? "Checked the live repository."
+          : fallbackBanner(fallbackError, current.liveDemo.generatedAt),
     });
   };
 
@@ -200,6 +270,7 @@ export function Root(props: RootProps) {
           onOpenSettings={() => {
             void showSettings(screen);
           }}
+          {...(screen.liveDemo === null ? {} : { onCheckLiveNow: () => checkLiveNow(screen) })}
         />
       );
   }
