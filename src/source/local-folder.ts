@@ -129,6 +129,7 @@ function errorFor(path: string, error: unknown): SourceError {
 
 export class LocalFolderSource implements MessageSource {
   private revision = 0;
+  private readonly metadataFailures = new Map<string, SourceError>();
 
   constructor(private readonly root: LocalDirectoryHandle) {}
 
@@ -175,7 +176,7 @@ export class LocalFolderSource implements MessageSource {
         METADATA_CONCURRENCY,
         async ({ handle, path: entryPath }) => {
           if (isDirectoryHandle(handle)) {
-            const objectId = await this.directoryId(handle, withMetadata);
+            const objectId = await this.directoryId(handle, entryPath, withMetadata);
             return {
               name: handle.name,
               path: entryPath,
@@ -184,12 +185,11 @@ export class LocalFolderSource implements MessageSource {
             };
           }
           if (isFileHandle(handle)) {
-            const file = await withMetadata(() => handle.getFile());
             return {
               name: handle.name,
               path: entryPath,
               kind: "file" as const,
-              objectId: stableId("file", `${file.size}:${file.lastModified}`),
+              objectId: await this.fileObjectId(entryPath, handle, withMetadata),
             };
           }
           // Unknown kinds, including symlink-like entries, are never followed.
@@ -206,6 +206,11 @@ export class LocalFolderSource implements MessageSource {
   async readFile(entry: DirectoryEntry): Promise<string> {
     if (entry.kind !== "file" || !validRepoPath(entry.path)) {
       throw new SourceError("forbidden", entry.path);
+    }
+    const metadataFailure = this.metadataFailures.get(entry.path);
+    if (metadataFailure !== undefined) {
+      this.metadataFailures.delete(entry.path);
+      throw metadataFailure;
     }
     try {
       const handle = await this.fileAt(entry.path);
@@ -240,6 +245,7 @@ export class LocalFolderSource implements MessageSource {
 
   private async directoryId(
     directory: LocalDirectoryHandle,
+    path: string,
     withMetadata: <T>(task: () => Promise<T>) => Promise<T>,
   ): Promise<string> {
     const handles: LocalHandle[] = [];
@@ -249,13 +255,33 @@ export class LocalFolderSource implements MessageSource {
     }
     const children = await mapLimit(handles, METADATA_CONCURRENCY, async (child) => {
       if (isFileHandle(child)) {
-        const file = await withMetadata(() => child.getFile());
-        return `file:${child.name}:${file.size}:${file.lastModified}`;
+        const childPath = `${path}/${child.name}`;
+        return `file:${child.name}:${await this.fileObjectId(childPath, child, withMetadata)}`;
       }
       // The child directory is listed independently when its contents are needed.
       return `directory:${child.name}`;
     });
     children.sort();
     return stableId("directory", children.join("\n"));
+  }
+
+  private async fileObjectId(
+    path: string,
+    handle: LocalFileHandle,
+    withMetadata: <T>(task: () => Promise<T>) => Promise<T>,
+  ): Promise<string> {
+    this.metadataFailures.delete(path);
+    try {
+      const file = await withMetadata(() => handle.getFile());
+      return stableId("file", `${file.size}:${file.lastModified}`);
+    } catch (error) {
+      const mapped = errorFor(path, error);
+      const safeError =
+        mapped.kind === "forbidden"
+          ? new SourceError("unexpected", path, null, null, "Local file metadata is unavailable.")
+          : mapped;
+      this.metadataFailures.set(path, safeError);
+      return stableId("unavailable", `${path}:${safeError.kind}`);
+    }
   }
 }
