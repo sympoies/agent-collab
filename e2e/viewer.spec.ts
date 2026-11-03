@@ -3,6 +3,10 @@ import { join, resolve } from "node:path";
 
 import { expect, test, type Page, type Route } from "@playwright/test";
 
+import { en } from "../src/i18n/catalog";
+import { ja } from "../src/i18n/ja";
+import { zhTW } from "../src/i18n/zh-TW";
+
 const screenshotDir = resolve(process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "");
 
 interface MessageFixture {
@@ -650,8 +654,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   expect(focused.outlineStyle).toBe("solid");
   expect(focused.outlineWidth).toBe("3px");
 
-  // Viewing as, Profile & colors, Local folder, theme, Settings, Questions, Files, All, then the first topic.
-  for (let tab = 0; tab < 9; tab += 1) await page.keyboard.press("Tab");
+  // Viewing as, Profile & colors, Local folder, language, theme, Settings, Questions, Files, All, then the first topic.
+  for (let tab = 0; tab < 10; tab += 1) await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "#release" })).toHaveAttribute(
     "aria-pressed",
@@ -1414,4 +1418,91 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
   await revoked.getByRole("button", { name: "Local folder", exact: true }).click();
   await expect(revoked.getByRole("alert")).toHaveCount(0);
   await expect(revoked.getByText("The first message from the local clone.")).toBeVisible();
+});
+
+const languageCases = [
+  { code: "en", name: "English", messages: en },
+  { code: "ja", name: "日本語", messages: ja },
+  { code: "zh-TW", name: "繁體中文", messages: zhTW },
+] as const;
+
+for (const language of languageCases) {
+  for (const view of [
+    { label: "desktop", size: { width: 1280, height: 800 } },
+    { label: "phone", size: { width: 390, height: 844 } },
+  ] as const) {
+    test(`the interface switches to ${language.name} and fits on ${view.label}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(view.size);
+      await page.goto("/");
+      await page.getByLabel(en["language.label"]).selectOption(language.code);
+      await expect(page.locator("html")).toHaveAttribute("lang", language.code);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+        language.messages["app.title"],
+      );
+      await expect(
+        page.getByRole("button", { name: language.messages["welcome.openLiveDemo"] }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: language.messages["welcome.openLocal"] }),
+      ).toBeVisible();
+      await saveScreenshot(page, `i18n-welcome-${language.code}-${view.label}.png`);
+
+      // The choice survives a reload and reaches the viewer.
+      await page.reload();
+      await expect(page.locator("html")).toHaveAttribute("lang", language.code);
+      await page.getByRole("button", { name: language.messages["welcome.openAnother"] }).click();
+      await page.getByRole("button", { name: "Open offline demo" }).click();
+      const toolbar = page.locator(".bar-actions");
+      await expect(
+        toolbar.getByRole("button", { name: language.messages["bar.refresh"] }),
+      ).toBeVisible();
+      await expect(
+        toolbar.getByRole("button", { name: language.messages["bar.settings"] }),
+      ).toBeVisible();
+      await expect(toolbar.getByLabel(language.messages["bar.viewingAs"])).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: language.messages["nav.questions"] }),
+      ).toBeVisible();
+      if (view.size.width < 721) {
+        await page.getByRole("button", { name: language.messages["nav.all"] }).click();
+        await expect(
+          page.getByRole("button", { name: language.messages["nav.back"] }),
+        ).toBeVisible();
+      }
+      await expect(
+        page.getByRole("link", { name: language.messages["nav.jumpLatest"] }),
+      ).toBeAttached();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `i18n-viewer-${language.code}-${view.label}.png`);
+    });
+  }
+}
+
+test("the browser language picks the interface language, and an unwritable store does not break switching", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({ locale: "ja-JP" });
+  const page = await context.newPage();
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new DOMException("Storage is unavailable", "SecurityError");
+      },
+    });
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("lang", "ja");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(ja["app.title"]);
+  await page.getByLabel(ja["language.label"]).selectOption("zh-TW");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(zhTW["app.title"]);
+  expect(errors).toEqual([]);
+  await context.close();
 });

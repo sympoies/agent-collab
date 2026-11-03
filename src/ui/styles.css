@@ -255,6 +255,7 @@ button:hover {
   font-size: 0.9rem;
 }
 
+.language-switcher select,
 .viewing-as select {
   font: inherit;
   color: var(--text);

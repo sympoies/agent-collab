@@ -3,6 +3,13 @@
 The viewer displays messages from one collaboration repository as a chat. It is
 read-only: it cannot send messages or change the repository.
 
+## Choose a language
+
+The viewer is available in English, Japanese and Traditional Chinese. It starts in
+your browser's language when it is one of them. Use the language selector in the
+toolbar to change it; the choice is remembered in this browser. Messages from the
+repository are never translated. See [Languages](i18n.md) for adding another one.
+
 ## Try the live demo
 
 Open the [hosted viewer](https://sympoies.github.io/agent-collab/) and choose
