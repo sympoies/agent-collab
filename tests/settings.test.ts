@@ -75,51 +75,43 @@ describe("validateDraft", () => {
     [
       "GitLab before it is supported",
       { platform: "gitlab" },
-      { platform: "GitLab support is not available yet." },
+      { platform: "settings.error.gitlab" },
     ],
     [
       "a plain HTTP endpoint",
       { endpoint: "http://api.github.example" },
-      { endpoint: "Use an https:// URL." },
+      { endpoint: "settings.error.https" },
     ],
     [
       "an endpoint that is not a URL",
       { endpoint: "api.github.com" },
-      { endpoint: "Use an https:// URL." },
+      { endpoint: "settings.error.https" },
     ],
     [
       "an endpoint with embedded credentials",
       { endpoint: "https://user:pass@api.github.example" },
-      { endpoint: "Do not put credentials, query or fragment in the endpoint." },
+      { endpoint: "settings.error.endpointParts" },
     ],
     [
       "an endpoint with a query",
       { endpoint: "https://api.github.example/?access_token=x" },
-      { endpoint: "Do not put credentials, query or fragment in the endpoint." },
+      { endpoint: "settings.error.endpointParts" },
     ],
     [
       "a repository without owner",
       { repository: "collab" },
-      { repository: "Use the form owner/repository." },
+      { repository: "settings.error.repository" },
     ],
     [
       "a repository with a path",
       { repository: "a/b/c" },
-      { repository: "Use the form owner/repository." },
+      { repository: "settings.error.repository" },
     ],
-    [
-      "a branch with spaces",
-      { branch: "my branch" },
-      { branch: "This is not a valid branch name." },
-    ],
-    ["a branch with ..", { branch: "a..b" }, { branch: "This is not a valid branch name." }],
-    [
-      "an invalid name",
-      { selfNames: "Alice" },
-      { selfNames: "Names are lowercase letters, digits and hyphens." },
-    ],
-    ["a missing token", { token: "" }, { token: "Enter a read-only access token." }],
-    ["a token with spaces", { token: "two words" }, { token: "A token has no spaces." }],
+    ["a branch with spaces", { branch: "my branch" }, { branch: "settings.error.branch" }],
+    ["a branch with ..", { branch: "a..b" }, { branch: "settings.error.branch" }],
+    ["an invalid name", { selfNames: "Alice" }, { selfNames: "settings.error.names" }],
+    ["a missing token", { token: "" }, { token: "settings.error.tokenMissing" }],
+    ["a token with spaces", { token: "two words" }, { token: "settings.error.tokenSpaces" }],
   ])("rejects %s", (_name, overrides, errors) => {
     expect(validateDraft(draft(overrides), { tokenStored: false, savedEndpoint: null })).toEqual({
       ok: false,

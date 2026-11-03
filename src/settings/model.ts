@@ -1,3 +1,4 @@
+import type { MessageKey } from "../i18n/catalog";
 // Settings screen model (docs/design.md, section 6). Settings hold only
 // non-secret values; the token goes to a CredentialStore.
 
@@ -33,7 +34,8 @@ export interface SettingsDraft {
   readonly token: string;
 }
 
-export type DraftErrors = Partial<Record<keyof SettingsDraft, string>>;
+/** Validation problems by field, as catalog keys. */
+export type DraftErrors = Partial<Record<keyof SettingsDraft, MessageKey>>;
 
 export type ValidationResult =
   | {
@@ -44,23 +46,19 @@ export type ValidationResult =
     }
   | { readonly ok: false; readonly errors: DraftErrors };
 
-export const STORAGE_WARNINGS: Readonly<Record<CredentialStorage, string>> = {
-  memory: "The token stays in memory for this tab only. You will enter it again after a reload.",
-  "browser-encrypted":
-    "The token is encrypted and stored for this site in this browser profile. This avoids a " +
-    "plain-text token in site storage, but a copy of this browser profile, scripts on this " +
-    "site, or anyone using this profile can still use it. Sites sharing this origin can access " +
-    "both the encrypted token and its key.",
+export const STORAGE_WARNINGS: Readonly<Record<CredentialStorage, MessageKey>> = {
+  memory: "settings.memoryNote",
+  "browser-encrypted": "settings.encryptedNote",
 };
 
-export function storageWarning(storage: CredentialStorage, hostname: string): string {
+/** Catalog keys of the warning for a way of keeping the credential, on this host. */
+export function storageWarning(
+  storage: CredentialStorage,
+  hostname: string,
+): readonly MessageKey[] {
   const warning = STORAGE_WARNINGS[storage];
-  if (storage !== "browser-encrypted" || !hostname.endsWith(".github.io")) return warning;
-  return (
-    `${warning} Sibling GitHub Pages projects under the same account share this origin and can ` +
-    "access the saved token and key. Prefer In memory only. A dedicated custom domain removes " +
-    "this sibling-project exposure."
-  );
+  if (storage !== "browser-encrypted" || !hostname.endsWith(".github.io")) return [warning];
+  return [warning, "settings.pagesNote"];
 }
 
 export const DEFAULT_DRAFT: SettingsDraft = {
@@ -91,13 +89,13 @@ function normalizeEndpoint(value: string, errors: DraftErrors): string {
   try {
     url = new URL(value.trim());
   } catch {
-    errors.endpoint = "Use an https:// URL.";
+    errors.endpoint = "settings.error.https";
     return "";
   }
   if (url.protocol !== "https:") {
-    errors.endpoint = "Use an https:// URL.";
+    errors.endpoint = "settings.error.https";
   } else if (url.username !== "" || url.password !== "" || url.search !== "" || url.hash !== "") {
-    errors.endpoint = "Do not put credentials, query or fragment in the endpoint.";
+    errors.endpoint = "settings.error.endpointParts";
   }
   return `${url.origin}${url.pathname}`.replace(/\/+$/, "");
 }
@@ -118,21 +116,21 @@ export interface DraftContext {
 
 export function validateDraft(draft: SettingsDraft, context: DraftContext): ValidationResult {
   const errors: DraftErrors = {};
-  if (draft.platform !== "github") errors.platform = "GitLab support is not available yet.";
+  if (draft.platform !== "github") errors.platform = "settings.error.gitlab";
   const endpoint = normalizeEndpoint(draft.endpoint, errors);
   const repository = draft.repository.trim();
-  if (!REPOSITORY_RE.test(repository)) errors.repository = "Use the form owner/repository.";
+  if (!REPOSITORY_RE.test(repository)) errors.repository = "settings.error.repository";
   const branch = draft.branch.trim();
-  if (branch !== "" && !BRANCH_RE.test(branch)) errors.branch = "This is not a valid branch name.";
+  if (branch !== "" && !BRANCH_RE.test(branch)) errors.branch = "settings.error.branch";
   const selfNames = splitNames(draft.selfNames);
   if (selfNames.some((name) => !NAME_RE.test(name))) {
-    errors.selfNames = "Names are lowercase letters, digits and hyphens.";
+    errors.selfNames = "settings.error.names";
   }
   const token = draft.token.trim();
-  if (token === "" && !context.tokenStored) errors.token = "Enter a read-only access token.";
+  if (token === "" && !context.tokenStored) errors.token = "settings.error.tokenMissing";
   else if (token === "" && endpoint !== context.savedEndpoint) {
-    errors.token = "Enter the token for this endpoint.";
-  } else if (/\s/.test(token)) errors.token = "A token has no spaces.";
+    errors.token = "settings.error.tokenEndpoint";
+  } else if (/\s/.test(token)) errors.token = "settings.error.tokenSpaces";
   if (Object.keys(errors).length > 0) return { ok: false, errors };
   return {
     ok: true,

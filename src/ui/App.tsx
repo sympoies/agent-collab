@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { SetupError, type Loader } from "../loader/loader";
+import type { Loader } from "../loader/loader";
 import { Poller } from "../loader/poller";
 import {
   colorOrder,
@@ -21,8 +21,11 @@ import type { Message } from "../message/types";
 import { SourceError } from "../source/types";
 import { FilesView, type AttachmentContext } from "./Attachments";
 import { ChatView } from "./ChatView";
-import { LanguageSwitcher, useT } from "../i18n/LocaleProvider";
+import type { MessageKey } from "../i18n/catalog";
+import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
+import type { MessageRef, Params } from "../i18n/translate";
 import { buildPeople } from "./people";
+import { errorText, say } from "./errorText";
 import { relativeTime } from "./relativeTime";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
@@ -34,15 +37,9 @@ function localDate(now: Date): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-function describe(error: unknown): string {
-  if (typeof error === "string") return error;
-  if (error instanceof SetupError || error instanceof SourceError) return error.message;
-  return "Unexpected error while loading messages.";
-}
-
 /** Names a source that is not a repository, so it is always visible which data is shown. */
 export interface SourceIndicator {
-  readonly label: string;
+  readonly label: MessageKey;
   /** Shown as experimental until the source is released. */
   readonly experimental: boolean;
 }
@@ -64,13 +61,14 @@ function useNow(active: boolean): Date {
 
 export interface AppProps {
   readonly loader: Loader;
-  readonly title: string;
+  /** A repository name, or a catalog message for a fixed title. */
+  readonly title: string | { readonly key: MessageKey; readonly params?: Params };
   /** Configured own names; the first participant among them is the default "Viewing as". */
   readonly selfNames: ReadonlySet<string>;
   /** Where identity preferences live; null keeps them in memory for this view only. */
   readonly identity: { readonly storage: PreferenceStorage | null; readonly key: string };
   /** A one-off message from opening the viewer, such as a settings warning. */
-  readonly notice: string | null;
+  readonly notice: string | MessageRef | null;
   readonly pollIntervalMs?: number;
   readonly onCheckLiveNow?: () => Promise<void>;
   /** The source when it is not a repository; its last-changed time is shown beside it. */
@@ -92,7 +90,7 @@ export function App({
   source,
   onPickLocalFolder,
 }: AppProps) {
-  const t = useT();
+  const { t, formatDateTime } = useLocale();
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const now = useNow(source !== undefined && snapshot.lastChanged !== null);
   const pollerRef = useRef<Poller | null>(null);
@@ -139,11 +137,7 @@ export function App({
       .then((ran) => {
         if (ran && poller === null) setError(null);
         if (!ran) {
-          setError(
-            minimumIntervalMs > 0
-              ? "The live demo refreshes every five minutes. Wait for the next check before refreshing again."
-              : "A request is already running or waiting for the rate limit reset.",
-          );
+          setError({ key: minimumIntervalMs > 0 ? "refresh.demoInterval" : "refresh.busy" });
         }
       })
       .catch((reason: unknown) => {
@@ -279,11 +273,9 @@ export function App({
     for (const path of snapshot.fresh) announcedMessages.current.add(path);
     if (arrivals.length > 0) {
       const total = announcedMessages.current.size;
-      setArrivalAnnouncement(
-        `${arrivals.length} new ${arrivals.length === 1 ? "message" : "messages"} arrived. ${total} new ${total === 1 ? "message" : "messages"} since opening this view.`,
-      );
+      setArrivalAnnouncement(t("arrival.announce", { count: arrivals.length, total }));
     }
-  }, [snapshot.fresh]);
+  }, [snapshot.fresh, t]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (mobileConversation) {
@@ -315,21 +307,21 @@ export function App({
   return (
     <div className="app">
       <header className="bar">
-        <h1>{title}</h1>
+        <h1>{typeof title === "string" ? title : t(title.key, title.params)}</h1>
         {source !== undefined && (
           <p className="source-indicator">
             <span className="source-label">
-              {source.label}
-              {source.experimental && " · experimental"}
+              {t(source.label)}
+              {source.experimental && ` · ${t("source.experimental")}`}
             </span>
             {snapshot.lastChanged === null ? (
-              <span className="last-changed">No file changes seen yet</span>
+              <span className="last-changed">{t("source.noChange")}</span>
             ) : (
               <span
                 className="last-changed"
-                title={`${snapshot.lastChanged.toLocaleString()} (file modification time on this computer)`}
+                title={t("source.lastChangeTitle", { date: formatDateTime(snapshot.lastChanged) })}
               >
-                Last change seen {relativeTime(snapshot.lastChanged, now)}
+                {t("source.lastChange", { time: relativeTime(snapshot.lastChanged, now, t) })}
               </span>
             )}
           </p>
@@ -421,12 +413,12 @@ export function App({
       )}
       {notice !== null && (
         <p className="notice" role="status">
-          {notice}
+          {say(notice, t)}
         </p>
       )}
       {error !== null && (
         <p className="error" role="alert">
-          {describe(error)}
+          {errorText(error, t, formatDateTime)}
         </p>
       )}
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">

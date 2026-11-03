@@ -3,19 +3,20 @@
 
 import { useState } from "react";
 
+import { useT } from "../i18n/LocaleProvider";
 import { PALETTE_SIZE, type IdentityPreferences } from "../identity/preferences";
 import { personStyle, type People } from "./people";
 
-/** Names of the palette slots, for the color choices' accessible labels. */
+/** Catalog keys of the palette slot names, for the color choices' accessible labels. */
 export const SLOT_NAMES = [
-  "Coral",
-  "Green",
-  "Purple",
-  "Blue",
-  "Teal",
-  "Red",
-  "Amber",
-  "Slate",
+  "color.coral",
+  "color.green",
+  "color.purple",
+  "color.blue",
+  "color.teal",
+  "color.red",
+  "color.amber",
+  "color.slate",
 ] as const;
 
 function initials(name: string): string {
@@ -45,12 +46,13 @@ export function ProfilePanel({
   onDisplayName,
   onReset,
 }: ProfilePanelProps) {
+  const t = useT();
   // Display-name inputs keep their own text while typing; a reset starts them over.
   const [resets, setResets] = useState(0);
   return (
     <section className="profile" aria-labelledby="profile-heading">
       <div className="profile-head">
-        <h2 id="profile-heading">Profile &amp; colors</h2>
+        <h2 id="profile-heading">{t("profile.title")}</h2>
         <button
           type="button"
           onClick={() => {
@@ -58,15 +60,12 @@ export function ProfilePanel({
             onReset();
           }}
         >
-          Reset colors and names
+          {t("profile.reset")}
         </button>
       </div>
-      <p className="note">
-        Colors and display names are saved only in this browser for this repository. Nothing is
-        written to the collaboration repository.
-      </p>
+      <p className="note">{t("profile.note")}</p>
       {order.length === 0 ? (
-        <p className="note">No people to show yet.</p>
+        <p className="note">{t("profile.empty")}</p>
       ) : (
         <ul className="profile-list">
           {order.map((person) => {
@@ -80,7 +79,7 @@ export function ProfilePanel({
                   <span className="sender">{people.label(person)}</span>
                 </span>
                 <label className="profile-name">
-                  <span>Display name for {person}</span>
+                  <span>{t("profile.displayName", { name: person })}</span>
                   <input
                     type="text"
                     maxLength={40}
@@ -95,12 +94,12 @@ export function ProfilePanel({
                   />
                 </label>
                 <fieldset className="swatches">
-                  <legend>Color for {person}</legend>
+                  <legend>{t("profile.color", { name: person })}</legend>
                   {Array.from({ length: PALETTE_SIZE }, (_, index) => (
                     <label key={index} className="swatch" style={personStyle(index)}>
                       <input
                         type="radio"
-                        aria-label={SLOT_NAMES[index]}
+                        aria-label={t(SLOT_NAMES[index] ?? "color.coral")}
                         name={`color-${person}`}
                         checked={slot === index}
                         onChange={() => {

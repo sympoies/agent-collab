@@ -1,3 +1,4 @@
+import type { MessageKey } from "../i18n/catalog";
 // Applies the settings screen to storage: non-secret settings to local storage,
 // the token to exactly one credential store, bound to the endpoint it is for.
 
@@ -75,7 +76,7 @@ export async function apply(
   deps: SettingsDeps,
   draft: SettingsDraft,
 ): Promise<
-  { ok: true; open: OpenSettings; warning: string | null } | { ok: false; errors: DraftErrors }
+  { ok: true; open: OpenSettings; warning: MessageKey | null } | { ok: false; errors: DraftErrors }
 > {
   const store = deps.stores[draft.credentialStorage];
   const stored = await readToken(store);
@@ -85,12 +86,11 @@ export async function apply(
   });
   if (!result.ok) return result;
   const token = result.token ?? stored?.token;
-  if (token === undefined)
-    return { ok: false, errors: { token: "Enter a read-only access token." } };
-  let warning: string | null = null;
+  if (token === undefined) return { ok: false, errors: { token: "settings.error.tokenMissing" } };
+  let warning: MessageKey | null = null;
   for (const [kind, other] of Object.entries(deps.stores)) {
     if (kind !== draft.credentialStorage && !(await clear(other))) {
-      warning = "Saved, but an old copy of the token could not be removed from this browser.";
+      warning = "settings.oldCopyWarning";
     }
   }
   if (result.token !== null) {

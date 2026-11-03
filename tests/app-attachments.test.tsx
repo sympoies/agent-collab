@@ -16,7 +16,7 @@ import {
   TEXT_PREVIEW_MAX_BYTES,
 } from "../src/ui/Attachments";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
-import { messageText, pngBytes } from "./support";
+import { messageText, pngBytes, tEn } from "./support";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -578,6 +578,6 @@ describe("formatSize", () => {
     [1024 * 1024, "1.0 MB"],
     [5 * 1024 * 1024 + 512 * 1024, "5.5 MB"],
   ])("formats %s as %s", (size, text) => {
-    expect(formatSize(size)).toBe(text);
+    expect(formatSize(size, tEn)).toBe(text);
   });
 });

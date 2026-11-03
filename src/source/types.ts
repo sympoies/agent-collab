@@ -66,6 +66,9 @@ export type SourceErrorKind =
  * headers or full URLs; it carries the kind, an optional HTTP status, retry
  * time, safe user-facing message and repository-relative path.
  */
+/** Why a source error happened, where the kind alone is not enough to word it for the user. */
+export type SourceErrorCode = "anonymous-needs-token" | "anonymous-forbidden" | "local-permission";
+
 export class SourceError extends Error {
   override readonly name = "SourceError";
 
@@ -75,6 +78,7 @@ export class SourceError extends Error {
     readonly status: number | null = null,
     readonly retryAt: Date | null = null,
     message?: string,
+    readonly code: SourceErrorCode | null = null,
   ) {
     super(
       message ??

@@ -4,6 +4,12 @@ import { en, LOCALES, type Locale, type MessageKey } from "./catalog";
 import { ja } from "./ja";
 import { zhTW } from "./zh-TW";
 
+/** A message to say later, in whatever language is current then: the key and its parameters. */
+export interface MessageRef {
+  readonly key: MessageKey;
+  readonly params?: Params;
+}
+
 export type Params = Readonly<Record<string, string | number>>;
 type Source = Readonly<Record<Locale, Readonly<Partial<Record<string, string>>>>>;
 

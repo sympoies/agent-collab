@@ -72,7 +72,7 @@ describe("settings session", () => {
     await apply(d, draft());
     expect(await apply(d, draft({ token: "", endpoint: ENTERPRISE }))).toEqual({
       ok: false,
-      errors: { token: "Enter the token for this endpoint." },
+      errors: { token: "settings.error.tokenEndpoint" },
     });
     expect((await restore(d))?.settings.endpoint).toBe("https://api.github.com");
   });
@@ -103,7 +103,7 @@ describe("settings session", () => {
     await apply(d, draft({ credentialStorage: "browser-encrypted" }));
     expect(await apply(d, draft({ credentialStorage: "memory", token: "" }))).toEqual({
       ok: false,
-      errors: { token: "Enter a read-only access token." },
+      errors: { token: "settings.error.tokenMissing" },
     });
   });
 
@@ -137,7 +137,7 @@ describe("settings session with a failing credential store", () => {
     const result = await apply(d, draft({ credentialStorage: "memory" }));
     expect(result).toMatchObject({
       ok: true,
-      warning: "Saved, but an old copy of the token could not be removed from this browser.",
+      warning: "settings.oldCopyWarning",
     });
     expect(reveal((await restore(d))?.token)).toBe(TOKEN);
   });

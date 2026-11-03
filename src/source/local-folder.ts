@@ -136,6 +136,7 @@ function errorFor(path: string, error: unknown): SourceError {
       null,
       null,
       "Local folder permission is unavailable.",
+      "local-permission",
     );
   }
   return new SourceError("unexpected", path);
@@ -189,6 +190,7 @@ export class LocalFolderSource implements MessageSource {
           null,
           null,
           "Local folder permission needs to be granted again. Choose the folder again from the toolbar.",
+          "local-permission",
         );
       }
       // A poll that arrives while a scan is still running shares it instead of starting another.

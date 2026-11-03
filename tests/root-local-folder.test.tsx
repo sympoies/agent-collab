@@ -1,3 +1,4 @@
+import { formatDateTime } from "../src/i18n/translate";
 // @vitest-environment happy-dom
 
 import { act } from "react";
@@ -129,7 +130,7 @@ describe("Root with a local folder", () => {
     expect(indicator?.textContent).toContain("experimental");
     const last = host.querySelector(".last-changed");
     expect(last?.textContent).toBe("Last change seen 5 minutes ago");
-    expect(last?.getAttribute("title")).toContain(changed.toLocaleString());
+    expect(last?.getAttribute("title")).toContain(formatDateTime("en", changed));
     // Read-only: nothing in the page offers to write, and no identity is saved for the folder.
     expect(button(host, "Local folder")).toBeDefined();
   });
@@ -232,22 +233,14 @@ describe("Root with a local folder", () => {
     let denied = false;
     source.head = (previous) =>
       denied
-        ? Promise.reject(
-            new SourceError(
-              "forbidden",
-              "",
-              null,
-              null,
-              "Local folder permission needs to be granted again.",
-            ),
-          )
+        ? Promise.reject(new SourceError("forbidden", "", null, null, "x", "local-permission"))
         : head(previous);
     const host = await render(() => Promise.resolve({ source, name: "clone" }));
     await click(button(host, "Open local folder"));
     denied = true;
     await click(button(host, "Refresh"));
     expect(host.querySelector('[role="alert"]')?.textContent).toContain(
-      "needs to be granted again",
+      "Local folder permission needs to be granted again. Choose the folder again from the toolbar.",
     );
     expect(host.textContent).toContain("From the local clone.");
     expect(button(host, "Local folder")).toBeDefined();

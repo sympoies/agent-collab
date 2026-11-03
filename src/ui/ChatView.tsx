@@ -1,9 +1,10 @@
 // Chat timeline. Message text is always rendered as React text, never as HTML.
 
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import type { MessageReceipts } from "../message/receipts";
 import type { Message } from "../message/types";
+import { useT, type Translate } from "../i18n/LocaleProvider";
 import { RefList, type AttachmentContext } from "./Attachments";
 import { personStyle, type People } from "./people";
 import type { MessageView, Row } from "./timeline";
@@ -17,59 +18,85 @@ function initials(name: string): string {
     .join("");
 }
 
-function recipients(to: readonly string[], people: People): readonly string[] {
-  if (to.length === 0 || (to.length === 1 && to[0] === "all")) return ["everyone"];
+function recipients(to: readonly string[], people: People, t: Translate): readonly string[] {
+  if (to.length === 0 || (to.length === 1 && to[0] === "all")) return [t("chat.everyone")];
   return to.map((name) => people.label(name));
 }
 
-function typeLabel(type: Message["type"]): string {
-  if (type === "decision-needed") return "decision";
-  return type ?? "unknown type";
+function typeLabel(type: Message["type"], t: Translate): string {
+  switch (type) {
+    case "decision-needed":
+      return t("type.decision");
+    case "question":
+      return t("type.question");
+    case "answer":
+      return t("type.answer");
+    case "info":
+      return t("type.info");
+    case "ack":
+      return t("type.ack");
+    case null:
+      return t("chat.unknownType");
+  }
 }
 
-function firstLine(message: Message): string {
-  if (message.body.state === "locked") return "Encrypted message";
+function firstLine(message: Message, t: Translate): string {
+  if (message.body.state === "locked") return t("chat.encrypted");
   return message.body.lines.find((line) => line.trim() !== "") ?? "";
 }
 
+/** "Reply to <id> (parent not shown)", with the id in monospace wherever the language puts it. */
+function replyMissing(id: string, t: Translate): ReactNode {
+  const marker = "\uE000";
+  const [before = "", after = ""] = t("chat.replyMissing", { id: marker }).split(marker);
+  return (
+    <>
+      {before}
+      <code>{id}</code>
+      {after}
+    </>
+  );
+}
+
 function Quote({ view }: { view: MessageView }) {
+  const t = useT();
   const replyTo = view.message.replyTo;
   if (replyTo === null) return null;
   if (view.parent === null) {
-    return (
-      <p className="quote missing">
-        Reply to <code>{replyTo}</code> (parent not shown)
-      </p>
-    );
+    return <p className="quote missing">{replyMissing(replyTo, t)}</p>;
   }
   return (
     <a className="quote" href={`#msg-${view.parent.id}`}>
-      <span className="quote-from">{view.parent.from}</span> {firstLine(view.parent)}
+      <span className="quote-from">{view.parent.from}</span> {firstLine(view.parent, t)}
     </a>
   );
 }
 
 function Receipts({ receipts, people }: { receipts: MessageReceipts; people: People }) {
+  const t = useT();
   const { acknowledgements, recipients, question } = receipts;
   const status =
     question === null
       ? null
       : question.state === "unknown"
-        ? "Answers are unknown until every message of this topic is loaded."
-        : `${String(question.progress?.answered ?? 0)}/${String(question.progress?.target ?? 0)} answered`;
+        ? t("receipt.unknown")
+        : t("receipt.progress", {
+            answered: question.progress?.answered ?? 0,
+            target: question.progress?.target ?? 0,
+          });
   return (
     <div className="receipts">
       {question !== null && (
         <p className="question-progress" data-state={question.state}>
-          <span className="question-state">{question.state}</span> {status}
+          <span className="question-state">{t(`receipt.state.${question.state}`)}</span> {status}
         </p>
       )}
       {acknowledgements.length > 0 && (
         <ul className="acks">
           {acknowledgements.map((ack) => (
             <li key={ack.id} className="ack-receipt" title={ack.at}>
-              {people.label(ack.from)} acknowledged {ack.at.slice(11)}
-              {ack.eta !== null && ` · reply expected ${ack.eta}`}
+              {t("receipt.acknowledged", { name: people.label(ack.from), time: ack.at.slice(11) })}
+              {ack.eta !== null && t("receipt.eta", { eta: ack.eta })}
             </li>
           ))}
         </ul>
@@ -77,32 +104,36 @@ function Receipts({ receipts, people }: { receipts: MessageReceipts; people: Peo
       {question?.conclusion != null && (
         <div className="conclusion">
           <strong>
-            Concluded by {people.label(question.conclusion.from)}{" "}
-            {question.conclusion.timestamp.slice(11)}
+            {t("receipt.concluded", {
+              name: people.label(question.conclusion.from),
+              time: question.conclusion.timestamp.slice(11),
+            })}
           </strong>
           <p>{question.conclusionText}</p>
         </div>
       )}
       <details className="recipients">
-        <summary>Recipients</summary>
+        <summary>{t("receipt.recipients")}</summary>
         {recipients === null ? (
-          <p className="note">Recipients are unknown until the participant list is loaded.</p>
+          <p className="note">{t("receipt.recipientsUnknown")}</p>
         ) : (
           <ul>
             {recipients.map((recipient) => (
               <li key={recipient.name} data-state={recipient.state}>
                 <span className="recipient-name">{people.label(recipient.name)}</span>{" "}
                 {recipient.state === "waiting"
-                  ? "no acknowledgement yet"
-                  : `${recipient.state} ${recipient.at?.slice(11) ?? ""}`}
+                  ? t("receipt.recipientWaiting")
+                  : t(
+                      recipient.state === "answered"
+                        ? "receipt.recipientAnswered"
+                        : "receipt.recipientAcknowledged",
+                      { time: recipient.at?.slice(11) ?? "" },
+                    )}
               </li>
             ))}
           </ul>
         )}
-        <p className="note">
-          An acknowledgement is an explicit reply. The repository does not record who merely opened
-          a message, so there is no read receipt.
-        </p>
+        <p className="note">{t("receipt.note")}</p>
       </details>
     </div>
   );
@@ -117,6 +148,7 @@ function MessageRow({
   people: People;
   attachments: AttachmentContext;
 }) {
+  const t = useT();
   const { message } = view;
   const compact = message.type === "ack";
   return (
@@ -140,17 +172,17 @@ function MessageRow({
             {message.timestamp}
           </span>
         </time>
-        <span className="badge">{typeLabel(message.type)}</span>
-        <span className="to-label">to</span>
-        {recipients(message.to, people).map((name, index) => (
+        <span className="badge">{typeLabel(message.type, t)}</span>
+        <span className="to-label">{t("chat.to")}</span>
+        {recipients(message.to, people, t).map((name, index) => (
           <span key={`${String(index)}-${name}`} className="to">
             {name}
           </span>
         ))}
         {message.issues.length > 0 && (
           <details className="issues">
-            <summary title="This message does not follow the protocol">
-              {message.issues.length} {message.issues.length === 1 ? "issue" : "issues"}
+            <summary title={t("chat.issueTitle")}>
+              {t("chat.issueCount", { count: message.issues.length })}
             </summary>
             <ul>
               {message.issues.map((issue, index) => (
@@ -163,11 +195,11 @@ function MessageRow({
       <Quote view={view} />
       {message.body.state === "locked" ? (
         <p className="body" data-body="locked">
-          Encrypted message. This version cannot decrypt it yet.
+          {t("chat.encryptedLong")}
         </p>
       ) : message.type === "ack" && message.body.lines.every((line) => line.trim() === "") ? (
         <p className="body" data-body="plain">
-          <span className="ack-chip">acknowledged</span>
+          <span className="ack-chip">{t("receipt.acknowledgedChip")}</span>
         </p>
       ) : (
         <p className="body" data-body="plain">
@@ -176,13 +208,12 @@ function MessageRow({
       )}
       {message.needs !== null && (
         <p className="needs">
-          <strong>Needs:</strong> {message.needs}
+          <strong>{t("chat.needs")}</strong> {message.needs}
         </p>
       )}
       {message.due !== null && (
         <p className="due" data-overdue={view.overdue}>
-          Due {message.due}
-          {view.overdue && " (overdue)"}
+          {t(view.overdue ? "chat.dueOverdue" : "chat.due", { date: message.due })}
         </p>
       )}
       {view.receipts !== null && <Receipts receipts={view.receipts} people={people} />}
@@ -200,6 +231,7 @@ function RowView({
   people: People;
   attachments: AttachmentContext;
 }) {
+  const t = useT();
   switch (row.kind) {
     case "day":
       return (
@@ -226,7 +258,7 @@ function RowView({
               >
                 {people.label(row.from)}
               </span>
-              {row.own && <span className="you">You</span>}
+              {row.own && <span className="you">{t("chat.you")}</span>}
               <span className="topic">#{row.topic}</span>
             </div>
             {row.messages.map((view) => (
@@ -244,7 +276,7 @@ function RowView({
       return (
         <li className="card" data-kind="malformed">
           <p>
-            <strong>Unreadable message file</strong> <code>{row.path}</code>
+            <strong>{t("chat.unreadable")}</strong> <code>{row.path}</code>
           </p>
           <ul>
             {row.errors.map((error, index) => (
@@ -252,7 +284,7 @@ function RowView({
             ))}
           </ul>
           <details>
-            <summary>Raw text</summary>
+            <summary>{t("chat.rawText")}</summary>
             <pre>{row.raw}</pre>
           </details>
         </li>
@@ -260,7 +292,7 @@ function RowView({
     case "unavailable":
       return (
         <li className="card" data-kind="unavailable">
-          <strong>Could not download</strong> <code>{row.path}</code> ({row.error})
+          <strong>{t("chat.couldNotDownload")}</strong> <code>{row.path}</code> ({row.error})
         </li>
       );
   }
@@ -286,7 +318,8 @@ export function ChatView({
   people: People;
   attachments: AttachmentContext;
 }) {
-  if (rows.length === 0) return <p className="empty">No messages yet.</p>;
+  const t = useT();
+  if (rows.length === 0) return <p className="empty">{t("chat.empty")}</p>;
   const newMarkerIndex = rows.findIndex(
     (row) => row.kind === "group" && row.messages.some((view) => view.fresh),
   );
@@ -297,8 +330,8 @@ export function ChatView({
         return (
           <Fragment key={rowKey(row, index)}>
             {showNewMarker && (
-              <li className="new-marker" role="separator" aria-label="New messages">
-                <span>New messages</span>
+              <li className="new-marker" role="separator" aria-label={t("a11y.newMessages")}>
+                <span>{t("a11y.newMessages")}</span>
               </li>
             )}
             <RowView row={row} people={people} attachments={attachments} />

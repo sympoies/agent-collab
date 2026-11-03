@@ -1,3 +1,4 @@
+import { formatDateTime } from "../src/i18n/translate";
 // @vitest-environment happy-dom
 
 import { act } from "react";
@@ -94,7 +95,7 @@ describe("Root live demo", () => {
     expect(readSnapshot).toHaveBeenCalledOnce();
     expect(createLiveDemoSource).not.toHaveBeenCalled();
     expect(host.textContent).toContain("Snapshot message.");
-    expect(host.textContent).toContain("2026-11-03T08:00:00.000Z");
+    expect(host.textContent).toContain(formatDateTime("en", new Date("2026-11-03T08:00:00.000Z")));
     expect(
       [...host.querySelectorAll("button")].some(
         (button) => button.textContent === "Check live now",

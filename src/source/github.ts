@@ -9,6 +9,7 @@ import {
   type Head,
   type MessageSource,
   type RateLimit,
+  type SourceErrorCode,
   type SourceErrorKind,
 } from "./types";
 
@@ -279,7 +280,15 @@ export class GitHubSource implements MessageSource {
       response.status,
       retryAt,
       this.errorMessage(kind, response, retryAt),
+      this.errorCode(kind, response),
     );
+  }
+
+  private errorCode(kind: SourceErrorKind, response: Response): SourceErrorCode | null {
+    const anonymous = this.config.token === undefined || this.config.token === null;
+    if (!anonymous) return null;
+    if (response.status === 401 || response.status === 404) return "anonymous-needs-token";
+    return kind === "forbidden" ? "anonymous-forbidden" : null;
   }
 
   private errorMessage(
@@ -300,7 +309,7 @@ export class GitHubSource implements MessageSource {
     if (kind === "rate-limited") {
       return retryAt === null
         ? "GitHub API rate limit reached. Try again later."
-        : `GitHub API rate limit reached. Try again after ${retryAt.toLocaleString()}.`;
+        : `GitHub API rate limit reached. Try again after ${retryAt.toISOString()}.`;
     }
     return undefined;
   }

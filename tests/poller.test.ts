@@ -48,7 +48,9 @@ describe("nextPollDelay", () => {
     for (const kind of ["unauthorized", "forbidden", "not-found"] as const) {
       expect(nextPollDelay({ ...base, failures: 1, error: new SourceError(kind, "") })).toBeNull();
     }
-    expect(nextPollDelay({ ...base, failures: 1, error: new SetupError("no marker") })).toBeNull();
+    expect(
+      nextPollDelay({ ...base, failures: 1, error: new SetupError("no marker", "no-marker") }),
+    ).toBeNull();
   });
 
   it("backs off on forbidden once a request has succeeded", () => {
@@ -206,7 +208,7 @@ describe("Poller", () => {
   });
 
   it("does not poll when opening fails with an error that needs the user", async () => {
-    const error = new SetupError("no marker");
+    const error = new SetupError("no marker", "no-marker");
     const tick = vi.fn(() => Promise.resolve());
     const onError = vi.fn();
     const poller = new Poller(tick, { visible: () => true, rateLimit: () => null, onError });

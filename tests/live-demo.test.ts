@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { checkLive, LiveCheckGate, openLiveDemo } from "../src/settings/live-demo";
 import { FixtureSource } from "../src/source/fixture";
 import { SourceError } from "../src/source/types";
-import { flat, repo } from "./support";
+import { flat, repo, presenterEn } from "./support";
 
 const MINUTE = 60_000;
 
@@ -71,19 +71,19 @@ describe("checkLive", () => {
       .mockReturnValueOnce(rateLimitedSource(resetAt))
       .mockReturnValue(live);
 
-    const limited = await checkLive(createSource, view, gate);
+    const limited = await checkLive(createSource, view, gate, presenterEn);
     expect(limited.loader).toBeNull();
     expect(limited.notice).toContain("hit GitHub's API limit");
-    expect(limited.notice).toContain("2026-11-03T08:00:00.000Z");
+    expect(limited.notice).toContain("Nov 3, 2026, 8:00 AM");
 
     time.advance(10 * MINUTE);
-    const paused = await checkLive(createSource, view, gate);
+    const paused = await checkLive(createSource, view, gate, presenterEn);
     expect(paused.loader).toBeNull();
     expect(paused.notice).toContain("paused");
     expect(createSource).toHaveBeenCalledOnce();
 
     time.advance(20 * MINUTE);
-    const recovered = await checkLive(createSource, view, gate);
+    const recovered = await checkLive(createSource, view, gate, presenterEn);
     expect(createSource).toHaveBeenCalledTimes(2);
     expect(recovered.loader?.getSnapshot().items).toHaveLength(1);
   });
@@ -94,8 +94,12 @@ describe("openLiveDemo without a snapshot", () => {
     const gate = new LiveCheckGate();
     gate.record(new SourceError("rate-limited", "", 403, new Date(Date.now() + 30 * MINUTE)));
     const createSource = vi.fn(() => new FixtureSource({}));
-    const opened = await openLiveDemo(createSource, repo([flat("2026-11", 3, 1)]), gate, () =>
-      Promise.resolve(null),
+    const opened = await openLiveDemo(
+      createSource,
+      repo([flat("2026-11", 3, 1)]),
+      gate,
+      presenterEn,
+      () => Promise.resolve(null),
     );
     expect(createSource).not.toHaveBeenCalled();
     expect(opened.view).toEqual({ kind: "bundled" });
@@ -108,6 +112,7 @@ describe("openLiveDemo without a snapshot", () => {
       () => new FixtureSource(repo([flat("2026-11", 3, 1)])),
       {},
       new LiveCheckGate(),
+      presenterEn,
       () => Promise.resolve(null),
     );
     expect(opened.view).toEqual({ kind: "live" });
@@ -128,14 +133,18 @@ describe("requests in flight and incomplete copies", () => {
       });
       return head(previous);
     });
-    const first = checkLive(() => slow, view, gate);
+    const first = checkLive(() => slow, view, gate, presenterEn);
     // The first request has reached the source before the second open is tried.
     await vi.waitFor(() => {
       expect(release).not.toBeNull();
     });
     const createSecond = vi.fn(() => new FixtureSource({}));
-    const second = await openLiveDemo(createSecond, repo([flat("2026-11", 3, 2)]), gate, () =>
-      Promise.resolve(null),
+    const second = await openLiveDemo(
+      createSecond,
+      repo([flat("2026-11", 3, 2)]),
+      gate,
+      presenterEn,
+      () => Promise.resolve(null),
     );
     expect(createSecond).not.toHaveBeenCalled();
     expect(second.view).toEqual({ kind: "bundled" });
@@ -147,7 +156,7 @@ describe("requests in flight and incomplete copies", () => {
     const gate = new LiveCheckGate();
     const live = new FixtureSource(repo([flat("2026-11", 3, 1), flat("2026-11", 3, 2)]));
     live.failReads([flat("2026-11", 3, 2)]);
-    const result = await checkLive(() => live, view, gate);
+    const result = await checkLive(() => live, view, gate, presenterEn);
     expect(result.loader).toBeNull();
     expect(result.notice).toContain("The live check is unavailable");
     expect(gate.nextCheckAt()).not.toBeNull();
@@ -161,6 +170,7 @@ describe("requests in flight and incomplete copies", () => {
       () => live,
       repo([flat("2026-11", 3, 3)]),
       gate,
+      presenterEn,
       () => Promise.resolve(null),
     );
     expect(opened.view).toEqual({ kind: "bundled" });
@@ -176,6 +186,7 @@ describe("requests in flight and incomplete copies", () => {
       },
       view,
       gate,
+      presenterEn,
     );
     expect(result.loader).toBeNull();
     expect(result.notice).toContain("The live check is unavailable");

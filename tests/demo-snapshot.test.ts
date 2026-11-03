@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { LiveCheckGate, openLiveDemo } from "../src/settings/live-demo";
 import { parseDemoSnapshot, type DemoSnapshot } from "../src/settings/demo-snapshot";
 import { FixtureSource } from "../src/source/fixture";
+import { presenterEn } from "./support";
 import { SourceError } from "../src/source/types";
 
 const snapshot: DemoSnapshot = {
@@ -52,7 +53,7 @@ describe("demo snapshots", () => {
 
   it("chooses the snapshot before the anonymous API source", async () => {
     const createApiSource = vi.fn(() => new FixtureSource({}));
-    const opened = await openLiveDemo(createApiSource, {}, new LiveCheckGate(), () =>
+    const opened = await openLiveDemo(createApiSource, {}, new LiveCheckGate(), presenterEn, () =>
       Promise.resolve(snapshot),
     );
     expect(createApiSource).not.toHaveBeenCalled();
@@ -77,6 +78,7 @@ describe("demo snapshots", () => {
       createApiSource,
       { ".agent-collab": "collab-protocol: 1\n", [bundledMessage.path]: bundledMessage.text },
       new LiveCheckGate(),
+      presenterEn,
       () => Promise.resolve(null),
     );
     expect(createApiSource).toHaveBeenCalledOnce();
