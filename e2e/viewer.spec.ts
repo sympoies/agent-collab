@@ -763,22 +763,45 @@ for (const identity of identityCases) {
   });
 }
 
-test("identity choices still work when browser storage rejects writes", async ({ page }) => {
+test("identity choices still work when browser storage rejects reads and writes", async ({
+  page,
+}) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.addInitScript(() => {
     const original = Storage.prototype.setItem.bind(localStorage);
+    const originalGet = Storage.prototype.getItem.bind(localStorage);
+    const counts = { rejectedWrites: 0, rejectedReads: 0 };
+    Object.assign(window, { identityStorageCounts: counts });
     Storage.prototype.setItem = function (key: string, value: string) {
       if (key.startsWith("agent-collab-viewer.identity:")) {
+        counts.rejectedWrites += 1;
         throw new DOMException("Identity preferences are read-only", "QuotaExceededError");
       }
       original(key, value);
+    };
+    Storage.prototype.getItem = function (key: string) {
+      if (key.startsWith("agent-collab-viewer.identity:")) {
+        counts.rejectedReads += 1;
+        throw new DOMException("Identity preferences are unreadable", "SecurityError");
+      }
+      return originalGet(key);
     };
   });
   const assertRequests = await openViewer(page, "long");
   await expect(page.locator(".message").first()).toBeVisible();
   await page.getByLabel("Viewing as").selectOption("bob-agent");
   await expect(page.locator('.group[data-own="true"] .sender').first()).toHaveText("bob-agent");
+  const counts = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          identityStorageCounts: { rejectedWrites: number; rejectedReads: number };
+        }
+      ).identityStorageCounts,
+  );
+  expect(counts.rejectedReads).toBeGreaterThan(0);
+  expect(counts.rejectedWrites).toBeGreaterThan(0);
   expect(errors).toEqual([]);
   assertRequests();
 });

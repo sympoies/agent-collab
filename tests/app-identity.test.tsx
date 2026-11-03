@@ -197,4 +197,68 @@ describe("App identity controls", () => {
     expect(host.querySelector(".timeline .sender")?.textContent).toBe("alice-agent");
     expect(storage.values.get(`agent-collab-viewer.identity:${KEY}`)).not.toContain("Alice");
   });
+
+  it("keeps Viewing as options and sender labels unambiguous when display names collide", async () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      `agent-collab-viewer.identity:${KEY}`,
+      JSON.stringify({ names: { "alice-agent": "Sam", "bob-agent": "Sam" } }),
+    );
+    const host = await render(storage);
+    const options = [...host.querySelectorAll(".viewing-as option")].map(
+      (node) => node.textContent,
+    );
+    expect(options).toEqual(["Observer", "Sam (alice-agent)", "Sam (bob-agent)"]);
+    const senders = [...host.querySelectorAll(".timeline .sender")].map((node) => node.textContent);
+    expect(senders).toEqual(["Sam (alice-agent)", "Sam (bob-agent)"]);
+  });
+
+  it("ignores a stored identity that is no longer a participant", async () => {
+    const storage = memoryStorage();
+    storage.setItem(
+      `agent-collab-viewer.identity:${KEY}`,
+      JSON.stringify({ viewingAs: "ghost-agent" }),
+    );
+    const stale = await render(storage, []);
+    expect((stale.querySelector(".viewing-as select") as HTMLSelectElement).value).toBe("");
+    expect(youGroups(stale)).toEqual([]);
+
+    act(() => {
+      mounted?.root.unmount();
+    });
+    document.body.replaceChildren();
+    const withDefault = await render(storage, ["alice-agent"]);
+    expect((withDefault.querySelector(".viewing-as select") as HTMLSelectElement).value).toBe(
+      "alice-agent",
+    );
+  });
+
+  it("shows an empty Profile & colors panel when the repository has no people yet", async () => {
+    const loader = new Loader(new FixtureSource({ ".agent-collab": "collab-protocol: 1\n" }));
+    await loader.open();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted = { host, root };
+    await act(async () => {
+      root.render(
+        <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+          <App
+            loader={loader}
+            title="Repo"
+            selfNames={new Set(["alice-agent"])}
+            identity={{ storage: null, key: KEY }}
+            notice={null}
+            onOpenSettings={() => undefined}
+          />
+        </ThemeProvider>,
+      );
+      await Promise.resolve();
+    });
+    await click(button(host, "Profile & colors"));
+    expect(host.querySelector(".profile")?.textContent).toContain("No people to show yet.");
+    expect(
+      [...host.querySelectorAll(".viewing-as option")].map((node) => node.textContent),
+    ).toEqual(["Observer"]);
+  });
 });

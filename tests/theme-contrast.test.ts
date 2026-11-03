@@ -13,10 +13,9 @@ type Channels = {
   readonly alpha: number;
 };
 
-function declarations(theme: "night-owl" | "paper"): Map<string, string> {
-  const selector = `:root[data-theme="${theme}"]`;
+function tokensOf(selector: string): Map<string, string> {
   const start = css.indexOf(selector);
-  expect(start, `${selector} theme tokens`).toBeGreaterThanOrEqual(0);
+  expect(start, `${selector} tokens`).toBeGreaterThanOrEqual(0);
   const bodyStart = css.indexOf("{", start);
   const bodyEnd = css.indexOf("}", bodyStart);
   const body = css.slice(bodyStart + 1, bodyEnd);
@@ -25,6 +24,10 @@ function declarations(theme: "night-owl" | "paper"): Map<string, string> {
       ([, name, value]) => [name ?? "", value ?? ""],
     ),
   );
+}
+
+function declarations(theme: "night-owl" | "paper"): Map<string, string> {
+  return tokensOf(`:root[data-theme="${theme}"]`);
 }
 
 function channels(value: string): Channels {
@@ -77,6 +80,16 @@ function disabledButtonRule(): string {
 }
 
 describe("theme text contrast", () => {
+  it("repeats the Paper palette as the default and Night Owl as the dark system default", () => {
+    // Pages without a saved theme use these copies; they must not drift from the named themes.
+    expect(Object.fromEntries(tokensOf(":root {"))).toEqual(
+      Object.fromEntries(declarations("paper")),
+    );
+    expect(Object.fromEntries(tokensOf(":root:not([data-theme])"))).toEqual(
+      Object.fromEntries(declarations("night-owl")),
+    );
+  });
+
   it("uses the supplied Paper e-paper palette and surface roles", () => {
     const tokens = declarations("paper");
     expect(Object.fromEntries(tokens)).toMatchObject({

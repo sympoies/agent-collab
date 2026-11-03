@@ -136,7 +136,12 @@ describe("person colors", () => {
   it("keeps an override by name through a roster change, and Reset restores the defaults", () => {
     const overridden = withColor(EMPTY_PREFERENCES, "bob-agent", 6);
     expect(assignSlots(["alice-agent", "bob-agent"], overridden).get("bob-agent")).toBe(6);
-    // A new participant ahead of bob shifts bob's default but not the override.
+    // The default follows roster order, so a new participant ahead of bob shifts bob's default
+    // slot from 1 to 2; an override is keyed by name and does not move.
+    expect(assignSlots(["alice-agent", "bob-agent"], EMPTY_PREFERENCES).get("bob-agent")).toBe(1);
+    expect(
+      assignSlots(["carol-agent", "alice-agent", "bob-agent"], EMPTY_PREFERENCES).get("bob-agent"),
+    ).toBe(2);
     expect(
       assignSlots(["carol-agent", "alice-agent", "bob-agent"], overridden).get("bob-agent"),
     ).toBe(6);
@@ -164,5 +169,48 @@ describe("person colors", () => {
     expect(people.label("alice-agent")).toBe("Alice");
     expect(people.label("bob-agent")).toBe("bob-agent");
     expect(people.slot("bob-agent")).toBe(1);
+  });
+
+  it("caps display names by code points without splitting a surrogate pair", () => {
+    const long = "\u{1F600}".repeat(45);
+    const saved = withDisplayName(EMPTY_PREFERENCES, "alice-agent", long);
+    const name = saved.names["alice-agent"] ?? "";
+    expect(Array.from(name)).toHaveLength(40);
+    expect(name).toBe("\u{1F600}".repeat(40));
+    expect(
+      withDisplayName(EMPTY_PREFERENCES, "alice-agent", "Ren\u00e9e \u5c0f\u660e").names,
+    ).toEqual({
+      "alice-agent": "Ren\u00e9e \u5c0f\u660e",
+    });
+  });
+});
+
+describe("unambiguous labels", () => {
+  const order = ["alice-agent", "bob-agent", "carol-agent"];
+
+  it("keeps unique display names and participant names as they are", () => {
+    const people = buildPeople(order, withDisplayName(EMPTY_PREFERENCES, "alice-agent", "Alice"));
+    expect(order.map((name) => people.label(name))).toEqual(["Alice", "bob-agent", "carol-agent"]);
+  });
+
+  it("appends the participant name when two people share a display name", () => {
+    const shared = withDisplayName(
+      withDisplayName(EMPTY_PREFERENCES, "alice-agent", "Sam"),
+      "bob-agent",
+      "Sam",
+    );
+    const people = buildPeople(order, shared);
+    expect(people.label("alice-agent")).toBe("Sam (alice-agent)");
+    expect(people.label("bob-agent")).toBe("Sam (bob-agent)");
+    expect(people.label("carol-agent")).toBe("carol-agent");
+  });
+
+  it("appends the participant name when a display name equals another participant's name", () => {
+    const people = buildPeople(
+      order,
+      withDisplayName(EMPTY_PREFERENCES, "alice-agent", "bob-agent"),
+    );
+    expect(people.label("alice-agent")).toBe("bob-agent (alice-agent)");
+    expect(people.label("bob-agent")).toBe("bob-agent");
   });
 });

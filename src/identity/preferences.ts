@@ -34,11 +34,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function cleanDisplayName(value: string): string {
-  const printable = Array.from(value).filter((char) => {
+  const printable = Array.from(value.trim()).filter((char) => {
     const code = char.codePointAt(0) ?? 0;
     return code >= 0x20 && code !== 0x7f;
   });
-  return printable.join("").trim().slice(0, MAX_NAME_LENGTH);
+  // Cap by code points, so a surrogate pair is never split.
+  return printable.slice(0, MAX_NAME_LENGTH).join("").trim();
 }
 
 /** Keeps only well-formed entries, so a damaged or foreign value never breaks the view. */
