@@ -399,12 +399,15 @@ public blobs.
   card reads its directory listing once per revision, for the size, so a long
   thread makes no request until a card is opened; the card then shows the size,
   the path and an "Open in GitHub" link from the source
-  (`MessageSource.webLink`), which keeps provider details out of the UI. A
+  (`MessageSource.webLink`) to the file at the revision being viewed, which keeps provider details out of the UI. A
   message id jumps to and highlights that message (`:target`), a URL shows its
   host and opens in a new tab with `rel="noopener noreferrer"`, and anything
   else stays plain text. The **Files** entry lists every file and link
   referenced in the current conversation (all topics or the selected one),
-  newest reference first. Inline previews of Markdown, text, CSV and images
+  newest reference first. It lists only loaded messages: it shows the same
+  "Load older messages" control as the chat and a note while older pages are
+  not loaded, so attachments of older messages are not silently missing.
+  Inline previews of Markdown, text, CSV and images
   are a later slice.
 
   Out of scope (follow-up): a "sidecar note" for data files, because the

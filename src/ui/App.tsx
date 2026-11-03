@@ -456,7 +456,7 @@ export function App({
           {view === "questions" && (
             <QuestionsView groups={questionGroups} people={people} onOpen={openQuestion} />
           )}
-          {view === "chat" && snapshot.hasOlder && (
+          {view !== "questions" && snapshot.hasOlder && (
             <button
               type="button"
               className="older"
@@ -475,6 +475,7 @@ export function App({
               }
               context={attachments}
               label={(name) => people.label(name)}
+              hasOlder={snapshot.hasOlder}
             />
           )}
           {view === "chat" && <ChatView rows={rows} people={people} attachments={attachments} />}

@@ -49,12 +49,18 @@ describe("AttachmentReader", () => {
       listDirectory: () => Promise.resolve([]),
       readFile: () => Promise.resolve(""),
       rateLimit: () => null,
-      webLink: (path) => ({ url: `https://host.example/${path}`, label: "GitHub" }),
+      webLink: (path, revision) => ({
+        url: `https://host.example/${revision ?? "none"}/${path}`,
+        label: "GitHub",
+      }),
     };
     expect(new AttachmentReader(withLink, () => "r").webLink("topics/a.md")).toEqual({
-      url: "https://host.example/topics/a.md",
+      url: "https://host.example/r/topics/a.md",
       label: "GitHub",
     });
+    expect(new AttachmentReader(withLink, () => null).webLink("topics/a.md")?.url).toBe(
+      "https://host.example/none/topics/a.md",
+    );
     expect(
       new AttachmentReader(new FixtureSource(files), () => "r").webLink("topics/a.md"),
     ).toBeNull();

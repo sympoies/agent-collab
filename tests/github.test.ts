@@ -379,23 +379,63 @@ describe("GitHubSource attachments", () => {
     ]);
   });
 
-  it("links a file to the repository's web page, for github.com and an enterprise host", () => {
+  it("links a file at the opened revision for github.com and an enterprise host with its port", () => {
     const { fetch } = fakeFetch({});
     expect(
       source(fetch, { apiBase: "https://api.github.com", branch: "feature/x y" }).webLink(
         "topics/a b/c.md",
+        "c0ffee",
       ),
     ).toEqual({
-      url: "https://github.com/alice-org/collab/blob/feature/x%20y/topics/a%20b/c.md",
+      url: "https://github.com/alice-org/collab/blob/c0ffee/topics/a%20b/c.md",
       label: "GitHub",
     });
     expect(
-      source(fetch, { apiBase: "https://git.example.com/api/v3", branch: null }).webLink(
+      source(fetch, { apiBase: "https://git.example.com:8443/api/v3", branch: null }).webLink(
         "topics/c.md",
-      ),
-    ).toEqual({
-      url: "https://git.example.com/alice-org/collab/blob/HEAD/topics/c.md",
-      label: "GitHub",
+        "c0ffee",
+      )?.url,
+    ).toBe("https://git.example.com:8443/alice-org/collab/blob/c0ffee/topics/c.md");
+  });
+
+  it("falls back to the configured branch, then to HEAD, without a revision", () => {
+    const { fetch } = fakeFetch({});
+    expect(source(fetch, { branch: "feature/x y" }).webLink("topics/c.md", null)?.url).toContain(
+      "/blob/feature/x%20y/topics/c.md",
+    );
+    expect(source(fetch, { branch: null }).webLink("topics/c.md", null)?.url).toContain(
+      "/blob/HEAD/topics/c.md",
+    );
+  });
+
+  it("keeps a size only when it is a non-negative number", async () => {
+    const entry = (path: string, size?: unknown) => ({
+      path,
+      type: "blob",
+      mode: "100644",
+      sha: `sha-${path}`,
+      ...(size === undefined ? {} : { size }),
     });
+    const { fetch } = fakeFetch({
+      [`${REPO}/git/commits/c1`]: json({ tree: { sha: "t-root" } }),
+      [`${REPO}/git/trees/t-root`]: json({
+        truncated: false,
+        tree: [
+          entry("ok.md", 0),
+          entry("neg.md", -1),
+          entry("none.md"),
+          entry("text.md", "12"),
+          entry("nan.md", null),
+        ],
+      }),
+    });
+    const listed = await source(fetch).listDirectory("c1", "");
+    expect(listed.map((item) => [item.name, item.size])).toEqual([
+      ["ok.md", 0],
+      ["neg.md", undefined],
+      ["none.md", undefined],
+      ["text.md", undefined],
+      ["nan.md", undefined],
+    ]);
   });
 });

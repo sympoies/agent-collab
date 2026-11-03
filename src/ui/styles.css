@@ -868,6 +868,8 @@ button:hover {
 }
 
 .chip {
+  max-width: 100%;
+  overflow-wrap: anywhere;
   display: inline-flex;
   min-height: 24px;
   align-items: center;

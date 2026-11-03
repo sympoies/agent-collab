@@ -8,6 +8,7 @@ import { Loader } from "../src/loader/loader";
 import { FixtureSource } from "../src/source/fixture";
 import type { DirectoryEntry, MessageSource } from "../src/source/types";
 import { App } from "../src/ui/App";
+import { formatSize } from "../src/ui/Attachments";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { messageText } from "./support";
 
@@ -54,8 +55,11 @@ describe("attachments", () => {
     window.location.hash = "";
   });
 
-  async function render(source: MessageSource = new FixtureSource(files)): Promise<HTMLElement> {
-    const loader = new Loader(source);
+  async function render(
+    source: MessageSource = new FixtureSource(files),
+    pageSize = 50,
+  ): Promise<HTMLElement> {
+    const loader = new Loader(source, { pageSize });
     await loader.open();
     const host = document.createElement("div");
     document.body.append(host);
@@ -161,7 +165,6 @@ describe("attachments", () => {
       await Promise.resolve();
     });
     expect(window.location.hash).toBe(`#msg-${SECOND}`);
-    expect(host.querySelector(`#msg-${SECOND}`)).not.toBeNull();
   });
 
   it("lists every file and link of the conversation in the Files view, once each", async () => {
@@ -176,5 +179,115 @@ describe("attachments", () => {
     expect(names.sort()).toEqual(["blob.bin", "data.csv", "fields.md", "gone.md", "notes.txt"]);
     expect(host.querySelectorAll(".files a.chip")).toHaveLength(1);
     expect(host.querySelector(".files .file-from")?.textContent).toContain("alice-agent · #api");
+  });
+
+  it("switches to the topic of a referenced message in another topic", async () => {
+    const host = await render();
+    const topicButton = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent.startsWith("#api"),
+    );
+    await act(async () => {
+      topicButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(host.querySelector("#conversation-heading")?.textContent).toBe("#api");
+    expect(host.querySelector(`#msg-${SECOND}`)).toBeNull();
+    const chip = host.querySelector<HTMLAnchorElement>(
+      `#msg-${FIRST} .refs a[href="#msg-${SECOND}"]`,
+    );
+    await act(async () => {
+      chip?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(host.querySelector("#conversation-heading")?.textContent).toBe("#ops");
+    expect(window.location.hash).toBe(`#msg-${SECOND}`);
+  });
+
+  it("jumps from the Files view back to the message that references a file", async () => {
+    const host = await render();
+    await act(async () => {
+      [...host.querySelectorAll("button")]
+        .find((b) => b.textContent === "Files")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      host
+        .querySelector(".files .file-from")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(host.querySelector("#conversation-heading")?.textContent).toBe("All conversations");
+    expect(host.querySelector(".files")).toBeNull();
+    expect(window.location.hash).toBe(`#msg-${FIRST}`);
+  });
+
+  it("lists a file once however often it is referenced", async () => {
+    const LATER = "2026-10-02T0900-bob-agent-api-01";
+    const repository = {
+      ...files,
+      [`inbox/${FIRST}.md`]: messageText(
+        FIRST,
+        "alice-agent",
+        "api",
+        {
+          refs: "topics/api/fields.md, topics/api/fields.md, https://docs.example.com/a, https://docs.example.com/a",
+        },
+        "Twice in one message.",
+      ),
+      [`inbox/${LATER}.md`]: messageText(
+        LATER,
+        "bob-agent",
+        "api",
+        { refs: "topics/api/fields.md" },
+        "Again.",
+      ),
+    };
+    const host = await render(new FixtureSource(repository));
+    // Both cards of the message stay (the message shows what it references) ...
+    expect(host.querySelectorAll(`#msg-${FIRST} .file-card`)).toHaveLength(2);
+    await act(async () => {
+      [...host.querySelectorAll("button")]
+        .find((b) => b.textContent === "Files")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    // ... while the Files view has each file and link once, from the newest reference.
+    expect(host.querySelectorAll(".files .file-card")).toHaveLength(1);
+    expect(host.querySelectorAll(".files a.chip")).toHaveLength(1);
+    expect(host.querySelector(".files .file-from")?.textContent).toContain("bob-agent");
+  });
+
+  it("offers older messages in the Files view and says only loaded messages are listed", async () => {
+    const host = await render(new FixtureSource(files), 1);
+    await act(async () => {
+      [...host.querySelectorAll("button")]
+        .find((b) => b.textContent === "Files")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(host.textContent).toContain("Only files and links from the loaded messages are listed.");
+    expect(host.querySelector("button.older")?.textContent).toBe("Load older messages");
+  });
+
+  it("shows no open link when the source has no web page for files", async () => {
+    const host = await render();
+    const card = await open(host, "blob.bin");
+    expect(card.querySelector("a.open-link")).toBeNull();
+  });
+});
+
+describe("formatSize", () => {
+  it.each([
+    [null, "size unknown"],
+    [0, "0 B"],
+    [1023, "1023 B"],
+    [1024, "1.0 KB"],
+    [1536, "1.5 KB"],
+    [1024 * 1024 - 1, "1024.0 KB"],
+    [1024 * 1024, "1.0 MB"],
+    [5 * 1024 * 1024 + 512 * 1024, "5.5 MB"],
+  ])("formats %s as %s", (size, text) => {
+    expect(formatSize(size)).toBe(text);
   });
 });

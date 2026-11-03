@@ -44,6 +44,6 @@ export class AttachmentReader {
   }
 
   webLink(path: string): { readonly url: string; readonly label: string } | null {
-    return this.source.webLink?.(path) ?? null;
+    return this.source.webLink?.(path, this.revision()) ?? null;
   }
 }

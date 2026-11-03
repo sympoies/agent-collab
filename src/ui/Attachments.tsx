@@ -212,13 +212,45 @@ export function FilesView({
   messages,
   context,
   label,
+  hasOlder,
 }: {
   messages: readonly Message[];
   context: AttachmentContext;
   label: (name: string) => string;
+  /** Older messages are not loaded yet, so their attachments are not listed. */
+  hasOlder: boolean;
 }) {
   const items = collectAttachments(messages);
-  if (items.length === 0) return <p className="empty">No files or links yet.</p>;
+  const note = hasOlder && (
+    <p className="note">
+      Only files and links from the loaded messages are listed. Load older messages to see more.
+    </p>
+  );
+  if (items.length === 0) {
+    return (
+      <>
+        <p className="empty">No files or links in the loaded messages.</p>
+        {note}
+      </>
+    );
+  }
+  return (
+    <>
+      {note}
+      <FilesList items={items} context={context} label={label} />
+    </>
+  );
+}
+
+function FilesList({
+  items,
+  context,
+  label,
+}: {
+  items: readonly AttachmentItem[];
+  context: AttachmentContext;
+  label: (name: string) => string;
+}) {
   return (
     <ul className="files">
       {items.map((item) => (

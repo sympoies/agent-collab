@@ -244,10 +244,19 @@ function attachmentThread(): MessageFixture[] {
     "The review files are attached.",
     "bob-agent",
     "",
-    "topics/api/fields-v1.md, topics/api/results.csv, topics/api/diagram.png, topics/api/archive.bin, https://docs.example.com/guide, topics/api/other.md",
+    "topics/api/fields-v1.md, topics/api/results.csv, topics/api/diagram.png, topics/api/archive.bin, https://docs.example.com/guide, topics/api/other.md, topics/api/an-extraordinarily-long-file-name-that-keeps-going-and-going-for-the-phone-viewport-check-0123456789.md, https://a-very-long-host-name-for-the-wrapping-check-at-phone-width.example.invalid/path, 2026-10-08T0910-alice-agent-ops-01",
   );
   return [
     first,
+    makeMessage(
+      "2026-10-08",
+      "0910",
+      "alice-agent",
+      "ops",
+      1,
+      "info",
+      "An operations note in another topic.",
+    ),
     makeMessage(
       "2026-10-08",
       "0905",
@@ -1051,11 +1060,11 @@ for (const identity of identityCases) {
     const assertRequests = await openViewer(page, "attachments");
     await expect(page.locator("html")).toHaveAttribute("data-theme", identity.theme);
     const phone = identity.viewport.width < 721;
-    if (phone) await page.getByRole("button", { name: /^#api/ }).click();
+    await page.getByRole("button", { name: /^#api/ }).click();
 
     const first = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
-    await expect(first.locator(".file-card")).toHaveCount(5);
-    await expect(first.locator(".file-badge")).toHaveText(["MD", "CSV", "IMG", "FILE", "MD"]);
+    await expect(first.locator(".file-card")).toHaveCount(6);
+    await expect(first.locator(".file-badge")).toHaveText(["MD", "CSV", "IMG", "FILE", "MD", "MD"]);
     const guide = first.getByRole("link", { name: "docs.example.com" });
     await expect(guide).toHaveAttribute("rel", "noopener noreferrer");
     await expect(guide).toHaveAttribute("target", "_blank");
@@ -1071,9 +1080,10 @@ for (const identity of identityCases) {
     await expect(card("results.csv").locator(".file-meta")).toHaveCount(0);
 
     await card("archive.bin").locator("summary").click();
+    // The link points at the revision being viewed, not at a moving branch.
     await expect(card("archive.bin").getByRole("link", { name: "Open in GitHub" })).toHaveAttribute(
       "href",
-      "https://github.com/alice-agent/fixture-repo/blob/main/topics/api/archive.bin",
+      /^https:\/\/github\.com\/alice-agent\/fixture-repo\/blob\/revision-\d+\/topics\/api\/archive\.bin$/,
     );
 
     await card("other.md").locator("summary").click();
@@ -1096,15 +1106,35 @@ for (const identity of identityCases) {
       "solid",
     );
 
+    // A reference to a message of another topic switches to that topic.
+    await first.getByRole("link", { name: /^Message 2026-10-08 09:10/ }).click();
+    await expect(page.locator("#conversation-heading")).toHaveText("#ops");
+    await expect(page.locator("#msg-2026-10-08T0910-alice-agent-ops-01")).toHaveCSS(
+      "outline-style",
+      "solid",
+    );
+
+    if (phone) await page.getByRole("button", { name: "Back to conversations" }).click();
+    await page.getByRole("button", { name: "All" }).click();
     if (phone) await page.getByRole("button", { name: "Back to conversations" }).click();
     await page.getByRole("button", { name: "Files" }).click();
-    await expect(page.locator("#conversation-heading")).toHaveText(
-      phone ? "Files in #api" : "Files",
-    );
-    await expect(page.locator(".files .file-name")).toHaveCount(5);
+    await expect(page.locator("#conversation-heading")).toHaveText("Files");
+    await expect(page.locator(".files .file-name")).toHaveCount(6);
     await expect(page.locator(".files .file-from").first()).toContainText("alice-agent · #api");
-    await expect(page.locator(".files a.chip")).toHaveText("docs.example.com");
+    await expect(page.locator(".files a.chip")).toHaveCount(2);
+    const filesOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(filesOverflow).toBeLessThanOrEqual(0);
     await saveScreenshot(page, `files-${identity.label}-${identity.theme}.png`);
+
+    // The sender line of a file jumps back to the chat at that message.
+    await page.locator(".files .file-from").first().click();
+    await expect(page.locator("#conversation-heading")).toHaveText("All conversations");
+    await expect(page.locator("#msg-2026-10-08T0900-alice-agent-api-01")).toHaveCSS(
+      "outline-style",
+      "solid",
+    );
     assertRequests();
   });
 }

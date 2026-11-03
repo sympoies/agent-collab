@@ -159,16 +159,20 @@ export class GitHubSource implements MessageSource {
     });
   }
 
-  webLink(path: string): { readonly url: string; readonly label: string } | null {
+  webLink(
+    path: string,
+    revision: string | null,
+  ): { readonly url: string; readonly label: string } | null {
     const api = new URL(this.config.apiBase);
-    const host = api.hostname === "api.github.com" ? "github.com" : api.hostname;
-    const prefix =
-      api.hostname === "api.github.com" ? "" : api.pathname.replace(/\/api\/v3\/?$/, "");
+    const github = api.hostname === "api.github.com";
+    // api.host keeps a custom port; github.com has no API subdomain to strip.
+    const host = github ? "github.com" : api.host;
+    const prefix = github ? "" : api.pathname.replace(/\/api\/v3\/?$/, "").replace(/\/+$/, "");
     const encode = (value: string) => value.split("/").map(encodeURIComponent).join("/");
-    const branch = this.config.branch === null ? "HEAD" : encode(this.config.branch);
+    const ref = revision ?? (this.config.branch === null ? "HEAD" : this.config.branch);
     const { owner, repo } = this.config;
     return {
-      url: `https://${host}${prefix.replace(/\/+$/, "")}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/blob/${branch}/${encode(path)}`,
+      url: `https://${host}${prefix}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/blob/${encode(ref)}/${encode(path)}`,
       label: "GitHub",
     };
   }
