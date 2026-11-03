@@ -46,6 +46,18 @@ describe("LiveCheckGate", () => {
   });
 });
 
+describe("LiveCheckGate ties", () => {
+  it("allows a request exactly at the reset time", () => {
+    const time = clock();
+    const gate = new LiveCheckGate(time.now);
+    gate.record(new SourceError("rate-limited", "", 403, new Date(time.now() + 40 * MINUTE)));
+    time.advance(40 * MINUTE - 1);
+    expect(gate.nextCheckAt()).not.toBeNull();
+    time.advance(1);
+    expect(gate.nextCheckAt()).toBeNull();
+  });
+});
+
 describe("checkLive", () => {
   const view = { kind: "snapshot", generatedAt: "2026-11-03T08:00:00.000Z" } as const;
 
@@ -99,5 +111,74 @@ describe("openLiveDemo without a snapshot", () => {
       () => Promise.resolve(null),
     );
     expect(opened.view).toEqual({ kind: "live" });
+  });
+});
+
+describe("requests in flight and incomplete copies", () => {
+  const view = { kind: "snapshot", generatedAt: "2026-11-03T08:00:00.000Z" } as const;
+
+  it("closes the gate while the first request is still running", async () => {
+    const gate = new LiveCheckGate();
+    let release: (() => void) | null = null;
+    const slow = new FixtureSource(repo([flat("2026-11", 3, 1)]));
+    const head = slow.head.bind(slow);
+    vi.spyOn(slow, "head").mockImplementation(async (previous) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return head(previous);
+    });
+    const first = checkLive(() => slow, view, gate);
+    // The first request has reached the source before the second open is tried.
+    await vi.waitFor(() => {
+      expect(release).not.toBeNull();
+    });
+    const createSecond = vi.fn(() => new FixtureSource({}));
+    const second = await openLiveDemo(createSecond, repo([flat("2026-11", 3, 2)]), gate, () =>
+      Promise.resolve(null),
+    );
+    expect(createSecond).not.toHaveBeenCalled();
+    expect(second.view).toEqual({ kind: "bundled" });
+    (release as (() => void) | null)?.();
+    expect((await first).loader).not.toBeNull();
+  });
+
+  it("keeps the static copy when one live file cannot be read", async () => {
+    const gate = new LiveCheckGate();
+    const live = new FixtureSource(repo([flat("2026-11", 3, 1), flat("2026-11", 3, 2)]));
+    live.failReads([flat("2026-11", 3, 2)]);
+    const result = await checkLive(() => live, view, gate);
+    expect(result.loader).toBeNull();
+    expect(result.notice).toContain("The live check is unavailable");
+    expect(gate.nextCheckAt()).not.toBeNull();
+  });
+
+  it("falls back to the bundled sample when the live copy is incomplete and no snapshot exists", async () => {
+    const live = new FixtureSource(repo([flat("2026-11", 3, 1), flat("2026-11", 3, 2)]));
+    live.failReads([flat("2026-11", 3, 2)]);
+    const gate = new LiveCheckGate();
+    const opened = await openLiveDemo(
+      () => live,
+      repo([flat("2026-11", 3, 3)]),
+      gate,
+      () => Promise.resolve(null),
+    );
+    expect(opened.view).toEqual({ kind: "bundled" });
+    expect(opened.banner).toContain("The live check is unavailable");
+    expect(gate.nextCheckAt()).not.toBeNull();
+  });
+
+  it("treats a source that cannot be created as an unavailable check and keeps the gate closed", async () => {
+    const gate = new LiveCheckGate();
+    const result = await checkLive(
+      () => {
+        throw new Error("no network stack");
+      },
+      view,
+      gate,
+    );
+    expect(result.loader).toBeNull();
+    expect(result.notice).toContain("The live check is unavailable");
+    expect(gate.nextCheckAt()).not.toBeNull();
   });
 });

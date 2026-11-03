@@ -65,15 +65,23 @@ export function liveCheckNotice(
   return `${reason}. Still showing ${shown(view)}.${next}`;
 }
 
-/** Reads the live repository completely or not at all, so its data never mixes with another copy. */
+/**
+ * Reads the live repository completely or not at all, so its data never mixes with another copy.
+ * Complete means the open succeeded and no file of the loaded page is unavailable; a copy that
+ * lacks one message never replaces a copy that has it. The gate closes when the request starts,
+ * so a second open or check cannot run in parallel.
+ */
 async function openLive(
   createSource: () => MessageSource,
   gate: LiveCheckGate,
 ): Promise<{ readonly loader: Loader } | { readonly error: unknown }> {
-  const loader = new Loader(createSource());
+  gate.record(null);
   try {
+    const loader = new Loader(createSource());
     await loader.open();
-    gate.record(null);
+    if (loader.getSnapshot().items.some((item) => item.kind === "unavailable")) {
+      throw new SourceError("unexpected", "", null, null, "The live copy is incomplete.");
+    }
     return { loader };
   } catch (error) {
     gate.record(error);
