@@ -413,6 +413,9 @@ Two different secrets with different purposes:
   sample, or the live repository. A copy is read completely before it replaces
   another, so a viewer never merges items from two copies and nothing is
   filled in from the previous one.
+  A live copy is complete when its open succeeded and no file of the loaded
+  page is unavailable. A copy missing even one message counts as a failed
+  check and never replaces a copy that has it.
 
   _Opening._ Open the snapshot first. Only when it is missing or malformed
   does the page ask the API, once and only if the request gate allows it; if
@@ -433,7 +436,8 @@ Two different secrets with different purposes:
   retries after the reset.
 
   _Request gate._ One gate per page session spaces every anonymous API request
-  made for opening or checking: at least five minutes after any request, and
+  made for opening or checking. It closes when a request starts, so a second
+  open or check cannot run in parallel: at least five minutes after any request, and
   after a rate-limit response until the reset time the API reported
   (`Retry-After`, or `X-RateLimit-Reset` when there is no `Retry-After`), or
   15 minutes when it reported none. While the gate is closed a click on

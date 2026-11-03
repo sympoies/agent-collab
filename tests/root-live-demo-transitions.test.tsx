@@ -195,4 +195,33 @@ describe("live demo transitions", () => {
     expect(createLiveDemoSource).toHaveBeenCalledOnce();
     expect(snapshotRequests).toHaveBeenCalledOnce();
   });
+
+  it("drops a live result that arrives after the user left the viewer, and shows it when they return", async () => {
+    let release: () => void = () => undefined;
+    const live = new FixtureSource(liveFiles);
+    const head = live.head.bind(live);
+    vi.spyOn(live, "head").mockImplementation(async (previous) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return head(previous);
+    });
+    const createLiveDemoSource = vi.fn<() => MessageSource>(() => live);
+    const host = await start(snapshotFiles, createLiveDemoSource);
+
+    await click(host, "Check live now");
+    await click(host, "Settings");
+    expect(hasButton(host, "Cancel")).toBe(true);
+    await act(async () => {
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    // Still on the settings screen: the late result did not replace it.
+    expect(hasButton(host, "Cancel")).toBe(true);
+    expect(host.textContent).not.toContain("Newer live message.");
+
+    await click(host, "Cancel");
+    expect(host.textContent).toContain("Newer live message.");
+    expect(createLiveDemoSource).toHaveBeenCalledOnce();
+  });
 });
