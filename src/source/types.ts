@@ -14,7 +14,7 @@ export interface DirectoryEntry {
   /** Repository-relative, "/"-separated path. */
   readonly path: string;
   readonly kind: "file" | "directory";
-  /** Content-addressed object id (a Git blob or tree id). Immutable. */
+  /** Stable identity for this listed version; content hashes or source metadata may provide it. */
   readonly objectId: string;
 }
 
