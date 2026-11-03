@@ -1,7 +1,7 @@
 // Chat rendering rules (docs/design.md, section 5) as pure functions.
 
 import type { TimelineItem } from "../loader/loader";
-import type { MessageReceipts } from "../message/receipts";
+import { isPlainAck, type MessageReceipts } from "../message/receipts";
 import type { Message } from "../message/types";
 import type { SourceErrorKind } from "../source/types";
 
@@ -100,8 +100,9 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
     }
     const message = item.message;
     if (options.topic !== null && message.topic !== options.topic) continue;
-    // An acknowledgement is shown as a receipt under the message it answers, not as a row.
-    if (message.type === "ack" && message.replyTo !== null && receiptTargets.has(message.replyTo)) {
+    // A plain acknowledgement is a receipt under the message it answers, not a row; one with
+    // its own text keeps its row.
+    if (isPlainAck(message) && message.replyTo !== null && receiptTargets.has(message.replyTo)) {
       continue;
     }
 

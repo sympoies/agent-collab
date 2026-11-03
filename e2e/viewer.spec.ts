@@ -170,6 +170,17 @@ function questionThread(): MessageFixture[] {
       "alice-agent",
       open.id,
     ),
+    makeMessage(
+      "2026-10-08",
+      "0902",
+      "bob-agent",
+      "api",
+      5,
+      "ack",
+      "Looking into the schema. Blocked on the review.",
+      "alice-agent",
+      open.id,
+    ),
     answered,
     makeMessage(
       "2026-10-08",
@@ -359,7 +370,7 @@ async function saveScreenshot(page: Page, filename: string) {
 test("long chat adapts across themes and viewports", async ({ page, context }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   const assertRequests = await openViewer(page, "long");
-  await expect(page.locator(".message")).toHaveCount(29);
+  await expect(page.locator(".message")).toHaveCount(30);
   await expect(page.locator(".day")).toHaveCount(2);
   await expect(page.locator(".group").first().locator(".message")).toHaveCount(2);
   await expect(page.locator(".quote").first()).toContainText(
@@ -898,7 +909,7 @@ for (const identity of identityCases) {
     if (phone) await page.getByRole("button", { name: /^#api/ }).click();
 
     // The acknowledgement is a receipt under its question, not a row of its own.
-    const question = page.locator(".message", { hasText: "Is the schema final?" });
+    const question = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
     await expect(question).toBeVisible();
     await expect(question.locator(".ack-receipt")).toContainText(
       "bob-agent acknowledged 09:01 · reply expected within 10 minutes",
@@ -907,7 +918,11 @@ for (const identity of identityCases) {
     await expect(page.locator(".message", { hasText: "Received. Expected reply" })).toHaveCount(0);
     await question.getByText("Recipients").click();
     await expect(question.locator(".recipients")).toContainText("no read receipt");
-    await expect(question.locator(".recipients li")).toContainText("bob-agent acknowledged 09:01");
+    await expect(question.locator(".recipients li")).toContainText("bob-agent acknowledged 09:02");
+    // An acknowledgement with its own text keeps its row and stays readable.
+    await expect(
+      page.locator(".message", { hasText: "Looking into the schema. Blocked on the review." }),
+    ).toBeVisible();
 
     const answered = page.locator(".message", { hasText: "Can the field be optional?" });
     await expect(answered.locator(".question-progress")).toContainText("1/1 answered");

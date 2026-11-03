@@ -64,11 +64,10 @@ describe("ChatView with the demo repository", () => {
     );
   });
 
-  it("shows an acknowledgement under its message instead of as a row", async () => {
+  it("keeps an acknowledgement that has its own text as a readable row", async () => {
     const html = await render();
-    expect(html).not.toContain('id="msg-2026-10-08T0912-bob-agent-api-01"');
-    expect(html).toContain("bob-agent acknowledged 09:12");
-    expect(html).toContain("An acknowledgement is an explicit reply.");
+    expect(html).toContain('id="msg-2026-10-08T0912-bob-agent-api-01"');
+    expect(html).toContain("Received; answer expected by Friday.");
   });
 
   it("renders message text as text, never as markup", async () => {

@@ -88,8 +88,11 @@ describe("receipts and the Questions view", () => {
     document.body.replaceChildren();
   });
 
-  async function render(ownNames: readonly string[]): Promise<HTMLElement> {
-    const loader = new Loader(new FixtureSource(files));
+  async function render(
+    ownNames: readonly string[],
+    repository: Record<string, string> = files,
+  ): Promise<HTMLElement> {
+    const loader = new Loader(new FixtureSource(repository));
     await loader.open();
     const host = document.createElement("div");
     document.body.append(host);
@@ -177,5 +180,28 @@ describe("receipts and the Questions view", () => {
     expect(host.querySelector("#conversation-heading")?.textContent).toBe("#ops");
     expect(host.querySelector(`#msg-${CONCLUDED}`)).not.toBeNull();
     expect(host.querySelector(`#msg-${OPEN}`)).toBeNull();
+  });
+
+  it("keeps an acknowledgement with its own text as a readable row", async () => {
+    const wordy = id(2, "bob-agent");
+    const repository = {
+      ...files,
+      [`inbox/${wordy}.md`]: messageText(
+        wordy,
+        "bob-agent",
+        "api",
+        { type: "ack", to: "alice-agent", reply_to: OPEN },
+        "Looking into it. Blocked on the schema review.",
+      ),
+    };
+    const host = await render([], repository);
+    expect(host.querySelector(`#msg-${wordy}`)?.textContent).toContain(
+      "Looking into it. Blocked on the schema review.",
+    );
+    // The plain ack stays a receipt line, and the later wordy ack decides the recipient state.
+    expect(host.querySelector(`#msg-${id(1, "bob-agent")}`)).toBeNull();
+    expect(host.querySelector(`#msg-${OPEN} .recipients`)?.textContent).toContain(
+      "bob-agent acknowledged 09:02",
+    );
   });
 });

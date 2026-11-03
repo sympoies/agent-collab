@@ -30,15 +30,33 @@ export interface MessageReceipts {
   readonly question: QuestionState | null;
 }
 
-const ETA_RE = /expected reply:\s*(.+)$/i;
+/** An ETA line: "Expected reply: ..." optionally after "Received." and nothing else before it. */
+const ETA_RE = /^\s*(?:received[.!]?\s*)?expected reply:\s*(.*)$/i;
+const BOILERPLATE_RE = /^\s*received[.!]?\s*$/i;
+const MAX_ETA_LENGTH = 100;
 
 export function ackEta(message: Message): string | null {
   if (message.body.state !== "plain") return null;
   for (const line of message.body.lines) {
     const found = ETA_RE.exec(line);
-    if (found !== null) return (found[1] ?? "").trim();
+    if (found === null) continue;
+    const eta = (found[1] ?? "").trim();
+    if (eta === "") return null;
+    return eta.length > MAX_ETA_LENGTH ? `${eta.slice(0, MAX_ETA_LENGTH - 1)}\u2026` : eta;
   }
   return null;
+}
+
+/**
+ * An acknowledgement that says nothing beyond "Received." and an ETA line. Plain acks are shown
+ * as receipts under their message; any other ack keeps its own row so its text is not lost.
+ */
+export function isPlainAck(message: Message): boolean {
+  if (message.type !== "ack") return false;
+  if (message.body.state !== "plain") return false;
+  return message.body.lines.every(
+    (line) => line.trim() === "" || ETA_RE.test(line) || BOILERPLATE_RE.test(line),
+  );
 }
 
 function isBroadcast(message: Message): boolean {
@@ -70,23 +88,26 @@ export function buildReceipts(
   for (const message of messages) {
     if (message.type === "ack") continue;
     const replyList = replies.get(message.id) ?? [];
+    const allAcks = replyList.filter((reply) => reply.type === "ack");
+    // The latest ack of each sender (highest id) decides that sender's state.
     const latestAck = new Map<string, Message>();
-    for (const reply of replyList) {
-      if (reply.type !== "ack") continue;
+    for (const reply of allAcks) {
       const previous = latestAck.get(reply.from);
       if (previous === undefined || reply.id > previous.id) latestAck.set(reply.from, reply);
     }
-    const acks = [...latestAck.values()].sort((a, b) => (a.id < b.id ? -1 : 1));
+    // Only plain acks become receipt lines; the others keep their own row.
+    const lines = allAcks.filter(isPlainAck).sort((a, b) => (a.id < b.id ? -1 : 1));
     const question = states.get(message.id) ?? null;
-    if (message.type !== "question" && message.type !== "decision-needed" && acks.length === 0) {
+    if (message.type !== "question" && message.type !== "decision-needed" && allAcks.length === 0) {
       continue;
     }
 
     let names: readonly string[] | null;
-    if (!isBroadcast(message)) names = message.to;
-    else if (question !== null) {
-      names = question.state === "unknown" ? null : question.eligibleAnswerers;
-    } else if (participants.length === 0) names = null;
+    if (question !== null && question.state !== "unknown") {
+      // The same people the derived N/M counts.
+      names = question.eligibleAnswerers;
+    } else if (!isBroadcast(message)) names = [...new Set(message.to)];
+    else if (question !== null || participants.length === 0) names = null;
     else names = participants.filter((name) => name !== message.from && !former.has(name));
 
     const answerAt = new Map<string, string>();
@@ -96,10 +117,10 @@ export function buildReceipts(
       if (previous === undefined || reply.timestamp > previous)
         answerAt.set(reply.from, reply.timestamp);
     }
-    const ackAt = new Map(acks.map((ack) => [ack.from, ack.timestamp]));
+    const ackAt = new Map([...latestAck.values()].map((ack) => [ack.from, ack.timestamp]));
 
     result.set(message.id, {
-      acknowledgements: acks.map((ack) => ({
+      acknowledgements: lines.map((ack) => ({
         id: ack.id,
         from: ack.from,
         at: ack.timestamp,

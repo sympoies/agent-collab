@@ -361,16 +361,21 @@ public blobs.
 - **Replies.** A message with `reply_to` shows a one-line quote of the parent
   (sender and first body line) that scrolls to the parent. If the parent is
   not loaded yet, the quote shows the parent id and a "load older" action.
-  An `ack` whose parent is loaded is not a row of its own; it is a receipt (see
-  below). An orphan `ack` (parent not loaded) renders as a compact row, with an
-  "acknowledged" chip when its body is empty.
+  A plain `ack` (empty, "Received." or an `Expected reply: ...` line only)
+  whose parent is loaded is not a row of its own; it is a receipt (see below).
+  An `ack` with any other text keeps its own row so nothing is lost, and still
+  counts as the sender's acknowledgement. An orphan `ack` (parent not loaded)
+  renders as a compact row, with an "acknowledged" chip when its body is empty.
 - **Receipts.** Under a question, a decision request or any acknowledged
-  message: one line per acknowledgement (who, time, and the ETA when the body
-  says `Expected reply: ...`), a question's derived state and progress
+  message: one line per plain acknowledgement (who, time, and the ETA when a line
+  starts with `Expected reply: ...`, at most 100 characters), a question's derived state and progress
   (`2/3 answered`, from `deriveQuestionStates`, never re-derived in the UI),
   the conclusion text of a concluded question, and a "Recipients" disclosure
   that lists every recipient as answered (with time), acknowledged (with time)
-  or "no acknowledgement yet". Broadcast recipients are the roster without the
+  or "no acknowledgement yet"; the latest ack of a person (highest id) decides
+  their state. For a question the list is the derived eligible answerers, so
+  it always matches the `N/M` count (no duplicates, sender, former participants
+  or people outside the roster). Broadcast recipients are the roster without the
   sender and former participants, and are unknown while the roster is. An
   acknowledgement is an explicit reply message; the repository does not record
   who merely opened a message, so there is no read receipt and the panel says
