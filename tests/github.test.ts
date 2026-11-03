@@ -364,3 +364,38 @@ describe("GitHubSource with the loader", () => {
     ]);
   });
 });
+
+describe("GitHubSource attachments", () => {
+  it("carries the blob size of a listed file", async () => {
+    const { fetch } = fakeFetch({
+      [`${REPO}/git/commits/c1`]: json({ tree: { sha: "t-root" } }),
+      [`${REPO}/git/trees/t-root`]: json({
+        truncated: false,
+        tree: [{ path: "data.csv", type: "blob", mode: "100644", sha: "b-1", size: 42 }],
+      }),
+    });
+    expect(await source(fetch).listDirectory("c1", "")).toEqual([
+      { name: "data.csv", path: "data.csv", kind: "file", objectId: "b-1", size: 42 },
+    ]);
+  });
+
+  it("links a file to the repository's web page, for github.com and an enterprise host", () => {
+    const { fetch } = fakeFetch({});
+    expect(
+      source(fetch, { apiBase: "https://api.github.com", branch: "feature/x y" }).webLink(
+        "topics/a b/c.md",
+      ),
+    ).toEqual({
+      url: "https://github.com/alice-org/collab/blob/feature/x%20y/topics/a%20b/c.md",
+      label: "GitHub",
+    });
+    expect(
+      source(fetch, { apiBase: "https://git.example.com/api/v3", branch: null }).webLink(
+        "topics/c.md",
+      ),
+    ).toEqual({
+      url: "https://git.example.com/alice-org/collab/blob/HEAD/topics/c.md",
+      label: "GitHub",
+    });
+  });
+});

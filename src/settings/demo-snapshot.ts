@@ -129,6 +129,7 @@ export class DemoSnapshotSource implements MessageSource {
           path: childPath,
           kind: "file",
           objectId: this.ids.get(filePath) ?? hash(text),
+          size: new TextEncoder().encode(text).length,
         });
       } else if (!children.has(name)) {
         children.set(name, { name, path: childPath, kind: "directory", objectId: hash(childPath) });

@@ -4,6 +4,7 @@ import { Fragment } from "react";
 
 import type { MessageReceipts } from "../message/receipts";
 import type { Message } from "../message/types";
+import { RefList, type AttachmentContext } from "./Attachments";
 import { personStyle, type People } from "./people";
 import type { MessageView, Row } from "./timeline";
 
@@ -107,7 +108,15 @@ function Receipts({ receipts, people }: { receipts: MessageReceipts; people: Peo
   );
 }
 
-function MessageRow({ view, people }: { view: MessageView; people: People }) {
+function MessageRow({
+  view,
+  people,
+  attachments,
+}: {
+  view: MessageView;
+  people: People;
+  attachments: AttachmentContext;
+}) {
   const { message } = view;
   const compact = message.type === "ack";
   return (
@@ -177,18 +186,20 @@ function MessageRow({ view, people }: { view: MessageView; people: People }) {
         </p>
       )}
       {view.receipts !== null && <Receipts receipts={view.receipts} people={people} />}
-      {message.refs.length > 0 && (
-        <ul className="refs">
-          {message.refs.map((ref, index) => (
-            <li key={`${String(index)}-${ref}`}>{ref}</li>
-          ))}
-        </ul>
-      )}
+      <RefList refs={message.refs} context={attachments} />
     </article>
   );
 }
 
-function RowView({ row, people }: { row: Row; people: People }) {
+function RowView({
+  row,
+  people,
+  attachments,
+}: {
+  row: Row;
+  people: People;
+  attachments: AttachmentContext;
+}) {
   switch (row.kind) {
     case "day":
       return (
@@ -219,7 +230,12 @@ function RowView({ row, people }: { row: Row; people: People }) {
               <span className="topic">#{row.topic}</span>
             </div>
             {row.messages.map((view) => (
-              <MessageRow key={view.message.path} view={view} people={people} />
+              <MessageRow
+                key={view.message.path}
+                view={view}
+                people={people}
+                attachments={attachments}
+              />
             ))}
           </div>
         </li>
@@ -261,7 +277,15 @@ function rowKey(row: Row, index: number): string {
   }
 }
 
-export function ChatView({ rows, people }: { rows: readonly Row[]; people: People }) {
+export function ChatView({
+  rows,
+  people,
+  attachments,
+}: {
+  rows: readonly Row[];
+  people: People;
+  attachments: AttachmentContext;
+}) {
   if (rows.length === 0) return <p className="empty">No messages yet.</p>;
   const newMarkerIndex = rows.findIndex(
     (row) => row.kind === "group" && row.messages.some((view) => view.fresh),
@@ -277,7 +301,7 @@ export function ChatView({ rows, people }: { rows: readonly Row[]; people: Peopl
                 <span>New messages</span>
               </li>
             )}
-            <RowView row={row} people={people} />
+            <RowView row={row} people={people} attachments={attachments} />
           </Fragment>
         );
       })}

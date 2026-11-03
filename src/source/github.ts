@@ -34,6 +34,7 @@ interface TreeEntry {
   readonly mode: string;
   readonly type: string;
   readonly sha: string;
+  readonly size?: number;
 }
 
 interface Tree {
@@ -63,7 +64,14 @@ function asTree(value: unknown): Tree | null {
     const type = stringAt(entry, "type");
     const sha = stringAt(entry, "sha");
     if (path === null || mode === null || type === null || sha === null) return null;
-    entries.push({ path, mode, type, sha });
+    const size = isRecord(entry) ? entry.size : undefined;
+    entries.push({
+      path,
+      mode,
+      type,
+      sha,
+      ...(typeof size === "number" && Number.isFinite(size) && size >= 0 ? { size } : {}),
+    });
   }
   return { truncated: value.truncated === true, tree: entries };
 }
@@ -75,7 +83,13 @@ function toEntry(parent: string, entry: TreeEntry): DirectoryEntry | null {
     return { name: entry.path, path, kind: "directory", objectId: entry.sha };
   }
   if (entry.type === "blob" && entry.mode !== "120000") {
-    return { name: entry.path, path, kind: "file", objectId: entry.sha };
+    return {
+      name: entry.path,
+      path,
+      kind: "file",
+      objectId: entry.sha,
+      ...(entry.size === undefined ? {} : { size: entry.size }),
+    };
   }
   return null;
 }
@@ -143,6 +157,20 @@ export class GitHubSource implements MessageSource {
       const response = await this.request(`/git/blobs/${entry.objectId}`, entry.path, RAW_MEDIA);
       return response.text();
     });
+  }
+
+  webLink(path: string): { readonly url: string; readonly label: string } | null {
+    const api = new URL(this.config.apiBase);
+    const host = api.hostname === "api.github.com" ? "github.com" : api.hostname;
+    const prefix =
+      api.hostname === "api.github.com" ? "" : api.pathname.replace(/\/api\/v3\/?$/, "");
+    const encode = (value: string) => value.split("/").map(encodeURIComponent).join("/");
+    const branch = this.config.branch === null ? "HEAD" : encode(this.config.branch);
+    const { owner, repo } = this.config;
+    return {
+      url: `https://${host}${prefix.replace(/\/+$/, "")}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/blob/${branch}/${encode(path)}`,
+      label: "GitHub",
+    };
   }
 
   rateLimit(): RateLimit | null {

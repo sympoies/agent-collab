@@ -19,6 +19,7 @@ import { deriveQuestionStates } from "../message/questions";
 import { buildReceipts, groupQuestions } from "../message/receipts";
 import type { Message } from "../message/types";
 import { SourceError } from "../source/types";
+import { FilesView, type AttachmentContext } from "./Attachments";
 import { ChatView } from "./ChatView";
 import { buildPeople } from "./people";
 import { ProfilePanel } from "./ProfilePanel";
@@ -64,7 +65,7 @@ export function App({
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const pollerRef = useRef<Poller | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
-  const [view, setView] = useState<"chat" | "questions">("chat");
+  const [view, setView] = useState<"chat" | "questions" | "files">("chat");
   const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
   const conversationHeading = useRef<HTMLHeadingElement | null>(null);
@@ -201,16 +202,44 @@ export function App({
       }),
     [snapshot.items, snapshot.fresh, viewer, topic, receipts],
   );
-  const openQuestion = (question: Message) => {
+  const showMessage = (id: string) => {
+    // The hash scrolls to the message and styles it through :target.
+    if (window.location.hash === `#msg-${id}`) window.location.hash = "";
+    window.location.hash = `msg-${id}`;
+  };
+  /** Shows a message in the chat, in `nextTopic` (null shows every topic). */
+  const jumpToMessage = (target: Message, nextTopic: string | null) => {
+    const sameView = view === "chat" && topic === nextTopic;
     setView("chat");
-    setTopic(question.topic);
-    pendingJump.current = question.id;
+    setTopic(nextTopic);
+    if (sameView && document.getElementById(`msg-${target.id}`) !== null) showMessage(target.id);
+    else pendingJump.current = target.id;
+  };
+  const openQuestion = (question: Message) => {
+    jumpToMessage(question, question.topic);
   };
   useEffect(() => {
-    if (pendingJump.current === null || view !== "chat") return;
-    document.getElementById(`msg-${pendingJump.current}`)?.scrollIntoView();
+    const id = pendingJump.current;
+    if (id === null || view !== "chat" || document.getElementById(`msg-${id}`) === null) return;
     pendingJump.current = null;
+    showMessage(id);
   }, [view, rows]);
+  const attachments = useMemo<AttachmentContext>(
+    () => ({
+      reader: loader.attachments,
+      loadedIds: new Set(messages.map((message) => message.id)),
+      onJump: (id) => {
+        const target = messages.find((message) => message.id === id);
+        // A message of another topic needs that topic; "All" shows every message.
+        if (target !== undefined) {
+          jumpToMessage(target, topic === null || topic === target.topic ? topic : target.topic);
+        }
+      },
+    }),
+    // jumpToMessage only reads the current topic through the closure it is created in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [loader, messages, topic],
+  );
   useEffect(() => {
     const arrivals = [...snapshot.fresh].filter((path) => !announcedMessages.current.has(path));
     for (const path of snapshot.fresh) announcedMessages.current.add(path);
@@ -363,6 +392,17 @@ export function App({
             </button>
             <button
               type="button"
+              aria-pressed={view === "files"}
+              onClick={(event) => {
+                setView("files");
+                lastTopicButton.current = event.currentTarget;
+                setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+              }}
+            >
+              <span>Files</span>
+            </button>
+            <button
+              type="button"
               aria-pressed={view === "chat" && topic === null}
               onClick={(event) => {
                 setView("chat");
@@ -405,9 +445,13 @@ export function App({
           <h2 id="conversation-heading" ref={conversationHeading} tabIndex={-1}>
             {view === "questions"
               ? "Questions"
-              : topic === null
-                ? "All conversations"
-                : `#${topic}`}
+              : view === "files"
+                ? topic === null
+                  ? "Files"
+                  : `Files in #${topic}`
+                : topic === null
+                  ? "All conversations"
+                  : `#${topic}`}
           </h2>
           {view === "questions" && (
             <QuestionsView groups={questionGroups} people={people} onOpen={openQuestion} />
@@ -424,7 +468,16 @@ export function App({
               Load older messages
             </button>
           )}
-          {view === "chat" && <ChatView rows={rows} people={people} />}
+          {view === "files" && (
+            <FilesView
+              messages={
+                topic === null ? messages : messages.filter((message) => message.topic === topic)
+              }
+              context={attachments}
+              label={(name) => people.label(name)}
+            />
+          )}
+          {view === "chat" && <ChatView rows={rows} people={people} attachments={attachments} />}
         </main>
       </div>
       <a

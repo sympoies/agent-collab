@@ -174,6 +174,8 @@ describe("theme text contrast", () => {
         ["--muted", "--inset"],
         ["--secondary", "--code"],
         ["--link", "--code"],
+        ["--link", "--card"],
+        ["--text", "--code"],
         ["--accent", "--card"],
         ["--accent", "--floating"],
         ["--warn", "--canvas"],
@@ -216,10 +218,12 @@ describe("theme text contrast", () => {
       }
       for (const surface of [tokens.get("--card") ?? "", highlighted]) {
         const chip = composite(tokens.get("--chip-bg") ?? "", surface);
-        expect(
-          contrast(tokens.get("--text") ?? "", chip),
-          `${theme} --text on a chip over ${surface}`,
-        ).toBeGreaterThanOrEqual(4.5);
+        for (const foreground of ["--text", "--link"] as const) {
+          expect(
+            contrast(tokens.get(foreground) ?? "", chip),
+            `${theme} ${foreground} on a chip over ${surface}`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
       }
     });
 

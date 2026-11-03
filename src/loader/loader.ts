@@ -2,6 +2,7 @@
 // newest-first paging and change detection (docs/design.md, sections 4 and 7).
 
 import { parseMessageFile } from "../message/parse";
+import { AttachmentReader } from "./attachments";
 import type { ParsedFile } from "../message/types";
 import {
   SourceError,
@@ -182,6 +183,8 @@ export class Loader {
   };
   private queue: Promise<unknown> = Promise.resolve();
   private opening: Promise<void> | null = null;
+  /** Files that messages reference, read on demand at the current revision. */
+  readonly attachments: AttachmentReader;
 
   constructor(
     private readonly source: MessageSource,
@@ -189,6 +192,7 @@ export class Loader {
   ) {
     this.pageSize = options.pageSize ?? 50;
     this.concurrency = options.concurrency ?? 6;
+    this.attachments = new AttachmentReader(source, () => this.head?.revision ?? null);
   }
 
   getSnapshot = (): LoaderSnapshot => this.snapshot;
