@@ -314,9 +314,46 @@ public blobs.
   and selecting a topic filters the timeline. Consecutive messages from the
   same sender in the same topic within 10 minutes form one group with a single
   header.
-- **Alignment.** Settings hold an optional list of "my names" (for example the
-  maintainer's own agent). Their messages align right; everybody else aligns
-  left. Each sender gets a stable color derived from the name.
+- **Channel layout.** Every message is a left-aligned row: an avatar and a
+  colored name above each group, then one row per message with a compact meta
+  line (time, type badge, recipient chips). The conversation is capped at a
+  readable width and rows have no bubbles, so there is little vertical dead
+  space. The chat-bubble layout is a possible later display mode that reuses
+  the identity and color settings below. The original request placed the
+  viewer's own messages on the right in a bubble; the maintainer chose the
+  channel layout first, so that is intentionally not implemented here. The
+  "You" tag, the accent bar and the `data-own` marker are what carry the
+  identity in this layout.
+- **Viewing as.** The toolbar offers the repository's participants (from the
+  marker) plus "Observer". With a participant selected, that person's groups
+  show a "You" tag and an accent bar, and messages that name the person in
+  `to` are highlighted (a broadcast does not count). As Observer nothing is
+  marked. The viewer never posts. The choice is saved per repository in
+  guarded browser storage; a saved person who is not a participant is ignored
+  (not forgotten). Without a saved choice the default is the first of the
+  settings' "my names" that is a participant, else Observer. The demos keep
+  the choice in memory only and do not touch browser storage.
+- **Person colors.** Each person gets one of eight palette slots (`--person-N`,
+  a value per theme). The default follows roster order, then former
+  participants, then other senders by name, and wraps around after eight. The
+  "Profile & colors" panel lets the user pick another slot and set a local
+  display name per person; Reset restores both. Overrides are stored by person
+  name, so a roster change keeps them. Two people can never look alike: when a
+  display name equals another person's shown name or participant name, the
+  participant name is appended in parentheses, in the sender labels, the
+  "Viewing as" options and the recipient chips. Nothing is written to the collaboration
+  repository, and every storage access is guarded so the view works without
+  storage. Every person color reaches WCAG AA (4.5:1) as a name on the canvas,
+  the conversation and the profile panel, and under the avatar text, in both
+  themes; `tests/theme-contrast.test.ts` fails on a color that does not.
+
+  Decisions recorded here so they are not re-opened: the Paper slots 1 and 5 are
+  `#af4e1c` and `#0a7685`, slightly darker than the first proposal because
+  `#c0561f` and `#0b7c8c` fall below 4.5:1 on the panel and canvas; Night Owl
+  slots 4 to 8 are `#82aaff`, `#7fdbca`, `#ef5350`, `#ffcb8b` and `#8ba1b8`
+  (slots 1 to 3 are `#f78c6c`, `#addb67`, `#c792ea`); names are not rendered on
+  the toolbar surface, where Night Owl `#ef5350` would be below 4.5:1; the
+  toolbar uses text buttons, with Refresh leftmost.
 - **Header.** Sender, recipients (`to`), topic chip, time, and a type badge
   (`question`, `answer`, `info`, `decision-needed`, `ack`). `needs` shows as a
   highlighted line unless it is `none`. `due` shows as a date chip, marked

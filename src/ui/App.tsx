@@ -2,8 +2,23 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 
 import { SetupError, type Loader } from "../loader/loader";
 import { Poller } from "../loader/poller";
+import {
+  colorOrder,
+  EMPTY_PREFERENCES,
+  readPreferences,
+  resetProfile,
+  resolveViewer,
+  withColor,
+  withDisplayName,
+  withViewingAs,
+  writePreferences,
+  type IdentityPreferences,
+  type PreferenceStorage,
+} from "../identity/preferences";
 import { SourceError } from "../source/types";
 import { ChatView } from "./ChatView";
+import { buildPeople } from "./people";
+import { ProfilePanel } from "./ProfilePanel";
 import { ThemeToggle } from "./ThemeProvider";
 import { buildRows, topicSummaries } from "./timeline";
 
@@ -21,7 +36,10 @@ function describe(error: unknown): string {
 export interface AppProps {
   readonly loader: Loader;
   readonly title: string;
+  /** Configured own names; the first participant among them is the default "Viewing as". */
   readonly selfNames: ReadonlySet<string>;
+  /** Where identity preferences live; null keeps them in memory for this view only. */
+  readonly identity: { readonly storage: PreferenceStorage | null; readonly key: string };
   /** A one-off message from opening the viewer, such as a settings warning. */
   readonly notice: string | null;
   readonly pollIntervalMs?: number;
@@ -33,6 +51,7 @@ export function App({
   loader,
   title,
   selfNames,
+  identity,
   notice,
   pollIntervalMs,
   onOpenSettings,
@@ -50,6 +69,15 @@ export function App({
   const [checkingLive, setCheckingLive] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [readyRetryAt, setReadyRetryAt] = useState<Date | null>(null);
+  const [preferences, setPreferences] = useState<IdentityPreferences>(() =>
+    identity.storage === null ? EMPTY_PREFERENCES : readPreferences(identity.storage, identity.key),
+  );
+  const [profileOpen, setProfileOpen] = useState(false);
+
+  const updatePreferences = (next: IdentityPreferences) => {
+    setPreferences(next);
+    writePreferences(identity.storage, identity.key, next);
+  };
 
   const showError = (reason: unknown) => {
     setError(reason);
@@ -115,15 +143,29 @@ export function App({
     () => topicSummaries(snapshot.items, snapshot.fresh),
     [snapshot.items, snapshot.fresh],
   );
+  const viewer = useMemo(
+    () => resolveViewer(preferences, snapshot.participants, [...selfNames]),
+    [preferences, snapshot.participants, selfNames],
+  );
+  const order = useMemo(
+    () =>
+      colorOrder(
+        snapshot.participants,
+        snapshot.formerParticipants,
+        snapshot.items.flatMap((item) => (item.kind === "message" ? [item.message.from] : [])),
+      ),
+    [snapshot.participants, snapshot.formerParticipants, snapshot.items],
+  );
+  const people = useMemo(() => buildPeople(order, preferences), [order, preferences]);
   const rows = useMemo(
     () =>
       buildRows(snapshot.items, {
-        selfNames,
+        viewer,
         topic,
         today: localDate(new Date()),
         fresh: snapshot.fresh,
       }),
-    [snapshot.items, snapshot.fresh, selfNames, topic],
+    [snapshot.items, snapshot.fresh, viewer, topic],
   );
   useEffect(() => {
     const arrivals = [...snapshot.fresh].filter((path) => !announcedMessages.current.has(path));
@@ -168,7 +210,6 @@ export function App({
       <header className="bar">
         <h1>{title}</h1>
         <div className="bar-actions">
-          <ThemeToggle />
           {onCheckLiveNow === undefined ? (
             <button
               type="button"
@@ -195,11 +236,58 @@ export function App({
               Check live now
             </button>
           )}
+          <label className="viewing-as">
+            <span>Viewing as</span>
+            <select
+              value={viewer ?? ""}
+              onChange={(event) => {
+                updatePreferences(
+                  withViewingAs(preferences, event.target.value === "" ? null : event.target.value),
+                );
+              }}
+            >
+              <option value="">Observer</option>
+              {snapshot.participants.map((name) => (
+                <option key={name} value={name}>
+                  {people.label(name)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            aria-expanded={profileOpen}
+            aria-controls="profile-panel"
+            onClick={() => {
+              setProfileOpen(!profileOpen);
+            }}
+          >
+            Profile &amp; colors
+          </button>
+          <ThemeToggle />
           <button type="button" onClick={onOpenSettings}>
             Settings
           </button>
         </div>
       </header>
+      {profileOpen && (
+        <div id="profile-panel">
+          <ProfilePanel
+            order={order}
+            preferences={preferences}
+            people={people}
+            onColor={(person, slot) => {
+              updatePreferences(withColor(preferences, person, slot));
+            }}
+            onDisplayName={(person, name) => {
+              updatePreferences(withDisplayName(preferences, person, name));
+            }}
+            onReset={() => {
+              updatePreferences(resetProfile(preferences));
+            }}
+          />
+        </div>
+      )}
       {notice !== null && (
         <p className="notice" role="status">
           {notice}
@@ -271,7 +359,7 @@ export function App({
               Load older messages
             </button>
           )}
-          <ChatView rows={rows} />
+          <ChatView rows={rows} people={people} />
         </main>
       </div>
       <a

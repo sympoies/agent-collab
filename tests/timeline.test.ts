@@ -16,7 +16,7 @@ function item(
 }
 
 const OPTIONS = {
-  selfNames: new Set<string>(),
+  viewer: null,
   topic: null,
   today: "2026-10-05",
   fresh: new Set<string>(),
@@ -28,7 +28,7 @@ function shape(rows: readonly Row[]): string[] {
       case "day":
         return `day ${row.date}`;
       case "group":
-        return `${row.align} ${row.from}/${row.topic} x${row.messages.length}`;
+        return `${row.own ? "own" : "other"} ${row.from}/${row.topic} x${row.messages.length}`;
       default:
         return row.kind;
     }
@@ -49,10 +49,10 @@ describe("buildRows", () => {
     );
     expect(shape(rows)).toEqual([
       "day 2026-10-01",
-      "start alice-agent/api x2",
-      "start alice-agent/api x1",
-      "start alice-agent/ops x1",
-      "start bob-agent/ops x1",
+      "other alice-agent/api x2",
+      "other alice-agent/api x1",
+      "other alice-agent/ops x1",
+      "other bob-agent/ops x1",
     ]);
   });
 
@@ -66,22 +66,43 @@ describe("buildRows", () => {
     );
     expect(shape(rows)).toEqual([
       "day 2026-10-01",
-      "start alice-agent/api x1",
+      "other alice-agent/api x1",
       "day 2026-10-02",
-      "start alice-agent/api x1",
+      "other alice-agent/api x1",
     ]);
   });
 
-  it("aligns messages from my names to the end", () => {
-    const rows = buildRows(
-      [item("2026-10-01T0900", "alice-agent", "api"), item("2026-10-01T0901", "bob-agent", "api")],
-      { ...OPTIONS, selfNames: new Set(["bob-agent"]) },
-    );
-    expect(shape(rows)).toEqual([
+  it("marks the viewer's own groups, and only as a participant", () => {
+    const items = [
+      item("2026-10-01T0900", "alice-agent", "api"),
+      item("2026-10-01T0901", "bob-agent", "api"),
+    ];
+    expect(shape(buildRows(items, { ...OPTIONS, viewer: "bob-agent" }))).toEqual([
       "day 2026-10-01",
-      "start alice-agent/api x1",
-      "end bob-agent/api x1",
+      "other alice-agent/api x1",
+      "own bob-agent/api x1",
     ]);
+    expect(shape(buildRows(items, OPTIONS))).toEqual([
+      "day 2026-10-01",
+      "other alice-agent/api x1",
+      "other bob-agent/api x1",
+    ]);
+  });
+
+  it("highlights messages that name the viewer, not broadcasts or the viewer's own", () => {
+    const rows = buildRows(
+      [
+        item("2026-10-01T0900", "alice-agent", "api", { to: "bob-agent" }),
+        item("2026-10-01T0920", "alice-agent", "api", { to: "all" }),
+        item("2026-10-01T0940", "carol-agent", "api", { to: "bob-agent, carol-agent" }),
+        item("2026-10-01T1000", "bob-agent", "api", { to: "bob-agent" }),
+      ],
+      { ...OPTIONS, viewer: "bob-agent" },
+    );
+    const addressed = rows.flatMap((row) =>
+      row.kind === "group" ? row.messages.map((view) => view.addressed) : [],
+    );
+    expect(addressed).toEqual([true, false, true, false]);
   });
 
   it("filters by topic and hides files without a known topic", () => {
@@ -104,14 +125,14 @@ describe("buildRows", () => {
     ];
     expect(shape(buildRows(items, OPTIONS))).toEqual([
       "day 2026-10-01",
-      "start alice-agent/api x1",
+      "other alice-agent/api x1",
       "malformed",
       "unavailable",
-      "start alice-agent/ops x1",
+      "other alice-agent/ops x1",
     ]);
     expect(shape(buildRows(items, { ...OPTIONS, topic: "ops" }))).toEqual([
       "day 2026-10-01",
-      "start alice-agent/ops x1",
+      "other alice-agent/ops x1",
     ]);
   });
 

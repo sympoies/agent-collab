@@ -163,7 +163,9 @@ async function installApiStub(page: Page, mode: "long" | "empty" | "error") {
     "A second synthetic message arrives after refresh.",
     "all",
   );
-  const blobs = new Map<string, string>([["marker", "collab-protocol: 1\n"]]);
+  const blobs = new Map<string, string>([
+    ["marker", "collab-protocol: 1\nparticipants: alice-agent, bob-agent\n"],
+  ]);
   const unhandled: string[] = [];
   let headCalls = 0;
   let completedHeadCalls = 0;
@@ -277,9 +279,9 @@ async function saveScreenshot(page: Page, filename: string) {
 test("long chat adapts across themes and viewports", async ({ page, context }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   const assertRequests = await openViewer(page, "long");
-  await expect(page.locator(".bubble")).toHaveCount(30);
+  await expect(page.locator(".message")).toHaveCount(30);
   await expect(page.locator(".day")).toHaveCount(2);
-  await expect(page.locator(".group").first().locator(".bubble")).toHaveCount(2);
+  await expect(page.locator(".group").first().locator(".message")).toHaveCount(2);
   await expect(page.locator(".quote").first()).toContainText(
     "A synthetic question starts this long thread.",
   );
@@ -442,7 +444,7 @@ test("welcome screen exposes live-demo, saved-repository, and theme controls", a
   await page.getByRole("button", { name: "Open offline demo" }).click();
   await expect(page.getByRole("heading", { name: "Demo repository" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night-owl");
-  await expect(page.locator(".bubble").first()).toBeVisible();
+  await expect(page.locator(".message").first()).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
@@ -451,22 +453,20 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
 }) => {
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   const assertRequests = await openViewer(page, "long");
-  await expect(page.locator(".bubble").first()).toBeVisible();
+  await expect(page.locator(".message").first()).toBeVisible();
 
   await page.keyboard.press("Tab");
   const focused = await page.evaluate(() => ({
-    label: document.activeElement?.getAttribute("aria-label"),
+    label: document.activeElement?.textContent,
     outlineStyle: getComputedStyle(document.activeElement as Element).outlineStyle,
     outlineWidth: getComputedStyle(document.activeElement as Element).outlineWidth,
   }));
-  expect(focused.label).toBe("Use Paper theme");
+  expect(focused.label).toBe("Refresh");
   expect(focused.outlineStyle).toBe("solid");
   expect(focused.outlineWidth).toBe("3px");
 
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
-  await page.keyboard.press("Tab");
+  // Viewing as, Profile & colors, theme, Settings, All, then the first topic.
+  for (let tab = 0; tab < 6; tab += 1) await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "#release" })).toHaveAttribute(
     "aria-pressed",
@@ -655,4 +655,153 @@ test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
   await page.getByRole("button", { name: "Open live demo" }).click();
   await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
   expect(requests).toHaveLength(requestsAfterLimit);
+});
+
+const identityCases = [
+  {
+    label: "desktop",
+    theme: "night-owl",
+    scheme: "dark",
+    viewport: { width: 1280, height: 800 },
+    alice: "rgb(247, 140, 108)",
+    bob: "rgb(173, 219, 103)",
+    teal: "rgb(127, 219, 202)",
+    onPerson: "rgb(1, 22, 39)",
+  },
+  {
+    label: "desktop",
+    theme: "paper",
+    scheme: "light",
+    viewport: { width: 1280, height: 800 },
+    alice: "rgb(175, 78, 28)",
+    bob: "rgb(45, 108, 63)",
+    teal: "rgb(10, 118, 133)",
+    onPerson: "rgb(255, 255, 255)",
+  },
+  {
+    label: "phone",
+    theme: "night-owl",
+    scheme: "dark",
+    viewport: { width: 390, height: 844 },
+    alice: "rgb(247, 140, 108)",
+    bob: "rgb(173, 219, 103)",
+    teal: "rgb(127, 219, 202)",
+    onPerson: "rgb(1, 22, 39)",
+  },
+  {
+    label: "phone",
+    theme: "paper",
+    scheme: "light",
+    viewport: { width: 390, height: 844 },
+    alice: "rgb(175, 78, 28)",
+    bob: "rgb(45, 108, 63)",
+    teal: "rgb(10, 118, 133)",
+    onPerson: "rgb(255, 255, 255)",
+  },
+] as const;
+
+for (const identity of identityCases) {
+  test(`Viewing as, person colors and Profile & colors work on ${identity.label} in ${identity.theme}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: identity.scheme });
+    await page.setViewportSize(identity.viewport);
+    const assertRequests = await openViewer(page, "long");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", identity.theme);
+    await page.getByRole("button", { name: /^#api/ }).click();
+    await expect(page.locator(".message").first()).toBeVisible();
+
+    await expect(page.locator(".bar-actions button").first()).toHaveText("Refresh");
+
+    // "My names" makes alice the default viewer: her groups carry the You tag.
+    const firstGroup = page.locator(".timeline .group").first();
+    await expect(page.getByLabel("Viewing as")).toHaveValue("alice-agent");
+    await expect(page.locator('.group[data-own="true"] .you').first()).toHaveText("You");
+    await expect(firstGroup.locator(".sender")).toHaveCSS("color", identity.alice);
+    await expect(firstGroup.locator(".avatar")).toHaveCSS("background-color", identity.alice);
+    await expect(firstGroup.locator(".avatar")).toHaveCSS("color", identity.onPerson);
+    const bobGroup = page
+      .locator(".timeline .group")
+      .filter({ has: page.locator(".sender", { hasText: /^bob-agent$/ }) })
+      .first();
+    await expect(bobGroup.locator(".sender")).toHaveCSS("color", identity.bob);
+    await expect(bobGroup.locator(".you")).toHaveCount(0);
+
+    // Messages that name bob are highlighted when viewing as bob, and nothing is marked as Observer.
+    await page.getByLabel("Viewing as").selectOption("bob-agent");
+    await expect(page.locator('.group[data-own="true"] .sender').first()).toHaveText("bob-agent");
+    await expect(page.locator('.message[data-addressed="true"]').first()).toBeVisible();
+    await page.getByLabel("Viewing as").selectOption("");
+    await expect(page.locator(".you")).toHaveCount(0);
+    await expect(page.locator('.message[data-addressed="true"]')).toHaveCount(0);
+    await page.getByLabel("Viewing as").selectOption("alice-agent");
+
+    await page.getByRole("button", { name: "Profile & colors" }).click();
+    const panel = page.getByRole("region", { name: "Profile & colors" });
+    await expect(panel).toBeVisible();
+    await panel
+      .getByRole("group", { name: "Color for alice-agent", exact: true })
+      .getByRole("radio", { name: "Teal" })
+      .check();
+    await expect(firstGroup.locator(".sender")).toHaveCSS("color", identity.teal);
+    await expect(firstGroup.locator(".avatar")).toHaveCSS("background-color", identity.teal);
+    await panel.getByLabel("Display name for alice-agent", { exact: true }).fill("Alice");
+    await panel.getByLabel("Display name for alice-agent", { exact: true }).blur();
+    await expect(firstGroup.locator(".sender")).toHaveText("Alice");
+    await expect(firstGroup.locator(".sender")).toHaveAttribute("title", "alice-agent");
+
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `identity-${identity.label}-${identity.theme}.png`);
+
+    await panel.getByRole("button", { name: "Reset colors and names" }).click();
+    await expect(firstGroup.locator(".sender")).toHaveText("alice-agent");
+    await expect(firstGroup.locator(".sender")).toHaveCSS("color", identity.alice);
+    assertRequests();
+  });
+}
+
+test("identity choices still work when browser storage rejects reads and writes", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    const original = Storage.prototype.setItem.bind(localStorage);
+    const originalGet = Storage.prototype.getItem.bind(localStorage);
+    const counts = { rejectedWrites: 0, rejectedReads: 0 };
+    Object.assign(window, { identityStorageCounts: counts });
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (key.startsWith("agent-collab-viewer.identity:")) {
+        counts.rejectedWrites += 1;
+        throw new DOMException("Identity preferences are read-only", "QuotaExceededError");
+      }
+      original(key, value);
+    };
+    Storage.prototype.getItem = function (key: string) {
+      if (key.startsWith("agent-collab-viewer.identity:")) {
+        counts.rejectedReads += 1;
+        throw new DOMException("Identity preferences are unreadable", "SecurityError");
+      }
+      return originalGet(key);
+    };
+  });
+  const assertRequests = await openViewer(page, "long");
+  await expect(page.locator(".message").first()).toBeVisible();
+  await page.getByLabel("Viewing as").selectOption("bob-agent");
+  await expect(page.locator('.group[data-own="true"] .sender').first()).toHaveText("bob-agent");
+  const counts = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          identityStorageCounts: { rejectedWrites: number; rejectedReads: number };
+        }
+      ).identityStorageCounts,
+  );
+  expect(counts.rejectedReads).toBeGreaterThan(0);
+  expect(counts.rejectedWrites).toBeGreaterThan(0);
+  expect(errors).toEqual([]);
+  assertRequests();
 });
