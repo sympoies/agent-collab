@@ -415,7 +415,7 @@ public blobs.
   size and the size is within the cap (200 KB, images 2 MB); the downloaded
   text is checked again in bytes. An image must also have a readable PNG, GIF,
   JPEG or WebP header and at most 25 megapixels, so a small file cannot decode
-  to a huge bitmap. A CSV shows at most 100 rows and 50 columns. A file is read
+  to a huge bitmap. A GIF counts the larger of its screen and its first frame; the frame counts of animated GIF and WebP are not capped, and the 2 MB size cap is the accepted bound. A CSV shows at most 100 rows and 50 columns. A file is read
   once per revision however often its card is opened (the failed read is not
   remembered, and nothing retries by itself), which matters for the anonymous
   request quota. A source that reports no size, such as the local folder

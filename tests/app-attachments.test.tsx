@@ -472,6 +472,46 @@ describe("attachments", () => {
     expect(window.location.hash).toBe(`#msg-${FIRST}`);
   });
 
+  it("drops a jump whose target is not rendered instead of keeping it for later", async () => {
+    const ACK = "2026-10-01T0905-bob-agent-api-02";
+    const repository = {
+      ...files,
+      [`inbox/${FIRST}.md`]: messageText(
+        FIRST,
+        "alice-agent",
+        "api",
+        { refs: ACK },
+        "See the ack.",
+      ),
+      // A plain acknowledgement is a receipt, not a row, so there is nothing to scroll to.
+      [`inbox/${ACK}.md`]: messageText(
+        ACK,
+        "bob-agent",
+        "api",
+        { type: "ack", reply_to: FIRST, to: "alice-agent" },
+        "Received.",
+      ),
+    };
+    const host = await render(new FixtureSource(repository));
+    const chip = host.querySelector<HTMLAnchorElement>(`#msg-${FIRST} .refs a[href="#msg-${ACK}"]`);
+    expect(chip).not.toBeNull();
+    await act(async () => {
+      chip?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(window.location.hash).toBe("");
+    // Later manual navigation does not scroll to, or highlight, anything.
+    for (const label of ["Files", "All"]) {
+      await act(async () => {
+        [...host.querySelectorAll("button")]
+          .find((b) => b.textContent.startsWith(label))
+          ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+      });
+    }
+    expect(window.location.hash).toBe("");
+  });
+
   it("lists a file once however often it is referenced", async () => {
     const LATER = "2026-10-02T0900-bob-agent-api-01";
     const repository = {

@@ -60,13 +60,44 @@ function webp(bytes: Uint8Array): ImageSize | null {
   return null;
 }
 
+/**
+ * A GIF's logical screen and its first frame can differ, and a decoder may enlarge to the frame
+ * rectangle, so the larger of the two counts. Animated GIF and WebP frame counts are not capped:
+ * the 2 MB size cap bounds them (accepted).
+ */
+function gif(bytes: Uint8Array): ImageSize | null {
+  const screen = sized(u16le(bytes, 6), u16le(bytes, 8));
+  if (screen === null) return null;
+  const packed = bytes[10] ?? 0;
+  let at = 13 + (packed & 0x80 ? 3 * 2 ** ((packed & 7) + 1) : 0);
+  while (at < bytes.length) {
+    const block = bytes[at];
+    if (block === 0x2c) {
+      const frame =
+        at + 10 <= bytes.length ? sized(u16le(bytes, at + 5), u16le(bytes, at + 7)) : null;
+      return frame === null
+        ? screen
+        : {
+            width: Math.max(screen.width, frame.width),
+            height: Math.max(screen.height, frame.height),
+          };
+    }
+    if (block !== 0x21) return screen;
+    // Extension: label, then data sub-blocks ended by a zero-length block.
+    at += 2;
+    while (at < bytes.length && bytes[at] !== 0) at += 1 + (bytes[at] ?? 0);
+    at += 1;
+  }
+  return screen;
+}
+
 /** The pixel size of a PNG, GIF, JPEG or WebP image, or null when the header is not readable. */
 export function imageDimensions(bytes: Uint8Array): ImageSize | null {
   if (bytes.length >= 24 && ascii(bytes, 1, 3) === "PNG" && ascii(bytes, 12, 4) === "IHDR") {
     return sized(u32be(bytes, 16), u32be(bytes, 20));
   }
   if (bytes.length >= 10 && ["GIF87a", "GIF89a"].includes(ascii(bytes, 0, 6))) {
-    return sized(u16le(bytes, 6), u16le(bytes, 8));
+    return gif(bytes);
   }
   if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) return jpeg(bytes);
   if (bytes.length >= 25 && ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 4) === "WEBP") {

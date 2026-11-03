@@ -212,17 +212,19 @@ export function App({
     const sameView = view === "chat" && topic === nextTopic;
     setView("chat");
     setTopic(nextTopic);
-    if (sameView && document.getElementById(`msg-${target.id}`) !== null) showMessage(target.id);
-    else pendingJump.current = target.id;
+    // Without a state change nothing re-renders, so a jump is shown now or dropped, never kept.
+    if (!sameView) pendingJump.current = target.id;
+    else if (document.getElementById(`msg-${target.id}`) !== null) showMessage(target.id);
   };
   const openQuestion = (question: Message) => {
     jumpToMessage(question, question.topic);
   };
   useEffect(() => {
     const id = pendingJump.current;
-    if (id === null || view !== "chat" || document.getElementById(`msg-${id}`) === null) return;
+    if (id === null || view !== "chat") return;
+    // The jump is consumed by the render it caused, whether or not its target is on screen.
     pendingJump.current = null;
-    showMessage(id);
+    if (document.getElementById(`msg-${id}`) !== null) showMessage(id);
   }, [view, rows]);
   const attachments = useMemo<AttachmentContext>(
     () => ({
@@ -236,9 +238,9 @@ export function App({
         }
       },
     }),
-    // jumpToMessage only reads the current topic through the closure it is created in.
+    // jumpToMessage reads the current view and topic through the closure it is created in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loader, messages, topic],
+    [loader, messages, topic, view],
   );
   useEffect(() => {
     const arrivals = [...snapshot.fresh].filter((path) => !announcedMessages.current.has(path));
@@ -382,6 +384,7 @@ export function App({
               type="button"
               aria-pressed={view === "questions"}
               onClick={(event) => {
+                pendingJump.current = null;
                 setView("questions");
                 lastTopicButton.current = event.currentTarget;
                 setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
@@ -394,6 +397,7 @@ export function App({
               type="button"
               aria-pressed={view === "files"}
               onClick={(event) => {
+                pendingJump.current = null;
                 setView("files");
                 lastTopicButton.current = event.currentTarget;
                 setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
@@ -405,6 +409,7 @@ export function App({
               type="button"
               aria-pressed={view === "chat" && topic === null}
               onClick={(event) => {
+                pendingJump.current = null;
                 setView("chat");
                 setTopic(null);
                 lastTopicButton.current = event.currentTarget;
@@ -419,6 +424,7 @@ export function App({
                 type="button"
                 aria-pressed={view === "chat" && topic === summary.topic}
                 onClick={(event) => {
+                  pendingJump.current = null;
                   setView("chat");
                   setTopic(summary.topic);
                   lastTopicButton.current = event.currentTarget;

@@ -23,6 +23,7 @@ export type BytesRead =
   | { readonly state: "unsupported" };
 
 export class AttachmentReader {
+  private listedRevision: string | null = null;
   private readonly listings = new Map<string, Promise<readonly DirectoryEntry[] | null>>();
   /** Reads by object id and cap, so opening a card again never downloads the file again. */
   private readonly reads = new Map<string, Promise<TextRead | BytesRead>>();
@@ -37,6 +38,11 @@ export class AttachmentReader {
     if (revision === null) throw new SourceError("unexpected", path);
     const slash = path.lastIndexOf("/");
     const directory = slash === -1 ? "" : path.slice(0, slash);
+    // Listings of earlier revisions are never needed again.
+    if (revision !== this.listedRevision) {
+      this.listings.clear();
+      this.listedRevision = revision;
+    }
     const key = `${revision}\0${directory}`;
     let listing = this.listings.get(key);
     if (listing === undefined) {

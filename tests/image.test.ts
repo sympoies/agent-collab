@@ -25,6 +25,46 @@ describe("imageDimensions", () => {
     });
   });
 
+  it("takes the larger of the GIF screen and its first frame, so a 1x1 screen cannot hide a huge frame", () => {
+    const screen = (w: number, h: number, packed: number) => [
+      ...ascii("GIF89a"),
+      ...u16le(w),
+      ...u16le(h),
+      packed,
+      0,
+      0,
+    ];
+    const frame = (w: number, h: number) => [
+      0x2c,
+      ...u16le(0),
+      ...u16le(0),
+      ...u16le(w),
+      ...u16le(h),
+      0,
+    ];
+    // No global color table, a graphic control extension, then the image descriptor.
+    const gce = [0x21, 0xf9, 4, 0, 0, 0, 0, 0];
+    expect(
+      imageDimensions(Uint8Array.from([...screen(1, 1, 0), ...gce, ...frame(20000, 20000)])),
+    ).toEqual({
+      width: 20000,
+      height: 20000,
+    });
+    // With a 2-entry global color table (packed 0x80) the descriptor follows the table.
+    expect(
+      imageDimensions(
+        Uint8Array.from([...screen(1, 1, 0x80), 0, 0, 0, 255, 255, 255, ...frame(9000, 40)]),
+      ),
+    ).toEqual({ width: 9000, height: 40 });
+    // A frame inside the screen leaves the screen size.
+    expect(imageDimensions(Uint8Array.from([...screen(30, 20, 0), ...frame(10, 10)]))).toEqual({
+      width: 30,
+      height: 20,
+    });
+    // Header only: the screen size stands.
+    expect(imageDimensions(Uint8Array.from(screen(30, 20, 0)))).toEqual({ width: 30, height: 20 });
+  });
+
   it("reads a JPEG start-of-frame after other segments", () => {
     const app0 = [0xff, 0xe0, ...u16be(16), ...new Array<number>(14).fill(0)];
     const sof = [0xff, 0xc2, ...u16be(17), 8, ...u16be(1200), ...u16be(1600), 3];
