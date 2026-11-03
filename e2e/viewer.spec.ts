@@ -644,6 +644,15 @@ test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
 
   await page.getByRole("button", { name: "Check live now" }).click();
   await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
-  await expect(page.locator(".notice")).toContainText("Reset at");
-  expect(requests).toHaveLength(1);
+  await expect(page.locator(".notice")).toContainText("Next live check");
+  const requestsAfterLimit = requests.length;
+  expect(requestsAfterLimit).toBeGreaterThan(0);
+
+  // Until the reset, further checks and a reopened demo make no API request.
+  await page.getByRole("button", { name: "Check live now" }).click();
+  await expect(page.locator(".notice")).toContainText("paused");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Open live demo" }).click();
+  await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
+  expect(requests).toHaveLength(requestsAfterLimit);
 });

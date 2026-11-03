@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { openLiveDemo } from "../src/settings/live-demo";
+import { LiveCheckGate, openLiveDemo } from "../src/settings/live-demo";
 import { parseDemoSnapshot, type DemoSnapshot } from "../src/settings/demo-snapshot";
 import { FixtureSource } from "../src/source/fixture";
 import { SourceError } from "../src/source/types";
@@ -52,9 +52,11 @@ describe("demo snapshots", () => {
 
   it("chooses the snapshot before the anonymous API source", async () => {
     const createApiSource = vi.fn(() => new FixtureSource({}));
-    const opened = await openLiveDemo(createApiSource, {}, () => Promise.resolve(snapshot));
+    const opened = await openLiveDemo(createApiSource, {}, new LiveCheckGate(), () =>
+      Promise.resolve(snapshot),
+    );
     expect(createApiSource).not.toHaveBeenCalled();
-    expect(opened.generatedAt).toBe(snapshot.generatedAt);
+    expect(opened.view).toEqual({ kind: "snapshot", generatedAt: snapshot.generatedAt });
     expect(opened.loader.getSnapshot().items.map((item) => item.kind)).toEqual(["message"]);
   });
 
@@ -74,11 +76,12 @@ describe("demo snapshots", () => {
     const opened = await openLiveDemo(
       createApiSource,
       { ".agent-collab": "collab-protocol: 1\n", [bundledMessage.path]: bundledMessage.text },
+      new LiveCheckGate(),
       () => Promise.resolve(null),
     );
     expect(createApiSource).toHaveBeenCalledOnce();
-    expect(opened.generatedAt).toBeNull();
-    expect(opened.banner).toContain("Reset at");
+    expect(opened.view).toEqual({ kind: "bundled" });
+    expect(opened.banner).toContain("Next live check");
     expect(opened.loader.getSnapshot().items).toHaveLength(1);
   });
 });

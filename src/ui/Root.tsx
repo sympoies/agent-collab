@@ -22,11 +22,15 @@ import {
   type OpenSettings,
   type SettingsDeps,
 } from "../settings/session";
-import { LIVE_DEMO_POLL_INTERVAL_MS, openLiveDemo } from "../settings/live-demo";
-import type { LiveDemoOpen } from "../settings/live-demo";
+import {
+  checkLive,
+  LIVE_DEMO_POLL_INTERVAL_MS,
+  LiveCheckGate,
+  openLiveDemo,
+  type StaticDemoView,
+} from "../settings/live-demo";
 import { demoFiles } from "../demo/fixtures";
-import { DemoFallbackSource } from "../source/demo-fallback";
-import { SourceError, type MessageSource } from "../source/types";
+import type { MessageSource } from "../source/types";
 import { App } from "./App";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
@@ -46,24 +50,8 @@ interface ViewerScreen {
   readonly selfNames: ReadonlySet<string>;
   readonly notice: string | null;
   readonly pollIntervalMs: number | undefined;
-  readonly liveDemo: {
-    readonly fallbackSource: MessageSource;
-    readonly generatedAt: string | null;
-  } | null;
-}
-
-function fallbackBanner(error: SourceError, generatedAt: string | null): string {
-  const reason =
-    error.kind === "rate-limited"
-      ? "The live check hit GitHub's API limit"
-      : "The live check is unavailable";
-  const content =
-    generatedAt === null
-      ? "showing the bundled sample"
-      : `showing the snapshot generated at ${generatedAt}`;
-  return error.retryAt === null
-    ? `${reason}; ${content}.`
-    : `${reason}. Reset at ${error.retryAt.toLocaleString()}; ${content}.`;
+  /** The static demo copy on screen, or null for every other viewer, live demo included. */
+  readonly liveDemo: StaticDemoView | null;
 }
 
 type Screen =
@@ -82,21 +70,24 @@ export function Root(props: RootProps) {
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
   const navigation = useRef(0);
+  // Page-session state of the public demo: API requests are spaced across every
+  // open and check, and a live copy once read replaces the static copies for good.
+  const [liveGate] = useState(() => new LiveCheckGate());
+  const liveLoader = useRef<Loader | null>(null);
 
   const viewer = (
-    source: MessageSource,
+    loader: Loader,
     title: string,
     selfNames: readonly string[],
     notice: string | null = null,
     pollIntervalMs?: number,
-    liveDemo: ViewerScreen["liveDemo"] = null,
-    existingLoader?: Loader,
+    liveDemo: StaticDemoView | null = null,
   ): ViewerScreen => {
     viewers.current += 1;
     return {
       kind: "viewer",
       id: viewers.current,
-      loader: existingLoader ?? new Loader(source),
+      loader,
       title,
       selfNames: new Set(selfNames),
       notice,
@@ -106,7 +97,12 @@ export function Root(props: RootProps) {
   };
 
   const open = ({ settings, token }: OpenSettings, notice: string | null = null) =>
-    viewer(createSource(settings, token), settings.repository, settings.selfNames, notice);
+    viewer(
+      new Loader(createSource(settings, token)),
+      settings.repository,
+      settings.selfNames,
+      notice,
+    );
 
   const showSettings = async (back: ViewerScreen | null) => {
     const operation = ++navigation.current;
@@ -130,57 +126,45 @@ export function Root(props: RootProps) {
     }
   };
 
+  const liveViewer = (loader: Loader, notice: string): ViewerScreen =>
+    viewer(loader, "Live demo", [], notice, LIVE_DEMO_POLL_INTERVAL_MS);
+
   const showLiveDemo = () => {
     const operation = ++navigation.current;
-    void openLiveDemo(createLiveDemoSource, demoFiles).then((result: LiveDemoOpen) => {
+    if (liveLoader.current !== null) {
+      setScreen(liveViewer(liveLoader.current, "Showing the live repository."));
+      return;
+    }
+    void openLiveDemo(createLiveDemoSource, demoFiles, liveGate).then((result) => {
+      if (result.view.kind === "live") liveLoader.current = result.loader;
       if (operation !== navigation.current) return;
       setScreen(
-        viewer(
-          result.fallbackSource,
-          "Live demo",
-          [],
-          result.banner,
-          LIVE_DEMO_POLL_INTERVAL_MS,
-          { fallbackSource: result.fallbackSource, generatedAt: result.generatedAt },
-          result.loader,
-        ),
+        result.view.kind === "live"
+          ? liveViewer(result.loader, result.banner)
+          : viewer(
+              result.loader,
+              "Live demo",
+              [],
+              result.banner,
+              LIVE_DEMO_POLL_INTERVAL_MS,
+              result.view,
+            ),
       );
     });
   };
 
   const checkLiveNow = async (current: ViewerScreen): Promise<void> => {
     if (current.liveDemo === null) return;
-    const nextId = ++viewers.current;
-    let fallbackError: SourceError | null = null;
-    const source = new DemoFallbackSource(
-      createLiveDemoSource(),
-      current.liveDemo.fallbackSource,
-      (error) => {
-        fallbackError = error;
-        setScreen((previous) =>
-          previous.kind === "viewer" && previous.id === nextId
-            ? { ...previous, notice: fallbackBanner(error, current.liveDemo?.generatedAt ?? null) }
-            : previous,
-        );
-      },
+    const result = await checkLive(createLiveDemoSource, current.liveDemo, liveGate);
+    if (result.loader !== null) liveLoader.current = result.loader;
+    const next =
+      result.loader === null
+        ? { ...current, notice: result.notice }
+        : liveViewer(result.loader, result.notice);
+    // Leave a viewer the user has since navigated away from alone.
+    setScreen((previous) =>
+      previous.kind === "viewer" && previous.id === current.id ? next : previous,
     );
-    let loader = new Loader(source);
-    try {
-      await loader.open();
-    } catch (error) {
-      fallbackError = error instanceof SourceError ? error : null;
-      loader = new Loader(current.liveDemo.fallbackSource);
-      await loader.open();
-    }
-    setScreen({
-      ...current,
-      id: nextId,
-      loader,
-      notice:
-        fallbackError === null
-          ? "Checked the live repository."
-          : fallbackBanner(fallbackError, current.liveDemo.generatedAt),
-    });
   };
 
   const save = async (draft: SettingsDraft): Promise<DraftErrors | null> => {
@@ -243,11 +227,15 @@ export function Root(props: RootProps) {
                 ? null
                 : () => {
                     navigation.current += 1;
-                    setScreen(back);
+                    setScreen(
+                      back.liveDemo !== null && liveLoader.current !== null
+                        ? liveViewer(liveLoader.current, "Showing the live repository.")
+                        : back,
+                    );
                   }
             }
             onOpenDemo={() => {
-              setScreen(viewer(createDemoSource(), "Demo repository", ["alice-agent"]));
+              setScreen(viewer(new Loader(createDemoSource()), "Demo repository", ["alice-agent"]));
             }}
             onOpenLiveDemo={() => {
               showLiveDemo();
