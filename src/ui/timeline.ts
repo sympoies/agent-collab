@@ -1,6 +1,7 @@
 // Chat rendering rules (docs/design.md, section 5) as pure functions.
 
 import type { TimelineItem } from "../loader/loader";
+import type { MessageReceipts } from "../message/receipts";
 import type { Message } from "../message/types";
 import type { SourceErrorKind } from "../source/types";
 
@@ -14,6 +15,8 @@ export interface MessageView {
   readonly fresh: boolean;
   /** Named recipient is the viewer ("Viewing as"); a broadcast does not count. */
   readonly addressed: boolean;
+  /** Acknowledgements, recipient states and question progress, when the message has any. */
+  readonly receipts: MessageReceipts | null;
 }
 
 export type Row =
@@ -44,6 +47,8 @@ export interface RowOptions {
   readonly today: string;
   /** Paths of messages that arrived after the view opened. */
   readonly fresh: ReadonlySet<string>;
+  /** Receipts by message id; acknowledgements shown there are not repeated as rows. */
+  readonly receipts?: ReadonlyMap<string, MessageReceipts>;
 }
 
 export interface TopicSummary {
@@ -64,6 +69,10 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
     messages
       .filter((message) => options.topic === null || message.topic === options.topic)
       .map((message) => [message.id, message]),
+  );
+  const receipts = options.receipts ?? new Map<string, MessageReceipts>();
+  const receiptTargets = new Set(
+    messages.filter((message) => message.type !== "ack").map((message) => message.id),
   );
   const answered = new Set(
     messages.flatMap((message) =>
@@ -91,6 +100,10 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
     }
     const message = item.message;
     if (options.topic !== null && message.topic !== options.topic) continue;
+    // An acknowledgement is shown as a receipt under the message it answers, not as a row.
+    if (message.type === "ack" && message.replyTo !== null && receiptTargets.has(message.replyTo)) {
+      continue;
+    }
 
     const date = message.timestamp.slice(0, 10);
     if (date !== day) {
@@ -113,6 +126,7 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
         options.viewer !== null &&
         message.from !== options.viewer &&
         message.to.includes(options.viewer),
+      receipts: receipts.get(message.id) ?? null,
     };
     if (
       group !== null &&

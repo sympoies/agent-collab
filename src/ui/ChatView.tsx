@@ -2,6 +2,7 @@
 
 import { Fragment } from "react";
 
+import type { MessageReceipts } from "../message/receipts";
 import type { Message } from "../message/types";
 import { personStyle, type People } from "./people";
 import type { MessageView, Row } from "./timeline";
@@ -44,6 +45,65 @@ function Quote({ view }: { view: MessageView }) {
     <a className="quote" href={`#msg-${view.parent.id}`}>
       <span className="quote-from">{view.parent.from}</span> {firstLine(view.parent)}
     </a>
+  );
+}
+
+function Receipts({ receipts, people }: { receipts: MessageReceipts; people: People }) {
+  const { acknowledgements, recipients, question } = receipts;
+  const status =
+    question === null
+      ? null
+      : question.state === "unknown"
+        ? "Answers are unknown until every message of this topic is loaded."
+        : `${String(question.progress?.answered ?? 0)}/${String(question.progress?.target ?? 0)} answered`;
+  return (
+    <div className="receipts">
+      {question !== null && (
+        <p className="question-progress" data-state={question.state}>
+          <span className="question-state">{question.state}</span> {status}
+        </p>
+      )}
+      {acknowledgements.length > 0 && (
+        <ul className="acks">
+          {acknowledgements.map((ack) => (
+            <li key={ack.id} className="ack-receipt" title={ack.at}>
+              {people.label(ack.from)} acknowledged {ack.at.slice(11)}
+              {ack.eta !== null && ` · reply expected ${ack.eta}`}
+            </li>
+          ))}
+        </ul>
+      )}
+      {question?.conclusion != null && (
+        <div className="conclusion">
+          <strong>
+            Concluded by {people.label(question.conclusion.from)}{" "}
+            {question.conclusion.timestamp.slice(11)}
+          </strong>
+          <p>{question.conclusionText}</p>
+        </div>
+      )}
+      <details className="recipients">
+        <summary>Recipients</summary>
+        {recipients === null ? (
+          <p className="note">Recipients are unknown until the participant list is loaded.</p>
+        ) : (
+          <ul>
+            {recipients.map((recipient) => (
+              <li key={recipient.name} data-state={recipient.state}>
+                <span className="recipient-name">{people.label(recipient.name)}</span>{" "}
+                {recipient.state === "waiting"
+                  ? "no acknowledgement yet"
+                  : `${recipient.state} ${recipient.at?.slice(11) ?? ""}`}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="note">
+          An acknowledgement is an explicit reply. The repository does not record who merely opened
+          a message, so there is no read receipt.
+        </p>
+      </details>
+    </div>
   );
 }
 
@@ -96,6 +156,10 @@ function MessageRow({ view, people }: { view: MessageView; people: People }) {
         <p className="body" data-body="locked">
           Encrypted message. This version cannot decrypt it yet.
         </p>
+      ) : message.type === "ack" && message.body.lines.every((line) => line.trim() === "") ? (
+        <p className="body" data-body="plain">
+          <span className="ack-chip">acknowledged</span>
+        </p>
       ) : (
         <p className="body" data-body="plain">
           {message.body.lines.join("\n")}
@@ -112,6 +176,7 @@ function MessageRow({ view, people }: { view: MessageView; people: People }) {
           {view.overdue && " (overdue)"}
         </p>
       )}
+      {view.receipts !== null && <Receipts receipts={view.receipts} people={people} />}
       {message.refs.length > 0 && (
         <ul className="refs">
           {message.refs.map((ref, index) => (

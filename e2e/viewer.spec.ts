@@ -128,6 +128,86 @@ function longThread(): MessageFixture[] {
   return result;
 }
 
+function questionThread(): MessageFixture[] {
+  const open = makeMessage(
+    "2026-10-08",
+    "0900",
+    "alice-agent",
+    "api",
+    1,
+    "question",
+    "Is the schema final?",
+  );
+  const answered = makeMessage(
+    "2026-10-08",
+    "0905",
+    "bob-agent",
+    "api",
+    2,
+    "question",
+    "Can the field be optional?",
+    "alice-agent",
+  );
+  const concluded = makeMessage(
+    "2026-10-08",
+    "0910",
+    "alice-agent",
+    "ops",
+    1,
+    "question",
+    "Which region ships first?",
+  );
+  return [
+    open,
+    makeMessage(
+      "2026-10-08",
+      "0901",
+      "bob-agent",
+      "api",
+      3,
+      "ack",
+      "Received. Expected reply: within 10 minutes",
+      "alice-agent",
+      open.id,
+    ),
+    answered,
+    makeMessage(
+      "2026-10-08",
+      "0906",
+      "alice-agent",
+      "api",
+      4,
+      "answer",
+      "Yes, it can.",
+      "bob-agent",
+      answered.id,
+    ),
+    concluded,
+    makeMessage(
+      "2026-10-08",
+      "0911",
+      "bob-agent",
+      "ops",
+      2,
+      "answer",
+      "North.",
+      "alice-agent",
+      concluded.id,
+    ),
+    makeMessage(
+      "2026-10-08",
+      "0912",
+      "alice-agent",
+      "ops",
+      3,
+      "info",
+      "We chose North.",
+      "bob-agent",
+      concluded.id,
+    ),
+  ];
+}
+
 function treeEntry(path: string, sha: string, type: "blob" | "tree") {
   return { path, sha, type, mode: type === "tree" ? "040000" : "100644" };
 }
@@ -141,8 +221,8 @@ function json(route: Route, value: unknown, status = 200, headers: Record<string
   });
 }
 
-async function installApiStub(page: Page, mode: "long" | "empty" | "error") {
-  const messages = mode === "long" ? longThread() : [];
+async function installApiStub(page: Page, mode: "long" | "questions" | "empty" | "error") {
+  const messages = mode === "long" ? longThread() : mode === "questions" ? questionThread() : [];
   const arrivalOne = makeMessage(
     "2026-10-09",
     "1030",
@@ -257,7 +337,7 @@ async function installApiStub(page: Page, mode: "long" | "empty" | "error") {
   );
 }
 
-async function openViewer(page: Page, mode: "long" | "empty" | "error") {
+async function openViewer(page: Page, mode: "long" | "questions" | "empty" | "error") {
   const assertRequests = await installApiStub(page, mode);
   await page.goto("/");
   await page.getByRole("button", { name: "Open another repository" }).click();
@@ -279,7 +359,7 @@ async function saveScreenshot(page: Page, filename: string) {
 test("long chat adapts across themes and viewports", async ({ page, context }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   const assertRequests = await openViewer(page, "long");
-  await expect(page.locator(".message")).toHaveCount(30);
+  await expect(page.locator(".message")).toHaveCount(29);
   await expect(page.locator(".day")).toHaveCount(2);
   await expect(page.locator(".group").first().locator(".message")).toHaveCount(2);
   await expect(page.locator(".quote").first()).toContainText(
@@ -465,8 +545,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   expect(focused.outlineStyle).toBe("solid");
   expect(focused.outlineWidth).toBe("3px");
 
-  // Viewing as, Profile & colors, theme, Settings, All, then the first topic.
-  for (let tab = 0; tab < 6; tab += 1) await page.keyboard.press("Tab");
+  // Viewing as, Profile & colors, theme, Settings, Questions, All, then the first topic.
+  for (let tab = 0; tab < 7; tab += 1) await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "#release" })).toHaveAttribute(
     "aria-pressed",
@@ -805,3 +885,59 @@ test("identity choices still work when browser storage rejects reads and writes"
   expect(errors).toEqual([]);
   assertRequests();
 });
+
+for (const identity of identityCases) {
+  test(`receipts and the Questions view work on ${identity.label} in ${identity.theme}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: identity.scheme });
+    await page.setViewportSize(identity.viewport);
+    const assertRequests = await openViewer(page, "questions");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", identity.theme);
+    const phone = identity.viewport.width < 721;
+    if (phone) await page.getByRole("button", { name: /^#api/ }).click();
+
+    // The acknowledgement is a receipt under its question, not a row of its own.
+    const question = page.locator(".message", { hasText: "Is the schema final?" });
+    await expect(question).toBeVisible();
+    await expect(question.locator(".ack-receipt")).toContainText(
+      "bob-agent acknowledged 09:01 · reply expected within 10 minutes",
+    );
+    await expect(question.locator(".question-progress")).toContainText("0/1 answered");
+    await expect(page.locator(".message", { hasText: "Received. Expected reply" })).toHaveCount(0);
+    await question.getByText("Recipients").click();
+    await expect(question.locator(".recipients")).toContainText("no read receipt");
+    await expect(question.locator(".recipients li")).toContainText("bob-agent acknowledged 09:01");
+
+    const answered = page.locator(".message", { hasText: "Can the field be optional?" });
+    await expect(answered.locator(".question-progress")).toContainText("1/1 answered");
+    await saveScreenshot(page, `receipts-${identity.label}-${identity.theme}.png`);
+
+    if (phone) await page.getByRole("button", { name: "Back to conversations" }).click();
+    await page.getByRole("button", { name: /^Questions/ }).click();
+    await expect(page.locator("#conversation-heading")).toHaveText("Questions");
+    const open = page.getByRole("region", { name: "Open" });
+    await expect(open.locator(".question-text")).toHaveText(["Is the schema final?"]);
+    await expect(
+      page.getByRole("region", { name: "Answered" }).locator(".question-text"),
+    ).toHaveText(["Can the field be optional?"]);
+    const concluded = page.getByRole("region", { name: "Concluded" });
+    await expect(concluded.locator(".question-text")).toHaveText(["Which region ships first?"]);
+    await expect(concluded.locator(".conclusion-text")).toHaveText("We chose North.");
+    await expect(open.locator(".you")).toHaveCount(0);
+    await page.getByLabel("Viewing as").selectOption("bob-agent");
+    await expect(open.locator(".you")).toHaveText("Waiting for you");
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `questions-${identity.label}-${identity.theme}.png`);
+
+    await concluded.locator(".question-link").click();
+    await expect(page.locator("#conversation-heading")).toHaveText("#ops");
+    const jumped = page.locator("#msg-2026-10-08T0910-alice-agent-ops-01");
+    await expect(jumped).toBeInViewport();
+    await expect(jumped.locator(".conclusion")).toContainText("We chose North.");
+    assertRequests();
+  });
+}

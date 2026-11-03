@@ -7,13 +7,22 @@ import { FixtureSource } from "../src/source/fixture";
 import { ChatView } from "../src/ui/ChatView";
 import { EMPTY_PREFERENCES } from "../src/identity/preferences";
 import { buildPeople } from "../src/ui/people";
+import { deriveQuestionStates } from "../src/message/questions";
+import { buildReceipts } from "../src/message/receipts";
 import { buildRows } from "../src/ui/timeline";
 
 async function render(): Promise<string> {
   const loader = new Loader(new FixtureSource(demoFiles));
   await loader.open();
   const { items, fresh } = loader.getSnapshot();
+  const { participants: roster, formerParticipants: left } = loader.getSnapshot();
+  const messages = items.flatMap((item) => (item.kind === "message" ? [item.message] : []));
+  const states = deriveQuestionStates(messages, roster, left, {
+    rosterKnown: true,
+    incompleteTopics: [],
+  });
   const rows = buildRows(items, {
+    receipts: buildReceipts(messages, roster, left, states),
     viewer: "alice-agent",
     topic: null,
     today: "2026-10-20",
@@ -51,8 +60,15 @@ describe("ChatView with the demo repository", () => {
   it("renders a reply with a quote of its parent", async () => {
     const html = await render();
     expect(html).toContain(
-      '<a class="quote" href="#msg-2026-10-08T0905-alice-agent-api-01"><span class="quote-from">alice-agent</span> Please review the field draft in refs.</a>',
+      '<a class="quote" href="#msg-2026-10-09T1400-bob-agent-release-01"><span class="quote-from">bob-agent</span> The beta build passed the smoke tests.</a>',
     );
+  });
+
+  it("shows an acknowledgement under its message instead of as a row", async () => {
+    const html = await render();
+    expect(html).not.toContain('id="msg-2026-10-08T0912-bob-agent-api-01"');
+    expect(html).toContain("bob-agent acknowledged 09:12");
+    expect(html).toContain("An acknowledgement is an explicit reply.");
   });
 
   it("renders message text as text, never as markup", async () => {

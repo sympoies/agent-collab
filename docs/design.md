@@ -361,8 +361,27 @@ public blobs.
 - **Replies.** A message with `reply_to` shows a one-line quote of the parent
   (sender and first body line) that scrolls to the parent. If the parent is
   not loaded yet, the quote shows the parent id and a "load older" action.
-  `ack` messages render compact (one line) because they only confirm receipt
-  and an expected time.
+  An `ack` whose parent is loaded is not a row of its own; it is a receipt (see
+  below). An orphan `ack` (parent not loaded) renders as a compact row, with an
+  "acknowledged" chip when its body is empty.
+- **Receipts.** Under a question, a decision request or any acknowledged
+  message: one line per acknowledgement (who, time, and the ETA when the body
+  says `Expected reply: ...`), a question's derived state and progress
+  (`2/3 answered`, from `deriveQuestionStates`, never re-derived in the UI),
+  the conclusion text of a concluded question, and a "Recipients" disclosure
+  that lists every recipient as answered (with time), acknowledged (with time)
+  or "no acknowledgement yet". Broadcast recipients are the roster without the
+  sender and former participants, and are unknown while the roster is. An
+  acknowledgement is an explicit reply message; the repository does not record
+  who merely opened a message, so there is no read receipt and the panel says
+  so. A message that nobody acknowledged and that asks for no answer shows no
+  receipts.
+- **Questions view.** The conversation list has a "Questions" entry that lists
+  every question grouped as open, concluded and answered (plus "not yet
+  known" while the roster or a topic is incomplete), newest first. Open
+  questions the viewer ("Viewing as") still has to answer are marked "Waiting
+  for you" and listed first. Choosing a question opens its topic at that
+  message.
 - **Refs.** Listed under the body as text. Opening `topics/` documents is a
   later slice.
 - **Body.** Plain text with preserved line breaks. No Markdown-to-HTML and no
