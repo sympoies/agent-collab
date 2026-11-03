@@ -77,6 +77,7 @@ describe("Root live demo", () => {
             createSource={() => source}
             createDemoSource={() => source}
             createLiveDemoSource={createLiveDemoSource}
+            openLocalFolder={null}
           />
         </ThemeProvider>,
       );
@@ -140,6 +141,7 @@ describe("Root live demo", () => {
             createSource={() => source}
             createDemoSource={() => source}
             createLiveDemoSource={createLiveDemoSource}
+            openLocalFolder={null}
           />
         </ThemeProvider>,
       );
@@ -220,6 +222,7 @@ describe("Root live demo", () => {
             createSource={createSource}
             createDemoSource={() => source}
             createLiveDemoSource={createLiveDemoSource}
+            openLocalFolder={null}
           />
         </ThemeProvider>,
       );

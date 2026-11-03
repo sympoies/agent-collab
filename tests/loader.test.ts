@@ -260,6 +260,53 @@ describe("Loader.refresh", () => {
     expect({ reads: source.reads.length, listings: source.listings.length }).toEqual(before);
   });
 
+  it("replaces a loaded message whose file was edited, without marking it new", async () => {
+    const path = monthly("2026-10", 1, 1);
+    const id = path.slice(path.lastIndexOf("/") + 1, -".md".length);
+    const initial = repo([path]);
+    const source = new FixtureSource(initial);
+    const loader = await opened(source);
+    expect(loader.getSnapshot().items[0]).toMatchObject({
+      message: { body: { lines: [`Message ${id}.`] } },
+    });
+    source.commit({
+      ...initial,
+      [path]: messageText(id, "alice-agent", "api", {}, "Edited in place."),
+    });
+    expect(await loader.refresh()).toBe(0);
+    const snapshot = loader.getSnapshot();
+    expect(paths(snapshot.items)).toEqual([path]);
+    expect(snapshot.items[0]).toMatchObject({ message: { body: { lines: ["Edited in place."] } } });
+    expect(snapshot.fresh.size).toBe(0);
+  });
+
+  it("uses the changed entry when an edited message is still waiting on an older page", async () => {
+    const oldest = monthly("2026-09", 1, 1);
+    const newest = monthly("2026-10", 1, 1);
+    const oldestId = oldest.slice(oldest.lastIndexOf("/") + 1, -".md".length);
+    const initial = repo([oldest, newest]);
+    const source = new FixtureSource(initial);
+    const loader = await opened(source, 1);
+    expect(paths(loader.getSnapshot().items)).toEqual([newest]);
+    source.commit({
+      ...initial,
+      [oldest]: messageText(oldestId, "alice-agent", "api", {}, "Edited before it was loaded."),
+    });
+    await loader.refresh();
+    await loader.loadOlder();
+    const first = loader.getSnapshot().items[0];
+    expect(first).toMatchObject({ message: { body: { lines: ["Edited before it was loaded."] } } });
+  });
+
+  it("exposes when the data last changed, if the source knows", async () => {
+    const source = new FixtureSource(repo([monthly("2026-10", 1, 1)]));
+    const when = new Date("2026-11-03T08:00:00Z");
+    Object.assign(source, { lastChanged: () => when });
+    const loader = await opened(source);
+    expect(loader.getSnapshot().lastChanged).toEqual(when);
+    expect((await opened(new FixtureSource(repo([])))).getSnapshot().lastChanged).toBeNull();
+  });
+
   it("adds a new message in the current month and marks it fresh", async () => {
     const initial = repo([monthly("2026-10", 1, 1)]);
     const source = new FixtureSource(initial);

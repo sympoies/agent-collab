@@ -6,6 +6,7 @@ import { BrowserEncryptedStore, indexedDbRecords, MemoryStore } from "./credenti
 import { demoFiles } from "./demo/fixtures";
 import type { ViewerSettings } from "./settings/model";
 import { FixtureSource } from "./source/fixture";
+import { LocalFolderSource, type LocalDirectoryHandle } from "./source/local-folder";
 import { GitHubSource } from "./source/github";
 import { CachedDemoSource } from "./source/cached-demo";
 import type { MessageSource } from "./source/types";
@@ -85,6 +86,21 @@ function createLiveDemoSource(): MessageSource {
   return new CachedDemoSource(source, storage);
 }
 
+/**
+ * The browser's folder picker, or null where it does not exist (Firefox, Safari, insecure pages).
+ * It must be called straight from a click; the handle stays in memory and is never stored.
+ */
+function folderPicker(): (() => Promise<{ source: MessageSource; name: string }>) | null {
+  const picker = (
+    window as { showDirectoryPicker?: (options: { mode: "read" }) => Promise<LocalDirectoryHandle> }
+  ).showDirectoryPicker;
+  if (typeof picker !== "function") return null;
+  return async () => {
+    const handle = await picker.call(window, { mode: "read" });
+    return { source: new LocalFolderSource(handle), name: handle.name };
+  };
+}
+
 const root = document.getElementById("root");
 if (root === null) throw new Error("missing #root element");
 const storage = safeBrowserStorage();
@@ -101,6 +117,7 @@ createRoot(root).render(
         createSource={createSource}
         createDemoSource={() => new FixtureSource(demoFiles)}
         createLiveDemoSource={createLiveDemoSource}
+        openLocalFolder={folderPicker()}
       />
     </ThemeProvider>
   </StrictMode>,

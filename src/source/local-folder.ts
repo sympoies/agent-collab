@@ -1,4 +1,6 @@
-// Read-only MessageSource spike over a user-selected File System Access handle.
+// Read-only MessageSource over a user-selected File System Access handle. A poll makes one scan
+// of the collaboration files (docs/design/local-source.md) and answers "not modified" when nothing
+// changed, so an unchanged folder republishes nothing.
 
 import { SourceError, type DirectoryEntry, type Head, type MessageSource } from "./types";
 
@@ -28,6 +30,12 @@ export interface LocalFileHandle extends LocalHandle {
 }
 
 const MAX_FILE_BYTES = 1024 * 1024;
+/** Entries a scan or listing may enumerate before the folder counts as too large. */
+const MAX_SCAN_ENTRIES = 50_000;
+/** A modification time later than now plus this is clock skew or a hostile file, not a change. */
+const FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
+const MONTH_RE = /^\d{4}-\d{2}$/;
+const TOO_LARGE = "This folder is too large to read. Choose the clone folder itself.";
 const METADATA_CONCURRENCY = 6;
 
 async function mapLimit<T, R>(values: readonly T[], limit: number, fn: (value: T) => Promise<R>) {
@@ -80,13 +88,19 @@ function safeSegment(segment: string): boolean {
   return true;
 }
 
+/** A 53-bit string hash (cyrb53): a collision, which would hide a change, is very unlikely. */
 function stableId(kind: string, value: string): string {
-  let hash = 0x811c9dc5;
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
   for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
+    const code = value.charCodeAt(index);
+    h1 = Math.imul(h1 ^ code, 2654435761);
+    h2 = Math.imul(h2 ^ code, 1597334677);
   }
-  return `${kind}-${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  const hash = 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  return `${kind}-${hash.toString(16).padStart(14, "0")}`;
 }
 
 function isDirectoryHandle(handle: LocalHandle): handle is LocalDirectoryHandle {
@@ -127,13 +141,45 @@ function errorFor(path: string, error: unknown): SourceError {
   return new SourceError("unexpected", path);
 }
 
+interface Scan {
+  readonly revision: string;
+  /** Listings of the root, the inbox and every inbox directory, read once per scan. */
+  readonly listings: ReadonlyMap<string, readonly DirectoryEntry[]>;
+  readonly lastChanged: Date | null;
+}
+
+function directoryIdOf(entries: readonly DirectoryEntry[]): string {
+  return stableId(
+    "directory",
+    entries
+      .map((entry) => `${entry.kind}:${entry.name}:${entry.objectId}`)
+      .sort()
+      .join("\n"),
+  );
+}
+
 export class LocalFolderSource implements MessageSource {
-  private revision = 0;
   private readonly metadataFailures = new Map<string, SourceError>();
+  private scan: Scan | null = null;
 
-  constructor(private readonly root: LocalDirectoryHandle) {}
+  private scanning: Promise<Scan> | null = null;
+  private readonly now: () => number;
+  private readonly maxEntries: number;
 
-  async head(previous: Head | null): Promise<Head> {
+  constructor(
+    private readonly root: LocalDirectoryHandle,
+    options: { readonly now?: () => number; readonly maxEntries?: number } = {},
+  ) {
+    this.now = options.now ?? Date.now;
+    this.maxEntries = options.maxEntries ?? MAX_SCAN_ENTRIES;
+  }
+
+  /** The newest modification time seen by the latest successful scan. */
+  lastChanged(): Date | null {
+    return this.scan?.lastChanged ?? null;
+  }
+
+  async head(previous: Head | null): Promise<Head | "not-modified"> {
     try {
       const permission = await this.root.queryPermission?.({ mode: "read" });
       if (permission !== undefined && permission !== "granted") {
@@ -142,22 +188,102 @@ export class LocalFolderSource implements MessageSource {
           "",
           null,
           null,
-          "Local folder permission needs to be granted again.",
+          "Local folder permission needs to be granted again. Choose the folder again from the toolbar.",
         );
       }
-      this.revision += 1;
-      return {
-        revision: `local-${this.revision}-${previous === null ? "initial" : "next"}`,
-        validator: null,
-      };
+      // A poll that arrives while a scan is still running shares it instead of starting another.
+      this.scanning ??= this.scanTree().finally(() => {
+        this.scanning = null;
+      });
+      const scan = await this.scanning;
+      this.scan = scan;
+      if (previous?.validator === scan.revision) return "not-modified";
+      return { revision: scan.revision, validator: scan.revision };
     } catch (error) {
       if (error instanceof SourceError) throw error;
       throw errorFor("", error);
     }
   }
 
-  async listDirectory(_revision: string, path: string): Promise<readonly DirectoryEntry[]> {
+  /**
+   * One walk of the collaboration files: every inbox directory is listed once and every file's
+   * metadata read once. The revision covers all of it, so any edit, addition or removal changes
+   * it. Only the inbox and its month folders are walked, and at most `maxEntries` entries are
+   * enumerated, so a hostile clone fails fast instead of hanging. Topic files are not part of the
+   * scan; they are read when a card is opened.
+   */
+  private async scanTree(): Promise<Scan> {
+    const listings = new Map<string, readonly DirectoryEntry[]>();
+    const withMetadata = createLimiter(METADATA_CONCURRENCY);
+    const seen: { newest: number | null; entries: number } = { newest: null, entries: 0 };
+    const latestTrusted = this.now() + FUTURE_SKEW_MS;
+
+    const scanDirectory = async (
+      directory: LocalDirectoryHandle,
+      path: string,
+    ): Promise<readonly DirectoryEntry[]> => {
+      const handles: LocalHandle[] = [];
+      for await (const handle of directory.values()) {
+        seen.entries += 1;
+        if (seen.entries > this.maxEntries)
+          throw new SourceError("too-large", path, null, null, TOO_LARGE);
+        if (!safeSegment(handle.name)) continue;
+        const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
+        if (validRepoPath(entryPath)) handles.push(handle);
+      }
+      const entries = await mapLimit(handles, METADATA_CONCURRENCY, async (handle) => {
+        const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
+        if (isFileHandle(handle)) {
+          const meta = await this.fileMetadata(entryPath, handle, withMetadata);
+          if (
+            meta.modified !== null &&
+            meta.modified <= latestTrusted &&
+            (seen.newest === null || meta.modified > seen.newest)
+          ) {
+            seen.newest = meta.modified;
+          }
+          return {
+            name: handle.name,
+            path: entryPath,
+            kind: "file" as const,
+            objectId: meta.objectId,
+            ...(meta.size === null ? {} : { size: meta.size }),
+          };
+        }
+        if (isDirectoryHandle(handle)) {
+          // Only the inbox and its month folders are walked; anything deeper, and topics, are
+          // listed on demand.
+          const scanned = entryPath === "inbox" || (path === "inbox" && MONTH_RE.test(handle.name));
+          const children = scanned ? await scanDirectory(handle, entryPath) : null;
+          return {
+            name: handle.name,
+            path: entryPath,
+            kind: "directory" as const,
+            objectId:
+              children === null ? stableId("directory", entryPath) : directoryIdOf(children),
+          };
+        }
+        // Unknown kinds, including symlink-like entries, are never followed.
+        return null;
+      });
+      const listed = entries.filter((entry) => entry !== null);
+      listings.set(path, listed);
+      return listed;
+    };
+
+    const rootEntries = await scanDirectory(this.root, "");
+    return {
+      revision: stableId("scan", directoryIdOf(rootEntries)),
+      listings,
+      lastChanged: seen.newest === null ? null : new Date(seen.newest),
+    };
+  }
+
+  async listDirectory(revision: string, path: string): Promise<readonly DirectoryEntry[]> {
     if (!validRepoPath(path)) throw new SourceError("forbidden", path);
+    // The scan of this revision already holds the listing: no second metadata walk.
+    const cached = this.scan?.revision === revision ? this.scan.listings.get(path) : undefined;
+    if (cached !== undefined) return cached;
     try {
       const directory = await this.directoryAt(path);
       const handles: Array<{
@@ -169,6 +295,9 @@ export class LocalFolderSource implements MessageSource {
         const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
         if (!validRepoPath(entryPath)) continue;
         handles.push({ handle, path: entryPath });
+        if (handles.length > this.maxEntries) {
+          throw new SourceError("too-large", path, null, null, TOO_LARGE);
+        }
       }
       const withMetadata = createLimiter(METADATA_CONCURRENCY);
       const entries = await mapLimit(
@@ -185,11 +314,13 @@ export class LocalFolderSource implements MessageSource {
             };
           }
           if (isFileHandle(handle)) {
+            const meta = await this.fileMetadata(entryPath, handle, withMetadata);
             return {
               name: handle.name,
               path: entryPath,
               kind: "file" as const,
-              objectId: await this.fileObjectId(entryPath, handle, withMetadata),
+              objectId: meta.objectId,
+              ...(meta.size === null ? {} : { size: meta.size }),
             };
           }
           // Unknown kinds, including symlink-like entries, are never followed.
@@ -270,10 +401,22 @@ export class LocalFolderSource implements MessageSource {
     handle: LocalFileHandle,
     withMetadata: <T>(task: () => Promise<T>) => Promise<T>,
   ): Promise<string> {
+    return (await this.fileMetadata(path, handle, withMetadata)).objectId;
+  }
+
+  private async fileMetadata(
+    path: string,
+    handle: LocalFileHandle,
+    withMetadata: <T>(task: () => Promise<T>) => Promise<T>,
+  ): Promise<{ objectId: string; size: number | null; modified: number | null }> {
     this.metadataFailures.delete(path);
     try {
       const file = await withMetadata(() => handle.getFile());
-      return stableId("file", `${file.size}:${file.lastModified}`);
+      return {
+        objectId: stableId("file", `${file.size}:${file.lastModified}`),
+        size: file.size,
+        modified: file.lastModified,
+      };
     } catch (error) {
       const mapped = errorFor(path, error);
       const safeError =
@@ -281,7 +424,11 @@ export class LocalFolderSource implements MessageSource {
           ? new SourceError("unexpected", path, null, null, "Local file metadata is unavailable.")
           : mapped;
       this.metadataFailures.set(path, safeError);
-      return stableId("unavailable", `${path}:${safeError.kind}`);
+      return {
+        objectId: stableId("unavailable", `${path}:${safeError.kind}`),
+        size: null,
+        modified: null,
+      };
     }
   }
 }

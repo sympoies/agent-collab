@@ -14,19 +14,32 @@ type Entry = LocalHandle;
 class MemoryFile implements LocalFileHandle {
   readonly kind = "file" as const;
   private version = 1;
+  /** Calls to getFile (metadata) and to text() (content), to measure scan cost. */
+  metadataReads = 0;
+  textReads = 0;
   constructor(
     readonly name: string,
     private content: string,
+    private modified: number | null = null,
   ) {}
 
-  replace(content: string): void {
+  replace(content: string, modified: number | null = null): void {
     this.content = content;
     this.version += 1;
+    if (modified !== null) this.modified = modified;
   }
 
   getFile(): Promise<Blob & { readonly lastModified: number }> {
-    const blob = new Blob([this.content]) as Blob & { lastModified: number };
-    Object.defineProperty(blob, "lastModified", { value: this.version });
+    this.metadataReads += 1;
+    const content = this.content;
+    const blob = new Blob([content]) as Blob & { lastModified: number };
+    Object.defineProperty(blob, "lastModified", { value: this.modified ?? this.version });
+    Object.defineProperty(blob, "text", {
+      value: () => {
+        this.textReads += 1;
+        return Promise.resolve(content);
+      },
+    });
     return Promise.resolve(blob);
   }
 }
@@ -35,10 +48,13 @@ class MemoryDirectory implements LocalDirectoryHandle {
   readonly kind = "directory" as const;
   readonly children = new Map<string, Entry>();
   permission: PermissionState = "granted";
+  /** How often the directory was enumerated. */
+  enumerations = 0;
 
   constructor(readonly name = "") {}
 
   async *values(): AsyncIterable<Entry> {
+    this.enumerations += 1;
     await Promise.resolve();
     yield* this.children.values();
   }
@@ -63,7 +79,7 @@ class MemoryDirectory implements LocalDirectoryHandle {
     return Promise.resolve(this.permission);
   }
 
-  addFile(path: string, content: string): MemoryFile {
+  addFile(path: string, content: string, modified: number | null = null): MemoryFile {
     const segments = path.split("/");
     const fileName = segments.pop();
     if (fileName === undefined) throw new Error("Invalid fixture path");
@@ -76,7 +92,7 @@ class MemoryDirectory implements LocalDirectoryHandle {
       if (!(child instanceof MemoryDirectory)) throw new Error("Fixture path conflict");
       return child;
     }, this);
-    const file = new MemoryFile(fileName, content);
+    const file = new MemoryFile(fileName, content, modified);
     directory.children.set(fileName, file);
     return file;
   }
@@ -183,7 +199,7 @@ describe("LocalFolderSource", () => {
     expect(loader.getSnapshot().participants).toEqual(["alice-agent", "bob-agent"]);
   });
 
-  it("does not add messages on an unchanged poll even though the current loader republishes", async () => {
+  it("does not republish a snapshot on an unchanged poll", async () => {
     const root = new MemoryDirectory();
     root.addFile(".agent-collab", MARKER);
     root.addFile(
@@ -199,16 +215,18 @@ describe("LocalFolderSource", () => {
 
     await expect(loader.refresh()).resolves.toBe(0);
 
-    expect(publications).toBe(1);
+    expect(publications).toBe(0);
     expect(loader.getSnapshot().items).toHaveLength(1);
   });
 
-  it("keeps poll revisions bounded across repeated refreshes", async () => {
+  it("keeps the revision bounded and stable across repeated polls of an unchanged folder", async () => {
     const source = new LocalFolderSource(new MemoryDirectory());
-    let previous = await source.head(null);
-    for (let index = 0; index < 1000; index += 1) previous = await source.head(previous);
-
-    expect(previous.revision.length).toBeLessThan(32);
+    const first = await source.head(null);
+    if (first === "not-modified") throw new Error("expected a head");
+    for (let index = 0; index < 1000; index += 1) {
+      expect(await source.head(first)).toBe("not-modified");
+    }
+    expect(first.revision.length).toBeLessThan(32);
   });
 
   it("keeps entry identities stable when unchanged and updates them when metadata changes", async () => {
@@ -379,5 +397,352 @@ describe("LocalFolderSource", () => {
       kind: "forbidden",
       message: "Local folder permission is unavailable.",
     });
+  });
+
+  describe("freshness polling", () => {
+    function clone(messages = 3) {
+      const root = new MemoryDirectory();
+      root.addFile(".agent-collab", MARKER, 1_000);
+      const files: MemoryFile[] = [];
+      for (let index = 1; index <= messages; index += 1) {
+        const path = monthly("2026-10", 1, index);
+        const id = path.slice(path.lastIndexOf("/") + 1, -".md".length);
+        files.push(root.addFile(path, messageText(id, "alice-agent", "api"), 2_000 + index));
+      }
+      return { root, files };
+    }
+
+    it("answers not-modified for an unchanged folder, after one metadata read per file and no content reads", async () => {
+      const { root, files } = clone();
+      const source = new LocalFolderSource(root);
+      const first = await source.head(null);
+      expect(first).not.toBe("not-modified");
+      const reads = files.map((file) => file.metadataReads);
+      const head = first === "not-modified" ? null : first;
+      expect(await source.head(head)).toBe("not-modified");
+      expect(files.map((file) => file.metadataReads)).toEqual(reads.map((count) => count + 1));
+      expect(files.every((file) => file.textReads === 0)).toBe(true);
+    });
+
+    it("notices a new message, an edit in place, a new month and a changed marker", async () => {
+      const { root, files } = clone(1);
+      const source = new LocalFolderSource(root);
+      let head = await source.head(null);
+      const next = async () => {
+        const result = await source.head(head === "not-modified" ? null : head);
+        expect(result).not.toBe("not-modified");
+        head = result;
+      };
+      root.addFile(monthly("2026-10", 1, 2), "new message", 3_000);
+      await next();
+      files[0]?.replace("edited in place, so it is longer", 4_000);
+      await next();
+      root.addFile(monthly("2026-11", 1, 1), "another month", 5_000);
+      await next();
+      const marker = root.children.get(".agent-collab");
+      if (marker instanceof MemoryFile)
+        marker.replace(`${MARKER}participants: alice-agent\n`, 6_000);
+      await next();
+    });
+
+    it("lists from the scan of the same revision without touching files again", async () => {
+      const { root, files } = clone(3);
+      const source = new LocalFolderSource(root);
+      const head = await source.head(null);
+      if (head === "not-modified") throw new Error("expected a head");
+      const reads = files.map((file) => file.metadataReads);
+      const inbox = await source.listDirectory(head.revision, "inbox");
+      const month = await source.listDirectory(head.revision, "inbox/2026-10");
+      expect(inbox.map((entry) => entry.name)).toEqual(["2026-10"]);
+      expect(month).toHaveLength(3);
+      expect(files.map((file) => file.metadataReads)).toEqual(reads);
+    });
+
+    it("gives file entries their size", async () => {
+      const { root } = clone(1);
+      const source = new LocalFolderSource(root);
+      const head = await source.head(null);
+      if (head === "not-modified") throw new Error("expected a head");
+      const month = await source.listDirectory(head.revision, "inbox/2026-10");
+      expect(month[0]?.size).toBeGreaterThan(0);
+      root.addFile("topics/api/notes.md", "twelve chars");
+      const topics = await source.listDirectory(head.revision, "topics/api");
+      expect(topics[0]).toMatchObject({ name: "notes.md", size: 12 });
+    });
+
+    it("reports the newest file modification time seen, and keeps it when a scan fails", async () => {
+      const { root, files } = clone(2);
+      const source = new LocalFolderSource(root);
+      expect(source.lastChanged()).toBeNull();
+      await source.head(null);
+      expect(source.lastChanged()).toEqual(new Date(2_002));
+      files[0]?.replace("touched later", 9_000);
+      await source.head(null);
+      expect(source.lastChanged()).toEqual(new Date(9_000));
+      root.permission = "prompt";
+      await expect(source.head(null)).rejects.toMatchObject({ kind: "forbidden" });
+      expect(source.lastChanged()).toEqual(new Date(9_000));
+    });
+
+    it("makes the loader publish only when something changed, and show an edit in place", async () => {
+      const { root, files } = clone(2);
+      const loader = new Loader(new LocalFolderSource(root));
+      await loader.open();
+      let publications = 0;
+      loader.subscribe(() => {
+        publications += 1;
+      });
+      await loader.refresh();
+      await loader.refresh();
+      expect(publications).toBe(0);
+      expect(loader.getSnapshot().lastChanged).toEqual(new Date(2_002));
+
+      const path = monthly("2026-10", 1, 1);
+      const id = path.slice(path.lastIndexOf("/") + 1, -".md".length);
+      files[0]?.replace(messageText(id, "alice-agent", "api", {}, "Edited on disk."), 8_000);
+      await expect(loader.refresh()).resolves.toBe(0);
+      expect(publications).toBe(1);
+      expect(loader.getSnapshot().items[0]).toMatchObject({
+        message: { body: { lines: ["Edited on disk."] } },
+      });
+      expect(loader.getSnapshot().fresh.size).toBe(0);
+      expect(loader.getSnapshot().lastChanged).toEqual(new Date(8_000));
+    });
+
+    it("measures an unchanged poll of a large clone: one metadata read per file, one listing per directory", async () => {
+      const root = new MemoryDirectory();
+      const marker = root.addFile(".agent-collab", MARKER, 1);
+      const files: MemoryFile[] = [];
+      const months = 24;
+      const perMonth = 125;
+      for (let month = 1; month <= months; month += 1) {
+        const name = `${month <= 12 ? "2025" : "2026"}-${String(((month - 1) % 12) + 1).padStart(2, "0")}`;
+        for (let index = 1; index <= perMonth; index += 1) {
+          const path = `inbox/${name}/${name}-01T${String(Math.floor(index / 60)).padStart(2, "0")}${String(index % 60).padStart(2, "0")}-alice-agent-api-01.md`;
+          files.push(root.addFile(path, `message ${String(index)}`, index));
+        }
+      }
+      const source = new LocalFolderSource(root);
+      const first = await source.head(null);
+      if (first === "not-modified") throw new Error("expected a head");
+      const inbox = root.children.get("inbox");
+      const directories = [
+        root,
+        inbox,
+        ...(inbox instanceof MemoryDirectory ? inbox.children.values() : []),
+      ].filter((entry): entry is MemoryDirectory => entry instanceof MemoryDirectory);
+      const before = {
+        files: files.reduce((sum, file) => sum + file.metadataReads, 0) + marker.metadataReads,
+        listings: directories.reduce((sum, directory) => sum + directory.enumerations, 0),
+      };
+      expect(before.files).toBe(months * perMonth + 1);
+      expect(before.listings).toBe(months + 2);
+
+      expect(await source.head(first)).toBe("not-modified");
+      const after = {
+        files: files.reduce((sum, file) => sum + file.metadataReads, 0) + marker.metadataReads,
+        listings: directories.reduce((sum, directory) => sum + directory.enumerations, 0),
+      };
+      // The second poll costs exactly the same as the first, and reads no message content.
+      expect(after.files - before.files).toBe(months * perMonth + 1);
+      expect(after.listings - before.listings).toBe(months + 2);
+      expect(files.every((file) => file.textReads === 0)).toBe(true);
+    });
+
+    it("uses long identities so two different files do not collide by accident", async () => {
+      const { root } = clone(1);
+      const source = new LocalFolderSource(root);
+      const head = await source.head(null);
+      if (head === "not-modified") throw new Error("expected a head");
+      const month = await source.listDirectory(head.revision, "inbox/2026-10");
+      expect(month[0]?.objectId).toMatch(/^file-[0-9a-f]{14}$/);
+    });
+  });
+});
+
+describe("LocalFolderSource bounds and hostile folders", () => {
+  const NOW = 1_800_000_000_000;
+  const DAY = 24 * 60 * 60 * 1000;
+
+  function clone() {
+    const root = new MemoryDirectory();
+    root.addFile(".agent-collab", MARKER, NOW - 5_000);
+    const path = monthly("2026-10", 1, 1);
+    const id = path.slice(path.lastIndexOf("/") + 1, -".md".length);
+    const file = root.addFile(path, messageText(id, "alice-agent", "api", {}, "AAAA"), NOW - 4_000);
+    return { root, file, path, id };
+  }
+
+  it("scans only the inbox and its month folders: deeper directories are listed, not walked", async () => {
+    const { root } = clone();
+    const deepFile = root.addFile("inbox/2026-10/archive/deeper/x.md", "x", NOW);
+    const hostile = root.addFile("inbox/a/b/c/d/e/f/g.md", "x", NOW);
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    const head = await source.head(null);
+    if (head === "not-modified") throw new Error("expected a head");
+    expect(deepFile.metadataReads + hostile.metadataReads).toBe(0);
+    const month = await source.listDirectory(head.revision, "inbox/2026-10");
+    expect(month.map((entry) => `${entry.kind}:${entry.name}`).sort()).toContain(
+      "directory:archive",
+    );
+    const inbox = await source.listDirectory(head.revision, "inbox");
+    expect(inbox.map((entry) => entry.name).sort()).toEqual(["2026-10", "a"]);
+  });
+
+  it("stops with a neutral too-large error instead of walking an enormous folder", async () => {
+    const root = new MemoryDirectory();
+    root.addFile(".agent-collab", MARKER, NOW);
+    const files: MemoryFile[] = [];
+    for (let index = 0; index < 400; index += 1) {
+      files.push(
+        root.addFile(
+          `inbox/2026-10/2026-10-01T${String(index).padStart(4, "0")}-alice-agent-api-01.md`,
+          "x",
+          NOW,
+        ),
+      );
+    }
+    const source = new LocalFolderSource(root, { now: () => NOW, maxEntries: 100 });
+    const error = await source.head(null).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(SourceError);
+    expect(error).toMatchObject({ kind: "too-large" });
+    expect((error as SourceError).message).toContain("too large");
+    // It gave up early rather than reading every file.
+    expect(files.reduce((sum, file) => sum + file.metadataReads, 0)).toBeLessThan(400);
+  });
+
+  it("ignores a modification time far in the future when computing the last change", async () => {
+    const { root, file } = clone();
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    file.replace("AAAB", NOW + 30 * DAY);
+    await source.head(null);
+    expect(source.lastChanged()).toEqual(new Date(NOW - 5_000));
+    // A little clock skew is accepted.
+    file.replace("AAAC", NOW + 60_000);
+    await source.head(null);
+    expect(source.lastChanged()).toEqual(new Date(NOW + 60_000));
+    // Only future times: there is nothing trustworthy to show.
+    const marker = root.children.get(".agent-collab");
+    if (marker instanceof MemoryFile) marker.replace(MARKER, NOW + 30 * DAY);
+    file.replace("AAAD", NOW + 30 * DAY);
+    await source.head(null);
+    expect(source.lastChanged()).toBeNull();
+  });
+
+  it("sees an edit that keeps the size and the path when the modification time is newer, or older", async () => {
+    const { root, file } = clone();
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    const first = await source.head(null);
+    if (first === "not-modified") throw new Error("expected a head");
+    file.replace("BBBB", NOW - 3_000);
+    const newer = await source.head(first);
+    expect(newer).not.toBe("not-modified");
+    if (newer === "not-modified") throw new Error("expected a head");
+    file.replace("CCCC", NOW - 9_000);
+    expect(await source.head(newer)).not.toBe("not-modified");
+  });
+
+  it("shows an equal-length edit with a newer time through the loader", async () => {
+    const { root, file, id } = clone();
+    const loader = new Loader(new LocalFolderSource(root, { now: () => NOW }));
+    await loader.open();
+    file.replace(messageText(id, "alice-agent", "api", {}, "BBBB"), NOW - 3_000);
+    await loader.refresh();
+    expect(loader.getSnapshot().items[0]).toMatchObject({ message: { body: { lines: ["BBBB"] } } });
+  });
+
+  it("coalesces overlapping polls so a scan slower than the interval never overlaps itself", async () => {
+    const { root } = clone();
+    class SlowDirectory extends MemoryDirectory {
+      override async *values(): AsyncIterable<LocalHandle> {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        yield* super.values();
+      }
+    }
+    const slow = new SlowDirectory();
+    for (const [name, child] of root.children) slow.children.set(name, child);
+    const source = new LocalFolderSource(slow, { now: () => NOW });
+    const [a, b, c] = await Promise.all([source.head(null), source.head(null), source.head(null)]);
+    expect(slow.enumerations).toBe(1);
+    expect(a).toEqual(b);
+    expect(b).toEqual(c);
+    // A later poll starts a new scan.
+    await source.head(null);
+    expect(slow.enumerations).toBe(2);
+  });
+
+  it("maps a permission failure while listing to a neutral forbidden error", async () => {
+    const { root } = clone();
+    class RevokedDirectory extends MemoryDirectory {
+      override async *values(): AsyncIterable<LocalHandle> {
+        await Promise.resolve();
+        throw new DOMException("/home/someone/private/clone", "NotAllowedError");
+        yield* [];
+      }
+    }
+    const revoked = new RevokedDirectory();
+    for (const [name, child] of root.children) revoked.children.set(name, child);
+    const error = await new LocalFolderSource(revoked)
+      .head(null)
+      .catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ kind: "forbidden" });
+    expect((error as SourceError).message).not.toContain("private");
+  });
+
+  it("keeps scanning when one file's metadata is denied, and does not count it as a change time", async () => {
+    const { root } = clone();
+    class DeniedFile extends MemoryFile {
+      override getFile(): Promise<Blob & { readonly lastModified: number }> {
+        return Promise.reject(new DOMException("/secret/path", "NotAllowedError"));
+      }
+    }
+    const month = (root.children.get("inbox") as MemoryDirectory).children.get(
+      "2026-10",
+    ) as MemoryDirectory;
+    month.children.set(
+      "2026-10-09T0900-bob-agent-api-01.md",
+      new DeniedFile("2026-10-09T0900-bob-agent-api-01.md", "x", NOW + 1),
+    );
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    const head = await source.head(null);
+    expect(head).not.toBe("not-modified");
+    expect(source.lastChanged()).toEqual(new Date(NOW - 4_000));
+  });
+
+  it("changes the revision when a file is deleted or renamed, and the loader keeps what it already loaded", async () => {
+    const { root, path, id } = clone();
+    const loader = new Loader(new LocalFolderSource(root, { now: () => NOW }));
+    await loader.open();
+    const month = (root.children.get("inbox") as MemoryDirectory).children.get(
+      "2026-10",
+    ) as MemoryDirectory;
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    month.children.delete(name);
+    expect(await loader.refresh()).toBe(0);
+    // Messages are an append-only log: a removed file does not remove a loaded message.
+    expect(loader.getSnapshot().items).toHaveLength(1);
+
+    const renamed = `2026-10-02T0900-alice-agent-api-01.md`;
+    const renamedId = renamed.slice(0, -3);
+    root.addFile(
+      `inbox/2026-10/${renamed}`,
+      messageText(renamedId, "alice-agent", "api", {}, "Renamed copy."),
+      NOW - 1_000,
+    );
+    expect(await loader.refresh()).toBe(1);
+    expect(loader.getSnapshot().items).toHaveLength(2);
+    expect(id).not.toBe(renamedId);
+  });
+
+  it("opens a folder that has only the marker as an empty conversation, and refuses one without it", async () => {
+    const only = new MemoryDirectory();
+    only.addFile(".agent-collab", MARKER, NOW - 1_000);
+    const loader = new Loader(new LocalFolderSource(only, { now: () => NOW }));
+    await loader.open();
+    expect(loader.getSnapshot().items).toEqual([]);
+    expect(loader.getSnapshot().lastChanged).toEqual(new Date(NOW - 1_000));
+
+    const empty = new Loader(new LocalFolderSource(new MemoryDirectory(), { now: () => NOW }));
+    await expect(empty.open()).rejects.toThrow("no .agent-collab marker");
   });
 });

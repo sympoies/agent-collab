@@ -14,6 +14,30 @@ per-IP limit, including a `304 Not Modified` response. Manual refresh is
 limited to the same five-minute interval and replaces the next scheduled poll.
 If the limit is reached, the viewer shows when to try again.
 
+## Read a local clone (experimental)
+
+If you keep a clone of the collaboration repository on your computer, the viewer
+can read it directly, with no token and no network request. This works in
+Chrome and Edge on a computer; other browsers show an explanation instead of the
+button. Choose **Open local folder (experimental)** on the welcome screen (or
+**Local folder** in the toolbar of an open viewer), then pick the clone folder
+itself, the one that contains `.agent-collab`. The viewer only reads the folder;
+it never writes to it. The page forgets the folder when you reload, so you pick
+it again each session.
+
+The page cannot run `git pull`. Keep the clone current with a background job,
+for example a timer that runs `git pull --ff-only` every 30 to 60 seconds. The
+viewer re-reads the folder by itself about every minute (every five minutes
+while the tab is hidden), shows new messages without a manual refresh, and does
+nothing when nothing changed. **Refresh** reads the folder right away.
+
+Next to the source name the toolbar shows when the marker or a message file in
+the folder last changed (topic files are not scanned), for example "Last change seen 12 minutes ago"; hover it for the exact
+time. This is the newest file modification time on your computer, not a commit
+time, so a stale clone is visible at a glance. The feature is labelled
+experimental until the viewer is served from its own origin with a stricter
+content security policy.
+
 ## Open another repository
 
 From the welcome screen, choose **Open saved repository** to reuse your stored

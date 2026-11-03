@@ -4,7 +4,7 @@
 import { useRef, useState } from "react";
 
 import type { Secret } from "../credentials/secret";
-import { Loader } from "../loader/loader";
+import { Loader, SetupError } from "../loader/loader";
 import {
   DEFAULT_DRAFT,
   draftFromSettings,
@@ -30,15 +30,29 @@ import {
   type StaticDemoView,
 } from "../settings/live-demo";
 import { demoFiles } from "../demo/fixtures";
-import type { MessageSource } from "../source/types";
-import { App, type AppProps } from "./App";
+import { SourceError, type MessageSource } from "../source/types";
+import { App, type AppProps, type SourceIndicator } from "./App";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
+
+/** A folder the user picked: the source that reads it and its display name. */
+export interface LocalFolderOpen {
+  readonly source: MessageSource;
+  readonly name: string;
+}
+
+const NO_FOLDER = "No folder selected, or the browser does not allow this folder.";
+const BLOCKED = "The browser blocked folder access for this page.";
+const TOO_LARGE_FOLDER = "This folder is too large to read. Choose the clone folder itself.";
+const NOT_A_CLONE =
+  "This folder is not a collaboration clone (no .agent-collab file). Choose the clone folder itself.";
 
 export interface RootProps extends SettingsDeps {
   readonly createSource: (settings: ViewerSettings, token: Secret) => MessageSource;
   readonly createDemoSource: () => MessageSource;
   readonly createLiveDemoSource: () => MessageSource;
+  /** Opens the browser's folder picker; null when the browser has none. Needs a user gesture. */
+  readonly openLocalFolder: (() => Promise<LocalFolderOpen>) | null;
 }
 
 interface ViewerScreen {
@@ -53,6 +67,8 @@ interface ViewerScreen {
   readonly pollIntervalMs: number | undefined;
   /** The static demo copy on screen, or null for every other viewer, live demo included. */
   readonly liveDemo: StaticDemoView | null;
+  /** Names the source when it is not a repository, such as a local folder. */
+  readonly source: SourceIndicator | null;
 }
 
 /** The demos neither read nor write browser storage, so identity choices last for the view. */
@@ -70,7 +86,7 @@ type Screen =
   | ViewerScreen;
 
 export function Root(props: RootProps) {
-  const { createSource, createDemoSource, createLiveDemoSource } = props;
+  const { createSource, createDemoSource, createLiveDemoSource, openLocalFolder } = props;
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
   const navigation = useRef(0);
@@ -78,6 +94,8 @@ export function Root(props: RootProps) {
   // open and check, and a live copy once read replaces the static copies for good.
   const [liveGate] = useState(() => new LiveCheckGate());
   const liveLoader = useRef<Loader | null>(null);
+  /** Why a folder could not be opened, shown on the welcome screen. */
+  const [localMessage, setLocalMessage] = useState<string | null>(null);
 
   const viewer = (
     loader: Loader,
@@ -87,6 +105,7 @@ export function Root(props: RootProps) {
     notice: string | null = null,
     pollIntervalMs?: number,
     liveDemo: StaticDemoView | null = null,
+    source: SourceIndicator | null = null,
   ): ViewerScreen => {
     viewers.current += 1;
     return {
@@ -99,6 +118,7 @@ export function Root(props: RootProps) {
       notice,
       pollIntervalMs,
       liveDemo,
+      source,
     };
   };
 
@@ -178,6 +198,58 @@ export function Root(props: RootProps) {
     );
   };
 
+  /**
+   * Picks and opens a local folder. The picker is called first, straight from the click, because
+   * it needs the user gesture. Nothing is saved: the handle lives only in this view.
+   */
+  const chooseLocalFolder = async (current: ViewerScreen | null): Promise<void> => {
+    if (openLocalFolder === null) return;
+    // Picking and reading a large clone take time; if the user went elsewhere meanwhile, the
+    // result is dropped instead of replacing what they are looking at.
+    const operation = ++navigation.current;
+    const refuse = (message: string) => {
+      if (operation !== navigation.current) return;
+      if (current === null) setLocalMessage(message);
+      else {
+        setScreen((previous) =>
+          previous.kind === "viewer" && previous.id === current.id
+            ? { ...previous, notice: message }
+            : previous,
+        );
+      }
+    };
+    let opened: LocalFolderOpen;
+    try {
+      opened = await openLocalFolder();
+    } catch (error) {
+      // Cancelling and a refused sensitive folder both reject; the reason is never shown. A page
+      // the browser does not trust with folders is told apart from a cancelled picker.
+      refuse(error instanceof DOMException && error.name === "SecurityError" ? BLOCKED : NO_FOLDER);
+      return;
+    }
+    const loader = new Loader(opened.source);
+    try {
+      await loader.open();
+    } catch (error) {
+      refuse(
+        error instanceof SetupError
+          ? NOT_A_CLONE
+          : error instanceof SourceError && error.kind === "too-large"
+            ? TOO_LARGE_FOLDER
+            : "This folder could not be read.",
+      );
+      return;
+    }
+    if (operation !== navigation.current) return;
+    setLocalMessage(null);
+    setScreen(
+      viewer(loader, `Local folder: ${opened.name}`, [], MEMORY_ONLY, null, undefined, null, {
+        label: "Local folder",
+        experimental: true,
+      }),
+    );
+  };
+
   const save = async (draft: SettingsDraft): Promise<DraftErrors | null> => {
     const operation = ++navigation.current;
     const result = await apply(props, draft);
@@ -200,6 +272,26 @@ export function Root(props: RootProps) {
           <button type="button" onClick={showLiveDemo}>
             Open live demo
           </button>
+          {openLocalFolder === null ? (
+            <p className="local-unsupported note">
+              Opening a local folder needs a browser that can open folders, such as Chrome or Edge
+              on a computer.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                void chooseLocalFolder(null);
+              }}
+            >
+              Open local folder (experimental)
+            </button>
+          )}
+          {localMessage !== null && (
+            <p className="error" role="alert">
+              {localMessage}
+            </p>
+          )}
           <button type="button" onClick={() => void openSavedRepository()}>
             Open saved repository
           </button>
@@ -277,6 +369,14 @@ export function Root(props: RootProps) {
           onOpenSettings={() => {
             void showSettings(screen);
           }}
+          {...(screen.source === null ? {} : { source: screen.source })}
+          {...(openLocalFolder === null
+            ? {}
+            : {
+                onPickLocalFolder: () => {
+                  void chooseLocalFolder(screen);
+                },
+              })}
           {...(screen.liveDemo === null ? {} : { onCheckLiveNow: () => checkLiveNow(screen) })}
         />
       );
