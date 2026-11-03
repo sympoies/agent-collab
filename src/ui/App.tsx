@@ -137,7 +137,7 @@ export function App({
       .then((ran) => {
         if (ran && poller === null) setError(null);
         if (!ran) {
-          setError(minimumIntervalMs > 0 ? t("refresh.demoInterval") : t("refresh.busy"));
+          setError({ key: minimumIntervalMs > 0 ? "refresh.demoInterval" : "refresh.busy" });
         }
       })
       .catch((reason: unknown) => {

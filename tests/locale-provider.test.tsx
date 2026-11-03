@@ -221,5 +221,56 @@ describe("LocaleProvider", () => {
       // were made in until the next action replaces them.
       expect(composed.querySelector(".notice")?.textContent).toBe("Already composed in English.");
     });
+
+    it("follows the new language for the refresh alert and the showing-live banner", async () => {
+      languages("en");
+      const loader = new Loader(new FixtureSource({ ".agent-collab": "collab-protocol: 1\n" }));
+      await loader.open();
+      const host = document.createElement("div");
+      document.body.append(host);
+      const root = createRoot(host);
+      mounted = { host, root };
+      await act(async () => {
+        root.render(
+          <LocaleProvider storage={memoryStorage()}>
+            <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+              <App
+                loader={loader}
+                title="Repo"
+                selfNames={new Set()}
+                identity={{ storage: null, key: "test" }}
+                notice={{ key: "live.showingLive" }}
+                pollIntervalMs={300_000}
+                onOpenSettings={() => undefined}
+              />
+            </ThemeProvider>
+          </LocaleProvider>,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+      const refresh = () =>
+        [...host.querySelectorAll("button")].find(
+          (button) => button.textContent === "Refresh" || button.textContent === "更新",
+        );
+      // The first manual refresh runs; the second inside the five-minute interval is refused.
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        await act(async () => {
+          refresh()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        });
+      }
+      expect(host.querySelector('[role="alert"]')?.textContent).toBe(
+        "The live demo refreshes every five minutes. Wait for the next check before refreshing again.",
+      );
+      expect(host.querySelector(".notice")?.textContent).toBe("Showing the live repository.");
+
+      await choose(host, "ja");
+      expect(host.querySelector('[role="alert"]')?.textContent).toBe(
+        "ライブデモは 5 分ごとに更新されます。次の確認まで待ってから更新してください。",
+      );
+      expect(host.querySelector(".notice")?.textContent).toBe(
+        "ライブのリポジトリを表示しています。",
+      );
+    });
   });
 });

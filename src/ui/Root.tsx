@@ -154,7 +154,7 @@ export function Root(props: RootProps) {
     }
   };
 
-  const liveViewer = (loader: Loader, notice: string): ViewerScreen =>
+  const liveViewer = (loader: Loader, notice: string | MessageRef): ViewerScreen =>
     viewer(
       loader,
       { key: "app.liveDemoTitle" },
@@ -167,7 +167,7 @@ export function Root(props: RootProps) {
   const showLiveDemo = () => {
     const operation = ++navigation.current;
     if (liveLoader.current !== null) {
-      setScreen(liveViewer(liveLoader.current, t("live.showingLive")));
+      setScreen(liveViewer(liveLoader.current, { key: "live.showingLive" }));
       return;
     }
     void openLiveDemo(createLiveDemoSource, demoFiles, liveGate, { t, formatDateTime }).then(
@@ -354,7 +354,7 @@ export function Root(props: RootProps) {
                     navigation.current += 1;
                     setScreen(
                       back.liveDemo !== null && liveLoader.current !== null
-                        ? liveViewer(liveLoader.current, t("live.showingLive"))
+                        ? liveViewer(liveLoader.current, { key: "live.showingLive" })
                         : back,
                     );
                   }
