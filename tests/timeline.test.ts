@@ -132,6 +132,19 @@ describe("buildRows", () => {
     expect(replies.map((view) => view.parent?.id ?? null)).toEqual([parentId, null]);
   });
 
+  it("does not resolve a loaded reply parent when the topic filter hides it", () => {
+    const parentId = "2026-10-01T0900-alice-agent-api-01";
+    const rows = buildRows(
+      [
+        item("2026-10-01T0900", "alice-agent", "api", { type: "question" }),
+        item("2026-10-01T0905", "bob-agent", "ops", { type: "answer", reply_to: parentId }),
+      ],
+      { ...OPTIONS, topic: "ops" },
+    );
+    const reply = rows.flatMap((row) => (row.kind === "group" ? row.messages : []))[0];
+    expect(reply?.parent).toBeNull();
+  });
+
   it("marks a request overdue only while no answer replies to it", () => {
     const open = "2026-10-01T0900-alice-agent-api-01";
     const rows = buildRows(
@@ -155,17 +168,14 @@ describe("buildRows", () => {
     expect(overdue).toEqual([open]);
   });
 
-  it("flags fresh messages", () => {
+  it("starts a new sender group at the unread boundary", () => {
     const fresh = item("2026-10-01T0901", "alice-agent", "api");
     const rows = buildRows([item("2026-10-01T0900", "alice-agent", "api"), fresh], {
       ...OPTIONS,
       fresh: new Set([fresh.kind === "message" ? fresh.message.path : ""]),
     });
-    const group = rows.find((row) => row.kind === "group");
-    expect(group?.kind === "group" ? group.messages.map((view) => view.fresh) : []).toEqual([
-      false,
-      true,
-    ]);
+    const groups = rows.filter((row) => row.kind === "group");
+    expect(groups.map((row) => row.messages.map((view) => view.fresh))).toEqual([[false], [true]]);
   });
 
   it("keys groups by file path so two files with one id stay distinct", () => {

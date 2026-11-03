@@ -26,6 +26,7 @@ import { LIVE_DEMO_POLL_INTERVAL_MS, openLiveDemo } from "../settings/live-demo"
 import type { MessageSource } from "../source/types";
 import { App } from "./App";
 import { SettingsView } from "./SettingsView";
+import { ThemeToggle } from "./ThemeProvider";
 
 export interface RootProps extends SettingsDeps {
   readonly createSource: (settings: ViewerSettings, token: Secret) => MessageSource;
@@ -125,7 +126,12 @@ export function Root(props: RootProps) {
     case "welcome":
       return (
         <div className="app settings">
-          <h1>Agent collaboration viewer</h1>
+          <header className="bar settings-bar">
+            <h1>Agent collaboration viewer</h1>
+            <div className="bar-actions">
+              <ThemeToggle />
+            </div>
+          </header>
           <button type="button" onClick={showLiveDemo}>
             Open live demo
           </button>
@@ -146,6 +152,12 @@ export function Root(props: RootProps) {
       const back = screen.back;
       return (
         <div className="app">
+          <header className="bar settings-bar">
+            <h1>Collab Viewer</h1>
+            <div className="bar-actions">
+              <ThemeToggle />
+            </div>
+          </header>
           <SettingsView
             initial={screen.draft}
             storedEndpoints={screen.storedEndpoints}

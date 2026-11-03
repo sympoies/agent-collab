@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Loader } from "../src/loader/loader";
 import { App } from "../src/ui/App";
+import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { SourceError, type DirectoryEntry, type MessageSource } from "../src/source/types";
 import { flat, MARKER, messageText } from "./support";
 
@@ -75,14 +76,16 @@ describe("App rate-limit recovery for older messages", () => {
 
     await act(async () => {
       root.render(
-        <App
-          loader={loader}
-          title="Live demo"
-          selfNames={new Set()}
-          notice={null}
-          pollIntervalMs={5 * MINUTE}
-          onOpenSettings={() => undefined}
-        />,
+        <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+          <App
+            loader={loader}
+            title="Live demo"
+            selfNames={new Set()}
+            notice={null}
+            pollIntervalMs={5 * MINUTE}
+            onOpenSettings={() => undefined}
+          />
+        </ThemeProvider>,
       );
       await vi.advanceTimersByTimeAsync(0);
       for (let attempt = 0; attempt < 10 && loader.getSnapshot().items.length === 0; attempt += 1) {
