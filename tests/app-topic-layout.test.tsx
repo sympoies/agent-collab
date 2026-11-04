@@ -169,6 +169,39 @@ describe("topic list screen", () => {
     expect(rowLabels().slice(3)).toEqual(["The API", "Fresh topic", "Documentation", "Operations"]);
   });
 
+  it("moves a topic with a newer reply to the top after a refresh without moving the reader", async () => {
+    const source = new FixtureSource(files);
+    await mount(source);
+    await click(entry("Operations"));
+    expect(entry("Operations").getAttribute("aria-pressed")).toBe("true");
+
+    const reply = "2026-10-06T0900-alice-agent-api-02";
+    const commit = () => {
+      source.commit({
+        ...files,
+        [`topics/api/inbox/2026-10/${reply}.md`]: messageText(reply, "alice-agent", "api", {
+          type: "ack",
+          reply_to: API_ID,
+        }),
+      });
+    };
+    // Focus inside the list holds the order, whatever a refresh brings.
+    act(() => {
+      entry("Documentation").focus();
+    });
+    commit();
+    await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
+    expect(rowLabels().slice(3)).toEqual(["Documentation", "Operations", "The API"]);
+
+    // Leaving the list applies it; the open topic stays open and listed.
+    act(() => {
+      entry("Documentation").blur();
+    });
+    await settle();
+    expect(rowLabels().slice(3)).toEqual(["The API", "Documentation", "Operations"]);
+    expect(entry("Operations").getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("retries a topic whose activity could not be read on the next refresh", async () => {
     const source = new FixtureSource(files);
     source.failListings(["topics/api"]);

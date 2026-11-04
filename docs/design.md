@@ -398,6 +398,9 @@ reads no message until a topic is chosen (`TopicList`, `src/ui/TopicList.tsx`):
   the same button keeps focus, "Show fewer" collapses) lists the rest. The open topic is always
   listed. A long list scrolls inside the conversation list, not the page. Pinned topics (a later
   slice) go at the head of the sorted list; unread and question counters will come with them.
+- The sort key is the id of the topic's newest message of any kind (replies, acknowledgements and
+  reminders count). The list does not reorder while the pointer or keyboard focus is inside it; a
+  new order applies when the reader leaves, and the open topic stays open and listed.
 - Recent activity (`TopicSession.digest`) is read in the background after the list is shown, for
   every open topic with bounded concurrency, because the cut at 12 needs it; closed topics are read
   only once their group is opened. A refresh re-reads the topics whose tree id changed, and retries

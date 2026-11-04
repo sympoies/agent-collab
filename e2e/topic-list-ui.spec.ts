@@ -192,6 +192,8 @@ test.describe("topic list navigation", () => {
           for (const [index, label] of text.entries.entries()) {
             await expect(rows.nth(index)).toContainText(label);
           }
+          // The list does not reorder under the pointer: keep it out of the list.
+          await page.mouse.move(width - 20, 300);
           // Activity arrives after the list: the topic with a message moves up.
           await expect(rows.nth(3)).toHaveText("The API");
           await expect(rows.nth(4)).toHaveText(LONG_TOPIC);

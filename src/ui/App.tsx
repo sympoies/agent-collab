@@ -332,6 +332,13 @@ export function App({
     setError,
   );
   const sortedTopics = useMemo(() => sortTopicSummaries(topicList, digests), [digests, topicList]);
+  // The list does not reorder under the pointer or the keyboard focus: a new order waits until the
+  // reader leaves it.
+  const [listHeld, setListHeld] = useState({ pointer: false, focus: false });
+  const [listedTopics, setListedTopics] = useState(sortedTopics);
+  if (!listHeld.pointer && !listHeld.focus && listedTopics !== sortedTopics) {
+    setListedTopics(sortedTopics);
+  }
   const openTopic = (summary: TopicSummary, button: HTMLButtonElement) => {
     if (topicSession === null) return;
     setOpenedTopics((previous) =>
@@ -648,7 +655,24 @@ export function App({
         >
           <aside className="topics-pane">
             <h2>{t(topicLayout ? "nav.topics" : "nav.conversations")}</h2>
-            <nav className="topics" aria-label={t("nav.topics")}>
+            <nav
+              className="topics"
+              aria-label={t("nav.topics")}
+              onPointerEnter={() => {
+                setListHeld((held) => ({ ...held, pointer: true }));
+              }}
+              onPointerLeave={() => {
+                setListHeld((held) => ({ ...held, pointer: false }));
+              }}
+              onFocus={() => {
+                setListHeld((held) => ({ ...held, focus: true }));
+              }}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setListHeld((held) => ({ ...held, focus: false }));
+                }
+              }}
+            >
               <button
                 type="button"
                 aria-pressed={view === "chat" && topic === null}
@@ -691,7 +715,7 @@ export function App({
               </button>
               {topicLayout ? (
                 <TopicList
-                  topics={sortedTopics}
+                  topics={listedTopics}
                   selected={topic}
                   pressed={view === "chat" ? topic : null}
                   closedOpen={closedOpen}
