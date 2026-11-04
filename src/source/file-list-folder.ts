@@ -71,14 +71,14 @@ export async function filesFromFolderDrop(
     });
 
   const walk = async (entry: FolderDropEntry, root: string, parent: string): Promise<void> => {
-    // Excluded folders and unrelated repository paths are skipped before inspecting their names.
+    // Ignored folders are excluded before counting; unrelated entries count before path filtering.
     if (entry.isDirectory && IGNORED_DIRECTORIES.has(entry.name)) return;
     const insidePath = parent === "" ? entry.name : `${parent}/${entry.name}`;
+    entries += 1;
+    if (entries > maxEntries) throw new SourceError("too-large", "", null, null, TOO_LARGE);
     const selectedPath = selectedRepositoryPath(`${root}/${insidePath}`, entry.isDirectory);
     if (selectedPath.kind !== "selected") return;
     const path = `${root}/${insidePath}`;
-    entries += 1;
-    if (entries > maxEntries) throw new SourceError("too-large", "", null, null, TOO_LARGE);
 
     if (entry.isFile) {
       if (entry.file === undefined) return;

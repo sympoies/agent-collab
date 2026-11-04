@@ -418,4 +418,19 @@ describe("FileListFolderSource", () => {
     });
     expect(fileReads).toBe(0);
   });
+
+  it("counts unrelated entry-based drop files toward the entry cap", async () => {
+    let unrelatedReads = 0;
+    const transfer = dataTransfer(
+      droppedDirectory("clone", [
+        droppedFile("README.md", "unrelated", () => (unrelatedReads += 1)),
+        droppedDirectory("inbox", [droppedFile("message.md", "message")]),
+      ]),
+    );
+
+    await expect(filesFromFolderDrop(transfer, { maxEntries: 3 })).rejects.toMatchObject({
+      kind: "too-large",
+    });
+    expect(unrelatedReads).toBe(0);
+  });
 });
