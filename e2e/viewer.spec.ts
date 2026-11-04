@@ -3189,3 +3189,60 @@ for (const code of LOCALES) {
     assertRequests();
   });
 }
+
+// A long conversation opens at its latest message. Tagged "@csp" so WebKit covers it too: it does
+// not implement CSS scroll anchoring the way Chromium does.
+for (const code of LOCALES) {
+  const messages = catalogsByLocale[code];
+  for (const view of [
+    { label: "desktop", size: { width: 1280, height: 800 } },
+    { label: "phone", size: { width: 390, height: 844 } },
+  ] as const) {
+    test(`a long conversation opens at the latest message in ${LOCALE_NAMES[code]} on ${view.label} @csp`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(view.size);
+      await page.addInitScript((locale) => {
+        localStorage.setItem("agent-collab-viewer.locale", locale);
+      }, code);
+      const assertRequests = await installApiStub(page, "long");
+      await page.goto("/");
+      await page.getByRole("button", { name: messages["welcome.openAnother"] }).click();
+      await page
+        .getByRole("textbox", { name: messages["settings.repository"], exact: true })
+        .fill("alice-agent/fixture-repo");
+      await page.getByLabel(messages["settings.branch"]).fill("main");
+      await page.getByLabel(messages["settings.myNames"]).fill("alice-agent");
+      await page.getByLabel(messages["settings.token"]).fill("fake-token");
+      await page.getByRole("button", { name: messages["settings.saveOpen"] }).click();
+      if (view.label === "phone") {
+        // The phone shows the topic list first; opening All shows the conversation.
+        await page.getByRole("button", { name: messages["nav.all"] }).click();
+      }
+      await expect(page.locator(".message")).toHaveCount(30);
+      const last = page.locator(".message").last();
+      const pane = page.getByRole("main");
+      const atLatest = () =>
+        last.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          const area = (node.closest("main") as HTMLElement).getBoundingClientRect();
+          return box.bottom <= area.bottom + 1 && box.top < area.bottom;
+        });
+      await expect.poll(atLatest).toBe(true);
+      expect(await pane.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+
+      // "Jump to latest" still works from the top of the pane.
+      await pane.evaluate((node) => {
+        node.scrollTo({ top: 0, behavior: "instant" });
+      });
+      await expect.poll(atLatest).toBe(false);
+      await page.getByRole("link", { name: messages["nav.jumpLatest"] }).click();
+      await expect.poll(atLatest).toBe(true);
+      assertRequests();
+    });
+  }
+}

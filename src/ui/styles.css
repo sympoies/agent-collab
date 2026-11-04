@@ -587,6 +587,8 @@ button:hover {
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-behavior: smooth;
+  /* The pane keeps the reader in place itself when older messages are added (follow-latest.ts). */
+  overflow-anchor: none;
   padding: 16px clamp(10px, 3vw, 36px) 36px;
   background: var(--card);
   border: 1px solid var(--border);

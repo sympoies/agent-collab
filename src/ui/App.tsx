@@ -36,6 +36,7 @@ import { Toolbar } from "./Toolbar";
 import { RangeBar } from "./RangeBar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
+import { useFollowLatest } from "./follow-latest";
 import { TopicList } from "./TopicList";
 import { useMergedSnapshot } from "./merged-snapshot";
 import { useTopicDigests } from "./useTopicDigests";
@@ -204,6 +205,7 @@ export function App({
   );
   const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
+  const messagePane = useRef<HTMLElement | null>(null);
   const conversationHeading = useRef<HTMLHeadingElement | null>(null);
   const lastTopicButton = useRef<HTMLButtonElement | null>(null);
   const announcedMessages = useRef<Set<string>>(new Set());
@@ -453,6 +455,14 @@ export function App({
       }),
     [snapshot.items, snapshot.fresh, viewer, topic, receipts],
   );
+  // Before the effect below consumes a pending jump: a message opened by link keeps its place.
+  useFollowLatest(
+    messagePane,
+    view === "chat" ? (topic ?? "") : null,
+    mobileConversation,
+    rows,
+    pendingJump,
+  );
   const showMessage = (id: string) => {
     // The hash scrolls to the message and styles it through :target.
     if (window.location.hash === `#msg-${id}`) window.location.hash = "";
@@ -507,7 +517,7 @@ export function App({
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (mobileConversation) {
-        conversationHeading.current?.focus();
+        conversationHeading.current?.focus({ preventScroll: true });
       } else {
         lastTopicButton.current?.focus();
       }
@@ -785,7 +795,12 @@ export function App({
               )}
             </nav>
           </aside>
-          <main className="conversation" aria-labelledby="conversation-heading" tabIndex={0}>
+          <main
+            className="conversation"
+            aria-labelledby="conversation-heading"
+            tabIndex={0}
+            ref={messagePane}
+          >
             <button
               type="button"
               className="back-to-topics"
