@@ -46,6 +46,43 @@ describe("LiveCheckGate", () => {
   });
 });
 
+describe("LiveCheckGate and a token", () => {
+  it("tells a rate-limit block from the normal spacing, and a token opens it", () => {
+    const time = clock();
+    const gate = new LiveCheckGate(time.now);
+    gate.record(null);
+    expect(gate.rateLimited()).toBe(false);
+    gate.record(new SourceError("rate-limited", "", 403, new Date(time.now() + 40 * MINUTE)));
+    expect(gate.rateLimited()).toBe(true);
+    gate.reset();
+    expect(gate.nextCheckAt()).toBeNull();
+    expect(gate.rateLimited()).toBe(false);
+    // The block ends by itself too.
+    gate.record(new SourceError("rate-limited", "", 403, new Date(time.now() + MINUTE)));
+    time.advance(6 * MINUTE);
+    expect(gate.rateLimited()).toBe(false);
+  });
+
+  it("reports the limit as the reason a check or the open left the static copy in place", async () => {
+    const time = clock();
+    const gate = new LiveCheckGate(time.now);
+    const checked = await checkLive(
+      () => rateLimitedSource(new Date(time.now() + 40 * MINUTE)),
+      { kind: "bundled" },
+      gate,
+      presenterEn,
+    );
+    expect(checked.rateLimited).toBe(true);
+    const again = await checkLive(
+      () => new FixtureSource({}),
+      { kind: "bundled" },
+      gate,
+      presenterEn,
+    );
+    expect(again.rateLimited).toBe(true);
+  });
+});
+
 describe("LiveCheckGate ties", () => {
   it("allows a request exactly at the reset time", () => {
     const time = clock();

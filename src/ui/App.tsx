@@ -78,6 +78,12 @@ export interface AppProps {
   /** Chooses another local folder; omitted when the browser cannot open folders. */
   readonly onPickLocalFolder?: () => void;
   readonly onOpenSettings: () => void;
+  /** Opens the token section of Settings; offered when the API limit is the problem. */
+  readonly onUseToken?: () => void;
+  /** The API limit is why a static copy stays on screen (live demo notices). */
+  readonly limitHit?: boolean;
+  /** The viewer reads with a token: shows the higher-limit banner and a way to remove it. */
+  readonly signedIn?: { readonly onRemove: () => void };
 }
 
 export function App({
@@ -91,10 +97,15 @@ export function App({
   onCheckLiveNow,
   source,
   onPickLocalFolder,
+  onUseToken,
+  limitHit = false,
+  signedIn,
 }: AppProps) {
   const { t, formatDateTime } = useLocale();
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const now = useNow(source !== undefined && snapshot.lastChanged !== null);
+  // The budget the API reported with its latest response; null until a response carried one.
+  const budget = signedIn === undefined ? null : loader.rateLimit();
   const pollerRef = useRef<Poller | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
   const [view, setView] = useState<"chat" | "questions" | "files">("chat");
@@ -414,6 +425,26 @@ export function App({
       {error !== null && (
         <p className="error" role="alert">
           {errorText(error, t, formatDateTime)}
+        </p>
+      )}
+      {onUseToken !== undefined &&
+        signedIn === undefined &&
+        (limitHit || (error instanceof SourceError && error.kind === "rate-limited")) && (
+          <p className="notice-action">
+            <button type="button" onClick={onUseToken}>
+              {t("notice.useToken")}
+            </button>
+          </p>
+        )}
+      {signedIn !== undefined && (
+        <p className="notice signed-in">
+          {t("signedIn.banner")}
+          {budget !== null && (
+            <> {t("signedIn.remaining", { remaining: budget.remaining, limit: budget.limit })}</>
+          )}{" "}
+          <button type="button" onClick={signedIn.onRemove}>
+            {t("signedIn.remove")}
+          </button>
         </p>
       )}
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">

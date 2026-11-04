@@ -6,6 +6,9 @@ import { POLL } from "../loader/poller";
 import { FixtureSource } from "../source/fixture";
 import { DemoSnapshotSource, readDemoSnapshot, type DemoSnapshot } from "./demo-snapshot";
 
+/** The public demo repository: public, so no permission beyond default read access is needed. */
+export const DEMO_REPOSITORY = "sympoies/agent-collab-demo";
+
 /** Anonymous sessions poll every five minutes, regardless of page visibility. */
 export const LIVE_DEMO_POLL_INTERVAL_MS = 5 * 60_000;
 
@@ -30,6 +33,7 @@ export type LiveDemoView = StaticDemoView | { readonly kind: "live" };
  */
 export class LiveCheckGate {
   private blockedUntil = 0;
+  private limited = false;
 
   constructor(private readonly now: () => number = Date.now) {}
 
@@ -38,10 +42,25 @@ export class LiveCheckGate {
     return this.blockedUntil > this.now() ? new Date(this.blockedUntil) : null;
   }
 
+  /**
+   * Opens the gate. A token has its own budget, so a block that came from the anonymous limit no
+   * longer applies; the authenticated responses decide from their own headers.
+   */
+  reset(): void {
+    this.blockedUntil = 0;
+    this.limited = false;
+  }
+
+  /** Whether the block in force comes from a rate-limit response, not from the normal spacing. */
+  rateLimited(): boolean {
+    return this.limited && this.nextCheckAt() !== null;
+  }
+
   /** Records a request that just finished; `error` is its failure, or null for success. */
   record(error: unknown): void {
     const now = this.now();
     let wait = LIVE_DEMO_POLL_INTERVAL_MS;
+    this.limited = error instanceof SourceError && error.kind === "rate-limited";
     if (error instanceof SourceError && error.kind === "rate-limited") {
       wait =
         error.retryAt === null ? POLL.maxBackoffMs : Math.max(wait, error.retryAt.getTime() - now);
@@ -104,6 +123,8 @@ export interface LiveCheck {
   /** The complete live copy, or null when the static copy stays. */
   readonly loader: Loader | null;
   readonly notice: string;
+  /** The API limit is why the static copy stays; a token would raise it. */
+  readonly rateLimited: boolean;
 }
 
 /**
@@ -118,11 +139,21 @@ export async function checkLive(
 ): Promise<LiveCheck> {
   const blockedUntil = gate.nextCheckAt();
   if (blockedUntil !== null) {
-    return { loader: null, notice: liveCheckNotice(view, null, blockedUntil, text) };
+    return {
+      loader: null,
+      notice: liveCheckNotice(view, null, blockedUntil, text),
+      rateLimited: gate.rateLimited(),
+    };
   }
   const result = await openLive(createSource, gate);
-  if ("loader" in result) return { loader: result.loader, notice: text.t("live.checked") };
-  return { loader: null, notice: liveCheckNotice(view, result.error, gate.nextCheckAt(), text) };
+  if ("loader" in result) {
+    return { loader: result.loader, notice: text.t("live.checked"), rateLimited: false };
+  }
+  return {
+    loader: null,
+    notice: liveCheckNotice(view, result.error, gate.nextCheckAt(), text),
+    rateLimited: gate.rateLimited(),
+  };
 }
 
 /** Opens a viewer source without settings or credential-store access. */
@@ -130,6 +161,8 @@ export interface LiveDemoOpen {
   readonly loader: Loader;
   readonly view: LiveDemoView;
   readonly banner: string;
+  /** The API limit is why the demo shows a static copy. */
+  readonly rateLimited: boolean;
 }
 
 /**
@@ -155,6 +188,7 @@ export async function openLiveDemo(
         banner: text.t("live.showingSnapshot", {
           date: text.formatDateTime(new Date(snapshot.generatedAt)),
         }),
+        rateLimited: false,
       };
     } catch {
       // A malformed snapshot is treated as missing and uses the same fallback order below.
@@ -171,11 +205,12 @@ export async function openLiveDemo(
         loader: result.loader,
         view: { kind: "live" },
         banner: text.t("live.snapshotMissing"),
+        rateLimited: false,
       };
     }
     banner = liveCheckNotice(bundled, result.error, gate.nextCheckAt(), text);
   }
   const loader = new Loader(new FixtureSource(bundledFiles));
   await loader.open();
-  return { loader, view: bundled, banner };
+  return { loader, view: bundled, banner, rateLimited: gate.rateLimited() };
 }

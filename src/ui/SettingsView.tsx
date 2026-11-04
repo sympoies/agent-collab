@@ -1,7 +1,7 @@
 // Settings screen. Secret inputs are masked, never prefilled and never echoed back.
 
 import { useLocale } from "../i18n/LocaleProvider";
-import { useState, type ReactNode, type SubmitEvent } from "react";
+import { useEffect, useRef, useState, type ReactNode, type SubmitEvent } from "react";
 
 import {
   savedForm,
@@ -10,6 +10,8 @@ import {
   type DraftErrors,
   type SettingsDraft,
 } from "../settings/model";
+import { DEMO_REPOSITORY } from "../settings/live-demo";
+import { PLAIN_TOKEN_URL, tokenCreationUrl } from "../settings/token-link";
 
 export interface SettingsViewProps {
   readonly initial: SettingsDraft;
@@ -21,6 +23,8 @@ export interface SettingsViewProps {
   readonly onCancel: (() => void) | null;
   readonly onOpenDemo: () => void;
   readonly onOpenLiveDemo: () => void;
+  /** Scroll to the token section and focus its field when the screen opens. */
+  readonly focusToken?: boolean;
 }
 
 export function SettingsView(props: SettingsViewProps) {
@@ -31,6 +35,25 @@ export function SettingsView(props: SettingsViewProps) {
   const storedFor = props.storedEndpoints[draft.credentialStorage];
   const stored = storedFor !== null && storedFor === savedForm(draft.endpoint);
   const anyStored = Object.values(props.storedEndpoints).some((endpoint) => endpoint !== null);
+  const tokenInput = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (props.focusToken !== true) return;
+    // scrollIntoView is missing in some test DOMs.
+    if (typeof tokenInput.current?.scrollIntoView === "function") {
+      tokenInput.current.scrollIntoView({ block: "center" });
+    }
+    tokenInput.current?.focus();
+    // Only when the screen opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const createUrl = tokenCreationUrl({
+    endpoint: draft.endpoint,
+    repository: draft.repository,
+    // The demo repository is public; any other repository may be private.
+    privateAccess: draft.repository !== "" && draft.repository !== DEMO_REPOSITORY,
+    name: t("settings.tokenName"),
+    description: t("settings.tokenDescription"),
+  });
   const hostname = typeof window === "undefined" ? "" : window.location.hostname;
 
   const update = (field: keyof SettingsDraft) => (value: string) => {
@@ -133,10 +156,26 @@ export function SettingsView(props: SettingsViewProps) {
         />,
         t("settings.myNamesHint"),
       )}
+      <section id="token-section" className="token-help">
+        <p>{t("settings.tokenWhy")}</p>
+        <p>{t("settings.tokenPublic")}</p>
+        <p>{t("settings.tokenPrivate")}</p>
+        {createUrl !== null && (
+          <p className="token-links">
+            <a href={createUrl} target="_blank" rel="noopener noreferrer">
+              {t("settings.tokenCreate")}
+            </a>{" "}
+            <a href={PLAIN_TOKEN_URL} target="_blank" rel="noopener noreferrer">
+              {t("settings.tokenCreatePlain")}
+            </a>
+          </p>
+        )}
+      </section>
       {field(
         "token",
         t("settings.token"),
         <input
+          ref={tokenInput}
           type="password"
           autoComplete="off"
           spellCheck={false}

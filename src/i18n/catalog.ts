@@ -226,6 +226,24 @@ export const en = {
   "error.needsToken": "This repository needs a token or does not exist.",
   "file.badgeOther": "FILE",
   "bar.more": "More",
+  "settings.tokenName": "Collab Viewer (read-only)",
+  "settings.tokenDescription": "Read-only access for the Collab Viewer web page.",
+  "notice.useToken": "Use a token for a higher limit",
+  "settings.tokenWhy":
+    "A token raises the GitHub limit from 60 to 5,000 requests per hour. It is only sent to the configured API host and stays in memory unless you choose the encrypted browser store.",
+  "settings.tokenPublic":
+    "For a public repository the token needs no permission beyond the default read access.",
+  "settings.tokenPrivate":
+    "For a private repository it needs read access to the contents of that one repository.",
+  "settings.tokenCreate": "Create a token on GitHub",
+  "settings.tokenCreatePlain": "Open the plain token page",
+  "signedIn.banner": "Signed in with a token: higher limit.",
+  "signedIn.remaining": "{remaining} of {limit} requests left this hour.",
+  "signedIn.remove": "Remove token",
+  "welcome.demoHeading": "Try the demo",
+  "welcome.connectHeading": "Connect a repository",
+  "welcome.limits":
+    "The demo needs no token, but GitHub allows only 60 anonymous requests per hour per address. A read-only token raises that to 5,000.",
 } as const;
 
 export type MessageKey = keyof typeof en;

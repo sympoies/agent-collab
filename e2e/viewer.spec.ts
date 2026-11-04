@@ -689,7 +689,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   expect(focused.outlineWidth).toBe("3px");
 
   // Viewing as, Profile & colors, Local folder, language, theme, Settings, Questions, Files, All, then the first topic.
-  for (let tab = 0; tab < 10; tab += 1) await page.keyboard.press("Tab");
+  // The signed-in banner's Remove token button is one more stop before the topics.
+  for (let tab = 0; tab < 11; tab += 1) await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "#release" })).toHaveAttribute(
     "aria-pressed",
@@ -876,6 +877,29 @@ test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
   // Until the reset, further checks and a reopened demo make no API request.
   await page.getByRole("button", { name: "Check live now" }).click();
   await expect(page.locator(".notice")).toContainText("paused");
+
+  // The limit is a dead end no more: the notice offers a token, and the action opens Settings at
+  // the token section with the demo repository filled in and the token field focused.
+  await page.getByRole("button", { name: "Use a token for a higher limit" }).click();
+  await expect(page.locator("#token-section")).toBeVisible();
+  await expect(page.locator('input[type="password"]')).toBeFocused();
+  await expect(page.getByRole("textbox", { name: "Repository", exact: true })).toHaveValue(
+    "sympoies/agent-collab-demo",
+  );
+  const create = page.getByRole("link", { name: "Create a token on GitHub" });
+  await expect(create).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(create).toHaveAttribute("target", "_blank");
+  const target = new URL((await create.getAttribute("href")) ?? "");
+  expect(`${target.origin}${target.pathname}`).toBe(
+    "https://github.com/settings/personal-access-tokens/new",
+  );
+  expect(Object.fromEntries(target.searchParams)).toMatchObject({
+    expires_in: "30",
+    target_name: "sympoies",
+  });
+  expect(target.searchParams.has("contents")).toBe(false);
+  await expectNoClipping(page, ".token-help, .token-help p, .token-help a");
+  await page.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Open live demo" }).click();
   await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
@@ -1090,6 +1114,30 @@ for (const identity of identityCases) {
     const jumped = page.locator("#msg-2026-10-08T0910-alice-agent-ops-01");
     await expect(jumped).toBeInViewport();
     await expect(jumped.locator(".conclusion")).toContainText("We chose North.");
+    assertRequests();
+  });
+}
+
+for (const identity of identityCases) {
+  test(`a signed-in viewer shows the higher-limit banner and removes the token on ${identity.label} in ${identity.theme}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: identity.scheme });
+    await page.setViewportSize(identity.viewport);
+    const assertRequests = await openViewer(page, "attachments");
+    const banner = page.locator(".signed-in");
+    await expect(banner).toContainText("Signed in with a token: higher limit.");
+    await expectNoClipping(page, ".signed-in, .signed-in button");
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `signed-in-${identity.label}-${identity.theme}.png`);
+    // The token never reaches the page text.
+    expect(await page.locator("body").innerText()).not.toContain("fake-token");
+    await banner.getByRole("button", { name: "Remove token" }).click();
+    await expect(page.getByRole("heading", { name: "Try the demo" })).toBeVisible();
+    await expect(page.getByText("60 anonymous requests per hour")).toBeVisible();
+    await expectNoClipping(page, ".settings button, .settings h2, .settings .note");
     assertRequests();
   });
 }
@@ -1753,7 +1801,7 @@ for (const code of LOCALES) {
         page.getByRole("button", { name: messages["welcome.openLiveDemo"] }),
       ).toBeVisible();
       await expect(page.getByRole("button", { name: messages["welcome.openLocal"] })).toBeVisible();
-      await expectNoClipping(page, ".settings button, .settings h1");
+      await expectNoClipping(page, ".settings button, .settings h1, .settings h2, .settings .note");
       await saveScreenshot(page, `i18n-welcome-${code}-${view.label}.png`);
 
       // The choice survives a reload and reaches the viewer.
@@ -1762,7 +1810,7 @@ for (const code of LOCALES) {
       await page.getByRole("button", { name: messages["welcome.openAnother"] }).click();
       await expectNoClipping(
         page,
-        ".settings button, .settings .field > span, .settings legend, .settings .note",
+        ".settings button, .settings .field > span, .settings legend, .settings .note, .token-help, .token-help p, .token-help a",
       );
       await saveScreenshot(page, `i18n-settings-${code}-${view.label}.png`);
       await page.getByRole("button", { name: messages["settings.openOffline"] }).click();

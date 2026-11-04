@@ -70,13 +70,13 @@ function createSource(settings: ViewerSettings, token: Secret): MessageSource {
   }
 }
 
-function createLiveDemoSource(): MessageSource {
+function createLiveDemoSource(token: Secret | null): MessageSource {
   const source = new GitHubSource({
     apiBase: "https://api.github.com",
     owner: "sympoies",
     repo: "agent-collab-demo",
     branch: null,
-    token: null,
+    token,
   });
   let storage: Pick<Storage, "getItem" | "setItem"> | null = null;
   try {
