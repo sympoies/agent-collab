@@ -12,7 +12,9 @@ import { DEMO_REPOSITORY } from "../src/settings/live-demo";
 import { PLAIN_TOKEN_URL, tokenCreationUrl } from "../src/settings/token-link";
 import { FixtureSource } from "../src/source/fixture";
 import { SourceError, type MessageSource, type RateLimit } from "../src/source/types";
+import { DEFAULT_DRAFT } from "../src/settings/model";
 import { App } from "../src/ui/App";
+import { SettingsView } from "../src/ui/SettingsView";
 import { Root } from "../src/ui/Root";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { messageText } from "./support";
@@ -84,6 +86,62 @@ describe("the token link", () => {
 
   it("has no link for an endpoint that is not GitHub's public API", () => {
     expect(url({ endpoint: "https://git.example.com/api/v3" })).toBeNull();
+  });
+});
+
+describe("the Settings link, through the screen", () => {
+  let host: HTMLElement;
+  let root: ReactRoot;
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    document.body.replaceChildren();
+  });
+
+  async function settingsFor(repository: string): Promise<URL> {
+    host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => {
+      root.render(
+        <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+          <SettingsView
+            initial={{ ...DEFAULT_DRAFT, repository }}
+            storedEndpoints={{ memory: null, "browser-encrypted": null }}
+            onSave={() => Promise.resolve(null)}
+            onRemoveCredentials={() => Promise.resolve()}
+            onCancel={null}
+            onOpenDemo={() => undefined}
+            onOpenLiveDemo={() => undefined}
+          />
+        </ThemeProvider>,
+      );
+      await Promise.resolve();
+    });
+    const link = [...host.querySelectorAll<HTMLAnchorElement>("#token-section a")].find(
+      (candidate) => candidate.textContent === "Create a token on GitHub",
+    );
+    expect(link).toBeDefined();
+    return new URL(link?.href ?? "");
+  }
+
+  it("asks for read access to contents and names the typed owner for a repository that is not the demo", async () => {
+    const params = (await settingsFor("alice-org/collab")).searchParams;
+    expect(params.get("contents")).toBe("read");
+    expect(params.get("target_name")).toBe("alice-org");
+  });
+
+  it("asks for no permission for the public demo repository", async () => {
+    const params = (await settingsFor(DEMO_REPOSITORY)).searchParams;
+    expect(params.has("contents")).toBe(false);
+    expect(params.get("target_name")).toBe("sympoies");
+  });
+
+  it("asks for no permission and names no owner before a repository is typed", async () => {
+    const params = (await settingsFor("")).searchParams;
+    expect(params.has("contents")).toBe(false);
+    expect(params.has("target_name")).toBe(false);
   });
 });
 

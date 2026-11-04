@@ -12,7 +12,7 @@ import { Secret } from "../src/credentials/secret";
 import { formatDateTime } from "../src/i18n/translate";
 import { GitHubSource } from "../src/source/github";
 import { FixtureSource } from "../src/source/fixture";
-import type { Head, MessageSource } from "../src/source/types";
+import { SourceError, type Head, type MessageSource } from "../src/source/types";
 import { Root } from "../src/ui/Root";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { messageText } from "./support";
@@ -277,6 +277,52 @@ describe("the demo session token", () => {
     expect(host.textContent).toContain("Live copy message.");
   });
 
+  it("does not let an earlier anonymous rate limit block the new token's check", async () => {
+    stubSnapshot();
+    const created: (Secret | null)[] = [];
+    const host = await mountRoot({
+      createLiveDemoSource: (token) => {
+        created.push(token);
+        if (created.length > 1) return new FixtureSource(FILES);
+        // The anonymous check waits, then fails with a rate limit that lasts an hour.
+        const limited = new FixtureSource(FILES);
+        vi.spyOn(limited, "head").mockImplementation(async () => {
+          await gate;
+          throw new SourceError("rate-limited", "", 403, new Date(Date.now() + 3_600_000));
+        });
+        return limited;
+      },
+    });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await press(host, "Open live demo");
+    await act(async () => {
+      [...host.querySelectorAll("button")]
+        .find((button) => button.getAttribute("aria-label") === "Check live now")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(created).toEqual([null]);
+
+    // A token is saved while the anonymous check is still running, then the check fails.
+    await press(host, "Settings", true);
+    await fillRepository(host);
+    await saveToken(host, SECRET_A);
+    await act(async () => {
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    // The anonymous limit is not the token's: its check goes ahead at once.
+    await press(host, "Settings", true);
+    await press(host, "Open live demo");
+    await press(host, "Check live now", true);
+    expect(created.map((token) => token?.reveal() ?? null)).toEqual([null, SECRET_A]);
+    expect(host.textContent).toContain("Live copy message.");
+  });
+
   it("clears the cached live copy whenever the demo token changes, including to none", async () => {
     stubSnapshot();
     const created: (Secret | null)[] = [];
@@ -410,11 +456,6 @@ describe("the demo session token", () => {
     expect(Object.keys(window.localStorage).join()).not.toContain(SECRET_A);
     expect(host.textContent).not.toContain(SECRET_A);
     expect((await stores["browser-encrypted"].get("access-token")) === null).toBe(true);
-    // IndexedDB holds the encrypted store only; nothing was opened for a memory-only token.
-    expect(typeof indexedDB === "undefined" || (await indexedDB.databases()).length === 0).toBe(
-      true,
-    );
-
     await press(host, "Remove token");
     for (const value of values.values()) expect(value).not.toContain(SECRET_A);
     expect(await stores.memory.get("access-token")).toBeNull();

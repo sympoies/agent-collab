@@ -254,8 +254,12 @@ export function Root(props: RootProps) {
       t,
       formatDateTime,
     });
-    // The token may have been removed or replaced while this ran; its result is then dropped.
-    if (generation !== tokenGeneration.current) return;
+    // The token may have been removed or replaced while this ran; its result is then dropped, and
+    // so is the block it recorded: that limit belonged to another identity's budget.
+    if (generation !== tokenGeneration.current) {
+      liveGate.reset();
+      return;
+    }
     if (result.view.kind === "live") {
       liveLoader.current = result.loader;
       liveSignedIn.current = token !== null;
@@ -286,7 +290,10 @@ export function Root(props: RootProps) {
       t,
       formatDateTime,
     });
-    if (generation !== tokenGeneration.current) return;
+    if (generation !== tokenGeneration.current) {
+      liveGate.reset();
+      return;
+    }
     if (result.loader !== null) {
       liveLoader.current = result.loader;
       liveSignedIn.current = token !== null;
