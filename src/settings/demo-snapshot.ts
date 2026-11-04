@@ -129,19 +129,82 @@ function hash(text: string): string {
 
 export class DemoSnapshotSource implements MessageSource {
   private readonly files = new Map<string, string>();
-  private readonly ids = new Map<string, string>();
   /** Sizes of listing-only files, whose content is not in the snapshot. */
   private readonly omitted = new Map<string, number>();
+  /** The entries of every directory, listed once per snapshot. */
+  private readonly directories = new Map<string, DirectoryEntry[]>();
 
   constructor(private readonly snapshot: DemoSnapshot) {
+    // Every file as (path, content hash, size); a listing-only file hashes its path and size.
+    const listed: { path: string; objectId: string; size: number }[] = [];
+    const encoder = new TextEncoder();
     for (const file of snapshot.files) {
       if (file.omitted === true) {
-        this.omitted.set(file.path, file.size ?? 0);
-        this.ids.set(file.path, hash(`omitted:${file.path}:${String(file.size ?? 0)}`));
+        const size = file.size ?? 0;
+        this.omitted.set(file.path, size);
+        listed.push({
+          path: file.path,
+          objectId: hash(`omitted:${file.path}:${String(size)}`),
+          size,
+        });
       } else {
         this.files.set(file.path, file.text);
-        this.ids.set(file.path, hash(file.text));
+        listed.push({
+          path: file.path,
+          objectId: hash(file.text),
+          size: encoder.encode(file.text).length,
+        });
       }
+    }
+    const children = new Map<string, Map<string, DirectoryEntry>>();
+    const childrenOf = (directory: string) => {
+      let entries = children.get(directory);
+      if (entries === undefined) {
+        entries = new Map();
+        children.set(directory, entries);
+      }
+      return entries;
+    };
+    for (const { path: filePath, objectId, size } of listed) {
+      const parts = filePath.split("/");
+      for (let depth = 1; depth < parts.length; depth += 1) {
+        const directory = parts.slice(0, depth - 1).join("/");
+        const name = parts[depth - 1] as string;
+        childrenOf(directory).set(name, {
+          name,
+          path: directory === "" ? name : `${directory}/${name}`,
+          kind: "directory",
+          objectId: "",
+        });
+      }
+      const directory = parts.slice(0, -1).join("/");
+      const name = parts[parts.length - 1] as string;
+      childrenOf(directory).set(name, {
+        name,
+        path: filePath,
+        kind: "file",
+        objectId,
+        size,
+      });
+    }
+    // Like a tree hash, a directory's id covers everything below it, so a listing cached by id is
+    // reused only while nothing under it changed. Deepest directories first.
+    const depth = (directory: string) => (directory === "" ? 0 : directory.split("/").length);
+    const byDepth = [...children.keys()].sort((left, right) => depth(right) - depth(left));
+    const directoryIds = new Map<string, string>();
+    for (const directory of byDepth) {
+      const entries = [...(children.get(directory) as Map<string, DirectoryEntry>).values()]
+        .map((entry) =>
+          entry.kind === "directory"
+            ? { ...entry, objectId: directoryIds.get(entry.path) ?? "" }
+            : entry,
+        )
+        .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+      directoryIds.set(
+        directory,
+        hash(entries.map((entry) => `${entry.kind}\0${entry.name}\0${entry.objectId}`).join("\n")),
+      );
+      this.directories.set(directory, entries);
     }
   }
 
@@ -156,34 +219,7 @@ export class DemoSnapshotSource implements MessageSource {
         new SourceError("unexpected", path, null, null, "Snapshot revision mismatch."),
       );
     }
-    const prefix = path === "" ? "" : `${path}/`;
-    const children = new Map<string, DirectoryEntry>();
-    const listed = [
-      ...[...this.files].map(([filePath, text]) => [filePath, text] as const),
-      ...[...this.omitted.keys()].map((filePath) => [filePath, null] as const),
-    ];
-    for (const [filePath, text] of listed) {
-      if (!filePath.startsWith(prefix)) continue;
-      const rest = filePath.slice(prefix.length);
-      const slash = rest.indexOf("/");
-      const name = slash < 0 ? rest : rest.slice(0, slash);
-      const childPath = path === "" ? name : `${path}/${name}`;
-      if (slash < 0) {
-        children.set(name, {
-          name,
-          path: childPath,
-          kind: "file",
-          objectId: this.ids.get(filePath) ?? hash(filePath),
-          size:
-            text === null
-              ? (this.omitted.get(filePath) ?? 0)
-              : new TextEncoder().encode(text).length,
-        });
-      } else if (!children.has(name)) {
-        children.set(name, { name, path: childPath, kind: "directory", objectId: hash(childPath) });
-      }
-    }
-    return Promise.resolve([...children.values()]);
+    return Promise.resolve(this.directories.get(path) ?? []);
   }
 
   readFile(entry: DirectoryEntry): Promise<string> {
