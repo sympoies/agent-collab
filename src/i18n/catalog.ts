@@ -126,6 +126,7 @@ export const en = {
   "chat.needs": "Needs:",
   "chat.due": "Due {date}",
   "chat.dueOverdue": "Due {date} (overdue)",
+  "chat.inReplyTo": "In reply to",
   "chat.you": "You",
   "chat.unreadable": "Unreadable message file",
   "chat.rawText": "Raw text",

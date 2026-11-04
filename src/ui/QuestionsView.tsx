@@ -62,7 +62,9 @@ function Replies({
             >
               <span className="reply-head">
                 <span className="reply-from">{people.label(message.from)}</span>
-                <span className="badge">{t(`type.${kind}`)}</span>
+                <span className="badge" data-kind={kind}>
+                  {t(`type.${kind}`)}
+                </span>
                 <span className="reply-time">{message.timestamp}</span>
               </span>
               <span className="reply-text">{snippet(message, t)}</span>

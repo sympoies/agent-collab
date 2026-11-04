@@ -734,10 +734,77 @@ button:hover {
   background: var(--chip-bg);
 }
 
-.message[data-type="question"] .badge,
-.message[data-type="decision-needed"] .badge {
+.to {
+  border-color: transparent;
+  background: none;
+  color: var(--muted);
+}
+
+/* Each kind has its own glyph and border shape next to its name, so color is never the only cue. */
+.badge::before {
+  margin-right: 4px;
+  content: "\00b7";
+  content: "\00b7" / "";
+  font-weight: 700;
+}
+
+.badge[data-kind="question"] {
   border-color: var(--accent);
-  color: inherit;
+  font-weight: 650;
+}
+
+.badge[data-kind="question"]::before {
+  content: "?";
+  content: "?" / "";
+}
+
+.badge[data-kind="decision-needed"] {
+  border: 3px double var(--accent);
+  font-weight: 650;
+}
+
+.badge[data-kind="decision-needed"]::before {
+  content: "!";
+  content: "!" / "";
+}
+
+.badge[data-kind="answer"] {
+  border-color: var(--ok);
+}
+
+.badge[data-kind="answer"]::before {
+  content: "\2713";
+  content: "\2713" / "";
+}
+
+.badge[data-kind="ack"] {
+  border-style: dotted;
+  color: var(--muted);
+}
+
+.badge[data-kind="ack"]::before {
+  content: "\25cb";
+  content: "\25cb" / "";
+}
+
+.badge[data-kind="info"] {
+  border-color: transparent;
+}
+
+.badge[data-kind="info"]::before {
+  content: "i";
+  content: "i" / "";
+  font-style: italic;
+}
+
+.badge[data-kind="reminder"] {
+  border-style: dashed;
+  border-color: var(--warn);
+}
+
+.badge[data-kind="reminder"]::before {
+  content: "\21bb";
+  content: "\21bb" / "";
 }
 
 .issues summary {
@@ -747,7 +814,12 @@ button:hover {
 
 .body {
   margin: 6px 0 2px;
+  line-height: 1.45;
   white-space: pre-wrap;
+}
+
+.message[data-compact="true"] .body {
+  color: var(--secondary);
 }
 
 .body[data-body="locked"] {
@@ -770,8 +842,33 @@ button:hover {
   text-overflow: ellipsis;
 }
 
+a.quote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.quote-label {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.quote-label::before {
+  content: "\21a9\00a0";
+}
+
 .quote-from {
+  color: var(--link);
   font-weight: 650;
+}
+
+.quote-text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--secondary);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .needs,
@@ -790,7 +887,9 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin: 4px 0 2px;
+  margin: 8px 0 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-soft);
   color: var(--secondary);
   font-size: 0.8rem;
 }

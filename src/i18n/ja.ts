@@ -119,6 +119,7 @@ export const ja: Messages = {
   "chat.needs": "必要事項:",
   "chat.due": "期限 {date}",
   "chat.dueOverdue": "期限 {date}（期限切れ）",
+  "chat.inReplyTo": "返信先",
   "chat.you": "あなた",
   "chat.unreadable": "読み取れないメッセージファイル",
   "chat.rawText": "元のテキスト",

@@ -110,6 +110,7 @@ export const zhTW: Messages = {
   "chat.needs": "需要：",
   "chat.due": "期限 {date}",
   "chat.dueOverdue": "期限 {date}（已逾期）",
+  "chat.inReplyTo": "回覆",
   "chat.you": "你",
   "chat.unreadable": "無法讀取的訊息檔案",
   "chat.rawText": "原始文字",

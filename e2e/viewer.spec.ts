@@ -1300,6 +1300,44 @@ for (const code of ["ja", "zh-TW"] as const) {
   });
 }
 
+for (const scheme of ["light", "dark"] as const) {
+  test(`message cards tell every type apart without color and fit a phone in ${scheme} @csp`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.setViewportSize({ width: 390, height: 844 });
+    const assertRequests = await openViewer(page, "questions");
+    await page.getByRole("button", { name: /^All/ }).click();
+    await expect(page.locator(".message").first()).toBeVisible();
+    // Each kind carries its own marker (a glyph) and border shape, so color is never the only cue.
+    const marks = await page.locator(".message .badge[data-kind]").evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const before = getComputedStyle(node, "::before");
+        const own = getComputedStyle(node);
+        return {
+          kind: node.getAttribute("data-kind") ?? "",
+          glyph: before.content,
+          border: own.borderTopStyle,
+        };
+      }),
+    );
+    const byKind = new Map(marks.map((mark) => [mark.kind, mark]));
+    expect([...byKind.keys()].sort()).toEqual(["ack", "answer", "info", "question", "reminder"]);
+    for (const mark of byKind.values()) expect(mark.glyph).not.toMatch(/^(none|normal|"")$/);
+    expect(new Set([...byKind.values()].map((mark) => mark.glyph)).size).toBe(byKind.size);
+    // The quote names what it answers and shows the parent's first line.
+    const quote = page.locator("a.quote").first();
+    await expect(quote.locator(".quote-label")).toContainText("In reply to");
+    await expect(quote.locator(".quote-text")).not.toBeEmpty();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `cards-phone-${scheme}.png`);
+    assertRequests();
+  });
+}
+
 for (const identity of identityCases) {
   test(`receipts and the Questions view work on ${identity.label} in ${identity.theme}`, async ({
     page,
