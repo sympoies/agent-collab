@@ -28,8 +28,6 @@ jobs:
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    env:
-      PLAYWRIGHT_SCREENSHOT_DIR: ${{ runner.temp }}/playwright-screenshots
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -53,7 +51,10 @@ jobs:
         if: steps.browsers.outputs.cache-hit != 'true'
       - run: pnpm exec playwright install-deps chromium webkit
         if: steps.browsers.outputs.cache-hit == 'true'
+      # The runner context is not available in job-level env, so the directory is set here.
       - run: pnpm test:browser
+        env:
+          PLAYWRIGHT_SCREENSHOT_DIR: ${{ runner.temp }}/playwright-screenshots
       # Only on failure, and only traces and failure output (screenshots of fixture data).
       - uses: actions/upload-artifact@v4.6.2
         if: failure()
