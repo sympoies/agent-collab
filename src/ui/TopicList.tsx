@@ -42,11 +42,12 @@ export function TopicList({
       key={topic.name}
       type="button"
       aria-pressed={pressed === topic.name}
+      title={topic.title ?? undefined}
       onClick={(event) => {
         onSelect(topic, event.currentTarget);
       }}
     >
-      <span className="topic-name">{topic.title ?? topic.name}</span>
+      <span className="topic-name">#{topic.name}</span>
     </button>
   );
 

@@ -106,12 +106,12 @@ describe("topic list screen", () => {
         .map((text) => text.replace(/\d+ open$/, "")),
     ).toEqual(["All", "Questions", "Files"]);
     // Most recent activity first, the closed topic only in its collapsed group.
-    expect(rowLabels().slice(3)).toEqual(["Documentation", "Operations", "The API"]);
+    expect(rowLabels().slice(3)).toEqual(["#docs", "#ops", "#api"]);
     expect(host.querySelector<HTMLDetailsElement>(".closed-topics")?.open).toBe(false);
     expect(host.querySelector(".closed-topics summary")?.textContent).toBe("Closed (1)");
 
-    await click(entry("The API"));
-    expect(host.querySelector("h2.topic-heading")?.textContent).toBe("The API");
+    await click(entry("#api"));
+    expect(host.querySelector("h2.topic-heading")?.textContent).toBe("#api");
     // Questions and Files read the same loaded messages.
     await click(entry("All"));
     await click(entry("Files"));
@@ -164,7 +164,7 @@ describe("topic list screen", () => {
     it("is complete after opening topic A and going back to All", async () => {
       const source = new FixtureSource(files);
       await mount(source);
-      await click(entry("The API"));
+      await click(entry("#api"));
       await click(entry("All"));
       inOrder(API_ID, OPS_ID, DOCS_ID);
     });
@@ -172,8 +172,8 @@ describe("topic list screen", () => {
     it("holds the union, ordered by time, after opening topics A and B and going back to All", async () => {
       const source = new FixtureSource(files);
       await mount(source);
-      await click(entry("Operations"));
-      await click(entry("The API"));
+      await click(entry("#ops"));
+      await click(entry("#api"));
       await click(entry("All"));
       inOrder(API_ID, OPS_ID, DOCS_ID);
     });
@@ -185,7 +185,7 @@ describe("topic list screen", () => {
         (host.querySelector(".closed-topics summary") as HTMLElement).click();
       });
       await settle();
-      await click(entry("Archive"));
+      await click(entry("#archive"));
       await click(entry("All"));
       inOrder("2026-01-01T0900-alice-agent-archive-01", API_ID);
     });
@@ -232,7 +232,7 @@ describe("topic list screen", () => {
       expect(reads.topics()).toBe(4);
       expect(host.querySelector(".all-status")?.textContent).toBe("Loading topics: 0 of 10");
 
-      await click(entry("topic-01"));
+      await click(entry("#topic-01"));
       reads.release();
       await settle();
       await settle();
@@ -245,7 +245,7 @@ describe("topic list screen", () => {
       const source = new FixtureSource(files10);
       const reads = counted(source);
       await mount(source);
-      await click(entry("topic-01"));
+      await click(entry("#topic-01"));
       // The reads in flight finish first; the Refresh button waits while a topic is opening.
       reads.release();
       await settle();
@@ -302,7 +302,7 @@ describe("topic list screen", () => {
   it("shows in All a message that arrived while its topic was open", async () => {
     const source = new FixtureSource(files);
     await mount(source);
-    await click(entry("The API"));
+    await click(entry("#api"));
 
     const late = "2026-10-02T0900-bob-agent-api-01";
     source.commit({
@@ -322,7 +322,7 @@ describe("topic list screen", () => {
   it("updates the topic list and its order after a refresh", async () => {
     const source = new FixtureSource(files);
     await mount(source);
-    expect(rowLabels().slice(3)).toEqual(["Documentation", "Operations", "The API"]);
+    expect(rowLabels().slice(3)).toEqual(["#docs", "#ops", "#api"]);
 
     const late = "2026-10-05T0900-bob-agent-api-01";
     const fresh = "2026-10-04T0900-bob-agent-fresh-01";
@@ -334,14 +334,14 @@ describe("topic list screen", () => {
     });
     await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
 
-    expect(rowLabels().slice(3)).toEqual(["The API", "Fresh topic", "Documentation", "Operations"]);
+    expect(rowLabels().slice(3)).toEqual(["#api", "#fresh", "#docs", "#ops"]);
   });
 
   it("moves a topic with a newer reply to the top after a refresh without moving the reader", async () => {
     const source = new FixtureSource(files);
     await mount(source);
-    await click(entry("Operations"));
-    expect(entry("Operations").getAttribute("aria-pressed")).toBe("true");
+    await click(entry("#ops"));
+    expect(entry("#ops").getAttribute("aria-pressed")).toBe("true");
 
     const reply = "2026-10-06T0900-alice-agent-api-02";
     const commit = () => {
@@ -355,19 +355,19 @@ describe("topic list screen", () => {
     };
     // Focus inside the list holds the order, whatever a refresh brings.
     act(() => {
-      entry("Documentation").focus();
+      entry("#docs").focus();
     });
     commit();
     await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
-    expect(rowLabels().slice(3)).toEqual(["Documentation", "Operations", "The API"]);
+    expect(rowLabels().slice(3)).toEqual(["#docs", "#ops", "#api"]);
 
     // Leaving the list applies it; the open topic stays open and listed.
     act(() => {
-      entry("Documentation").blur();
+      entry("#docs").blur();
     });
     await settle();
-    expect(rowLabels().slice(3)).toEqual(["The API", "Documentation", "Operations"]);
-    expect(entry("Operations").getAttribute("aria-pressed")).toBe("true");
+    expect(rowLabels().slice(3)).toEqual(["#api", "#docs", "#ops"]);
+    expect(entry("#ops").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("retries a topic whose activity could not be read on the next refresh", async () => {
@@ -376,7 +376,7 @@ describe("topic list screen", () => {
     await mount(source);
     expect(host.querySelector(".error")).not.toBeNull();
     // The topic stays listed, after the ones whose activity is known.
-    expect(rowLabels().slice(3)).toEqual(["Documentation", "Operations", "The API"]);
+    expect(rowLabels().slice(3)).toEqual(["#docs", "#ops", "#api"]);
 
     source.failListings([]);
     source.commit({ ...files });
@@ -412,8 +412,8 @@ describe("topic list screen", () => {
     await mount(source);
 
     expect(rowLabels().slice(3)).toHaveLength(12);
-    expect(rowLabels()[3]).toBe("topic-14");
-    expect(rowLabels()).not.toContain("topic-02");
+    expect(rowLabels()[3]).toBe("#topic-14");
+    expect(rowLabels()).not.toContain("#topic-02");
     const toggle = host.querySelector<HTMLButtonElement>("button.show-all-topics");
     expect(toggle?.textContent).toBe("Show all 14 topics");
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
@@ -426,11 +426,11 @@ describe("topic list screen", () => {
     // The same button keeps focus.
     expect(document.activeElement).toBe(toggle);
 
-    await click(entry("topic-01"));
+    await click(entry("#topic-01"));
     await click(host.querySelector("button.show-all-topics") as HTMLButtonElement);
     const names = rowLabels().slice(3);
-    expect(names).toContain("topic-01");
-    expect(names).not.toContain("topic-02");
+    expect(names).toContain("#topic-01");
+    expect(names).not.toContain("#topic-02");
     expect(names).toHaveLength(13);
     expect(host.querySelector("button.show-all-topics")?.textContent).toBe("Show all 14 topics");
   });
@@ -447,10 +447,10 @@ describe("topic list screen", () => {
       await settle();
     };
     await toggle(true);
-    await click(entry("Archive"));
+    await click(entry("#archive"));
     await toggle(false);
-    expect(rowLabels()).toContain("Archive");
-    expect(entry("Archive").getAttribute("aria-pressed")).toBe("true");
+    expect(rowLabels()).toContain("#archive");
+    expect(entry("#archive").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("reads activity four topics at a time, joins reads in progress and stops when left", async () => {
@@ -543,7 +543,7 @@ describe("topic list screen", () => {
     expect(host.querySelector(".error")).not.toBeNull();
     await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
 
-    expect(host.textContent).toContain("The API");
+    expect(host.textContent).toContain("#api");
     expect(source.reads).toContain(`topics/api/inbox/2026-10/${API_ID}.md`);
   });
 });
