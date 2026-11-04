@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
@@ -2321,13 +2322,102 @@ test("settings have one h1 and fields named without their hints, with errors con
 test("a browser without a folder picker gets an explanation instead of a broken button", async ({
   page,
 }) => {
+  await page.addInitScript(() => Reflect.deleteProperty(window, "showDirectoryPicker"));
   await installFakeFolder(page, { picker: "missing" });
   await page.goto("/");
-  await expect(page.getByText(/needs a browser that can open folders/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /Open local folder/ })).toHaveCount(0);
+  await expect(page.getByText(catalogsByLocale.en["welcome.localUnsupported"])).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: catalogsByLocale.en["welcome.openLocalFiles"] }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Open another repository" }).click();
   await page.getByRole("button", { name: "Open offline demo" }).click();
-  await expect(page.getByRole("button", { name: "Local folder", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Local folder", exact: true })).toBeVisible();
+});
+
+test("a file input opens a local snapshot in each language on a phone without network requests @csp", async ({
+  page,
+  browserName,
+}) => {
+  expect(["chromium", "webkit"]).toContain(browserName);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => Reflect.deleteProperty(window, "showDirectoryPicker"));
+  await page.goto("/");
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+
+  for (const locale of ["en", "ja", "zh-TW"] as const) {
+    if (locale !== "en") await page.reload();
+    await page.getByRole("combobox").first().selectOption(locale);
+    requests.length = 0;
+    await expect(page.locator("h1")).toHaveCount(1);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+    ).toBeLessThanOrEqual(0);
+
+    const choose = page.getByRole("button", {
+      name: catalogsByLocale[locale]["welcome.openLocalFiles"],
+    });
+    await choose.focus();
+    await page.keyboard.press("Enter");
+    const input = page.locator('input[type="file"][webkitdirectory]');
+    if (browserName === "webkit") {
+      // Playwright's WebKit directory fixture omits dotfiles; keep the picked files and add the
+      // repository marker to model the FileList a directory chooser returns to the app.
+      await input.evaluate((element) =>
+        element.addEventListener("change", (event) => event.stopImmediatePropagation(), {
+          capture: true,
+          once: true,
+        }),
+      );
+    }
+    await input.setInputFiles(fileURLToPath(new URL("./fixtures/local-folder", import.meta.url)));
+    if (browserName === "webkit") {
+      await input.evaluate((element) => {
+        const inputElement = element as HTMLInputElement;
+        const transfer = new DataTransfer();
+        for (const file of Array.from(inputElement.files ?? [])) transfer.items.add(file);
+        if (
+          !Array.from(inputElement.files ?? []).some((file) =>
+            file.webkitRelativePath.endsWith("/.agent-collab"),
+          )
+        ) {
+          const marker = new File(["collab-protocol: 1\ninbox-layout: flat\n"], ".agent-collab", {
+            type: "text/plain",
+          });
+          Object.defineProperty(marker, "webkitRelativePath", {
+            value: "local-folder/.agent-collab",
+          });
+          transfer.items.add(marker);
+        }
+        inputElement.files = transfer.files;
+        inputElement.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    }
+    const relativePaths = await page
+      .locator('input[type="file"][webkitdirectory]')
+      .evaluate((input) =>
+        Array.from((input as HTMLInputElement).files ?? [], (file) => file.webkitRelativePath),
+      );
+    if (browserName === "webkit") expect(relativePaths).toContain("local-folder/.agent-collab");
+
+    await expect(page.getByRole("heading", { name: /local-folder/ })).toBeVisible();
+    await page.getByRole("button", { name: /^#api/ }).click();
+    await expect(page.getByText("A message from a selected folder.")).toBeVisible();
+    await page.getByRole("button", { name: catalogsByLocale[locale]["bar.more"] }).click();
+    await expect(
+      page.getByRole("menuitem", {
+        name: catalogsByLocale[locale]["bar.localFolder"],
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("h1")).toHaveCount(1);
+    await expect(page.getByText(catalogsByLocale[locale]["local.snapshotNotice"])).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+    ).toBeLessThanOrEqual(0);
+    expect(requests).toEqual([]);
+  }
 });
 
 test("cancelling the picker, choosing a non-clone folder and revoked permission have clear states", async ({

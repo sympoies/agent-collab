@@ -24,13 +24,16 @@ export const en = {
   "welcome.openSaved": "Open saved repository",
   "welcome.openAnother": "Open another repository",
   "welcome.openLocal": "Open local folder (experimental)",
+  "welcome.openLocalFiles": "Choose local folder from files",
   "welcome.localUnsupported":
-    "Opening a local folder needs a browser that can open folders, such as Chrome or Edge on a computer.",
+    "This browser cannot open folder handles. Use “Choose local folder from files” above to open a snapshot; choose the folder again after a git pull to see updates.",
+  "welcome.localDrop": "You can also drop a folder here where your browser supports it.",
   "bar.refresh": "Refresh",
   "bar.viewingAs": "Viewing as",
   "bar.observer": "Observer",
   "bar.profile": "Profile & colors",
   "bar.localFolder": "Local folder",
+  "bar.localFolderSnapshot": "Choose folder again",
   "bar.hostedSnapshot": "Snapshot copy, not live",
   "bar.settings": "Settings",
   "bar.checkLive": "Check live now",
@@ -107,6 +110,8 @@ export const en = {
   "local.notClone":
     "This folder is not a collaboration clone (no .agent-collab file). Choose the clone folder itself.",
   "local.unreadable": "This folder could not be read.",
+  "local.snapshotNotice":
+    "This is a snapshot of the selected folder. After a git pull, choose the folder again to see updates.",
   "hosted.unreadable": "The snapshot served with this page could not be read.",
   "live.snapshotAt": "the snapshot generated at {date}",
   "live.bundled": "the bundled sample",

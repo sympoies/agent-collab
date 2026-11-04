@@ -46,6 +46,7 @@ describe("Root with a local folder", () => {
   async function render(
     openLocalFolder: (() => Promise<LocalFolderOpen>) | null,
     storage = { getItem: () => null, setItem: () => undefined },
+    openLocalFileList?: (files: readonly File[]) => Promise<LocalFolderOpen>,
   ): Promise<HTMLElement> {
     const host = document.createElement("div");
     document.body.append(host);
@@ -61,6 +62,7 @@ describe("Root with a local folder", () => {
             createDemoSource={() => new FixtureSource({})}
             createLiveDemoSource={() => new FixtureSource({})}
             openLocalFolder={openLocalFolder}
+            {...(openLocalFileList === undefined ? {} : { openLocalFileList })}
           />
         </ThemeProvider>,
       );
@@ -85,11 +87,18 @@ describe("Root with a local folder", () => {
     });
   }
 
-  it("explains instead of showing a broken button when the browser has no folder picker", async () => {
-    const host = await render(null);
+  it("offers the file-list fallback and points the unsupported browser hint to it", async () => {
+    const host = await render(null, undefined, async (files) => ({
+      source: new FixtureSource({
+        ".agent-collab": MARKER,
+        [flat("2026-10", 1, 1)]: messageText(ID, "alice-agent", "api"),
+      }),
+      name: files[0]?.webkitRelativePath.split("/")[0] ?? "clone",
+    }));
     expect(button(host, "Open local folder")).toBeUndefined();
+    expect(button(host, "Choose local folder from files")).toBeDefined();
     expect(host.querySelector(".local-unsupported")?.textContent).toContain(
-      "needs a browser that can open folders",
+      "Choose local folder from files",
     );
   });
 

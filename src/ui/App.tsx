@@ -49,6 +49,8 @@ const ALL_CONCURRENCY = 4;
 /** Names a source that is not a repository, so it is always visible which data is shown. */
 export interface SourceIndicator {
   readonly label: MessageKey;
+  /** The action that returns to a source that cannot be refreshed live. */
+  readonly actionLabel?: MessageKey;
   /** Shown as experimental until the source is released. */
   readonly experimental: boolean;
   /**
@@ -717,6 +719,7 @@ export function App({
             setProfileOpen(!profileOpen);
           }}
           onPickLocalFolder={onPickLocalFolder}
+          localFolderActionLabel={source?.actionLabel}
           onOpenSettings={onOpenSettings}
         />
         {profileOpen && (

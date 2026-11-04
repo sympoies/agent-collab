@@ -44,7 +44,13 @@ import { ThemeToggle } from "./ThemeProvider";
 export interface LocalFolderOpen {
   readonly source: MessageSource;
   readonly name: string;
+  /** The source cannot observe changes after selection. */
+  readonly snapshot?: boolean;
 }
+
+export type LocalFolderSelection =
+  | { readonly kind: "files"; readonly files: readonly File[] | FileList }
+  | { readonly kind: "drop"; readonly dataTransfer: DataTransfer };
 
 export interface RootProps extends SettingsDeps {
   readonly createSource: (settings: ViewerSettings, token: Secret) => MessageSource;
@@ -53,6 +59,8 @@ export interface RootProps extends SettingsDeps {
   readonly createLiveDemoSource: (token: Secret | null) => MessageSource;
   /** Opens the browser's folder picker; null when the browser has none. Needs a user gesture. */
   readonly openLocalFolder: (() => Promise<LocalFolderOpen>) | null;
+  /** Creates a read-only source from a directory input or dropped folder. */
+  readonly openLocalFileList?: (selection: LocalFolderSelection) => Promise<LocalFolderOpen>;
   /** Reads the snapshot this deployment serves next to the app; null when it serves none. */
   readonly createHostedSource?: (() => MessageSource) | null;
 }
@@ -116,7 +124,8 @@ type Screen =
 
 export function Root(props: RootProps) {
   const { t, formatDateTime } = useLocale();
-  const { createSource, createDemoSource, createLiveDemoSource, openLocalFolder } = props;
+  const { createSource, createDemoSource, createLiveDemoSource, openLocalFolder, openLocalFileList } =
+    props;
   const createHostedSource = props.createHostedSource ?? null;
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
@@ -129,6 +138,11 @@ export function Root(props: RootProps) {
   const liveSignedIn = useRef(false);
   /** Why a folder could not be opened, shown on the welcome screen. */
   const [localMessage, setLocalMessage] = useState<MessageRef | null>(null);
+  const localFileInput = useRef<HTMLInputElement>(null);
+  const pendingFilePick = useRef<{
+    readonly operation: number;
+    readonly current: ViewerScreen | null;
+  } | null>(null);
 
   const viewer = (
     loader: Loader,
@@ -358,15 +372,12 @@ export function Root(props: RootProps) {
     if (operation === navigation.current) setScreen({ kind: "welcome" });
   };
 
-  /**
-   * Picks and opens a local folder. The picker is called first, straight from the click, because
-   * it needs the user gesture. Nothing is saved: the handle lives only in this view.
-   */
-  const chooseLocalFolder = async (current: ViewerScreen | null): Promise<void> => {
-    if (openLocalFolder === null) return;
-    // Picking and reading a large clone take time; if the user went elsewhere meanwhile, the
-    // result is dropped instead of replacing what they are looking at.
-    const operation = ++navigation.current;
+  /** Opens a local folder or snapshot, keeping asynchronous selections scoped to this navigation. */
+  const openLocalSource = async (
+    openSource: () => Promise<LocalFolderOpen>,
+    current: ViewerScreen | null,
+    operation: number,
+  ): Promise<void> => {
     const refuse = (message: MessageRef) => {
       if (operation !== navigation.current) return;
       if (current === null) setLocalMessage(message);
@@ -380,14 +391,16 @@ export function Root(props: RootProps) {
     };
     let opened: LocalFolderOpen;
     try {
-      opened = await openLocalFolder();
+      opened = await openSource();
     } catch (error) {
       // Cancelling and a refused sensitive folder both reject; the reason is never shown. A page
       // the browser does not trust with folders is told apart from a cancelled picker.
       refuse(
         error instanceof DOMException && error.name === "SecurityError"
           ? { key: "local.blocked" }
-          : { key: "local.noFolder" },
+          : error instanceof SourceError && error.kind === "too-large"
+            ? { key: "local.tooLarge" }
+            : { key: "local.noFolder" },
       );
       return;
     }
@@ -413,17 +426,74 @@ export function Root(props: RootProps) {
         { key: "app.localTitle", params: { name: opened.name } },
         [],
         MEMORY_ONLY,
-        null,
+        opened.snapshot === true ? { key: "local.snapshotNotice" } : null,
         undefined,
         null,
         {
           label: "bar.localFolder",
+          ...(opened.snapshot === true ? { actionLabel: "bar.localFolderSnapshot" as const } : {}),
           experimental: true,
         },
         { topicSource: opened.source, initialTopicSession: session },
       ),
     );
   };
+
+  /**
+   * Picks and opens a local folder. The picker is called first, straight from the click, because
+   * it needs the user gesture. Nothing is saved: the handle lives only in this view.
+   */
+  const chooseLocalFolder = async (current: ViewerScreen | null): Promise<void> => {
+    if (openLocalFolder === null) return;
+    const operation = ++navigation.current;
+    await openLocalSource(openLocalFolder, current, operation);
+  };
+
+  const chooseLocalFiles = async (
+    selection: LocalFolderSelection,
+    current: ViewerScreen | null,
+    operation = ++navigation.current,
+  ): Promise<void> => {
+    if (openLocalFileList === undefined) return;
+    if (selection.kind === "files" && selection.files.length === 0) return;
+    await openLocalSource(() => openLocalFileList(selection), current, operation);
+  };
+
+  const beginFilePick = (current: ViewerScreen | null): void => {
+    if (openLocalFileList === undefined) return;
+    const operation = ++navigation.current;
+    pendingFilePick.current = { operation, current };
+    localFileInput.current?.click();
+  };
+
+  const acceptFilePick = (files: FileList): void => {
+    const pending = pendingFilePick.current;
+    pendingFilePick.current = null;
+    if (pending === null || pending.operation !== navigation.current) return;
+    void chooseLocalFiles({ kind: "files", files }, pending.current, pending.operation);
+  };
+
+  const acceptDroppedFolder = (dataTransfer: DataTransfer): void => {
+    if (openLocalFileList === undefined) return;
+    const operation = ++navigation.current;
+    void chooseLocalFiles({ kind: "drop", dataTransfer }, null, operation);
+  };
+
+  const folderInput = (
+    <input
+      ref={localFileInput}
+      type="file"
+      multiple
+      hidden
+      aria-label={t("welcome.openLocalFiles")}
+      {...({ webkitdirectory: "" } as Record<string, string>)}
+      onChange={(event) => {
+        const files = event.currentTarget.files;
+        if (files !== null) acceptFilePick(files);
+        event.currentTarget.value = "";
+      }}
+    />
+  );
 
   /** Opens the snapshot this deployment serves; the welcome screen shows why when it fails. */
   const showHosted = async (): Promise<void> => {
@@ -483,67 +553,92 @@ export function Root(props: RootProps) {
   switch (screen.kind) {
     case "welcome":
       return (
-        <div className="app settings">
-          <header className="bar settings-bar">
-            <h1>{t("app.title")}</h1>
-            <div className="bar-actions">
-              <LanguageSwitcher />
-              <ThemeToggle />
-            </div>
-          </header>
-          {createHostedSource !== null && (
-            <>
-              <h2>{t("welcome.hostedHeading")}</h2>
-              <button
-                type="button"
-                onClick={() => {
-                  void showHosted();
-                }}
-              >
-                {t("welcome.openHosted")}
-              </button>
-            </>
-          )}
-          <h2>{t("welcome.demoHeading")}</h2>
-          <button
-            type="button"
-            onClick={() => {
-              void showLiveDemo();
+        <>
+          {folderInput}
+          <div
+            className="app settings"
+            onDragOver={(event) => {
+              if (openLocalFileList !== undefined) event.preventDefault();
+            }}
+            onDrop={(event) => {
+              if (openLocalFileList === undefined) return;
+              event.preventDefault();
+              acceptDroppedFolder(event.dataTransfer);
             }}
           >
-            {t("welcome.openLiveDemo")}
-          </button>
-          <p className="note">{t("welcome.limits")}</p>
-          {openLocalFolder === null ? (
-            <p className="local-unsupported note">{t("welcome.localUnsupported")}</p>
-          ) : (
+            <header className="bar settings-bar">
+              <h1>{t("app.title")}</h1>
+              <div className="bar-actions">
+                <LanguageSwitcher />
+                <ThemeToggle />
+              </div>
+            </header>
+            {createHostedSource !== null && (
+              <>
+                <h2>{t("welcome.hostedHeading")}</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void showHosted();
+                  }}
+                >
+                  {t("welcome.openHosted")}
+                </button>
+              </>
+            )}
+            <h2>{t("welcome.demoHeading")}</h2>
             <button
               type="button"
               onClick={() => {
-                void chooseLocalFolder(null);
+                void showLiveDemo();
               }}
             >
-              {t("welcome.openLocal")}
+              {t("welcome.openLiveDemo")}
             </button>
-          )}
-          {localMessage !== null && (
-            <p className="error" role="alert">
-              {say(localMessage, t)}
-            </p>
-          )}
-          <h2>{t("welcome.connectHeading")}</h2>
-          <button type="button" onClick={() => void openSavedRepository()}>
-            {t("welcome.openSaved")}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void showSettings(null);
-            }}
-          >
-            {t("welcome.openAnother")}
-          </button>
-        </div>
+            <p className="note">{t("welcome.limits")}</p>
+            {openLocalFolder !== null && (
+              <button
+                type="button"
+                onClick={() => {
+                  void chooseLocalFolder(null);
+                }}
+              >
+                {t("welcome.openLocal")}
+              </button>
+            )}
+            {openLocalFolder === null && openLocalFileList !== undefined && (
+              <button
+                type="button"
+                onClick={() => {
+                  beginFilePick(null);
+                }}
+              >
+                {t("welcome.openLocalFiles")}
+              </button>
+            )}
+            {openLocalFolder === null && (
+              <p className="local-unsupported note">{t("welcome.localUnsupported")}</p>
+            )}
+            {openLocalFileList !== undefined && <p className="note">{t("welcome.localDrop")}</p>}
+            {localMessage !== null && (
+              <p className="error" role="alert">
+                {say(localMessage, t)}
+              </p>
+            )}
+            <h2>{t("welcome.connectHeading")}</h2>
+            <button type="button" onClick={() => void openSavedRepository()}>
+              {t("welcome.openSaved")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void showSettings(null);
+              }}
+            >
+              {t("welcome.openAnother")}
+            </button>
+          </div>
+        </>
       );
     case "settings": {
       const back = screen.back;
@@ -603,50 +698,54 @@ export function Root(props: RootProps) {
     }
     case "viewer":
       return (
-        <App
-          key={screen.id}
-          loader={screen.loader}
-          {...(screen.topicSource === null ? {} : { topicSource: screen.topicSource })}
-          {...(screen.initialTopicSession === null
-            ? {}
-            : { initialTopicSession: screen.initialTopicSession })}
-          title={screen.title}
-          selfNames={screen.selfNames}
-          identity={screen.identity}
-          notice={screen.notice}
-          {...(screen.pollIntervalMs === undefined
-            ? {}
-            : { pollIntervalMs: screen.pollIntervalMs })}
-          onOpenSettings={() => {
-            void showSettings(screen);
-          }}
-          {...(screen.source === null ? {} : { source: screen.source })}
-          {...(openLocalFolder === null
-            ? {}
-            : {
-                onPickLocalFolder: () => {
-                  void chooseLocalFolder(screen);
-                },
-              })}
-          {...(screen.liveDemo === null ? {} : { onCheckLiveNow: () => checkLiveNow(screen) })}
-          {...(screen.demo && !screen.signedIn
-            ? {
-                onUseToken: () => {
-                  void showSettings(screen, { focusToken: true, demo: true });
-                },
-              }
-            : {})}
-          limitHit={screen.limitHit}
-          {...(screen.signedIn
-            ? {
-                signedIn: {
-                  onRemove: () => {
-                    void removeToken(screen);
+        <>
+          {folderInput}
+          <App
+            key={screen.id}
+            loader={screen.loader}
+            {...(screen.topicSource === null ? {} : { topicSource: screen.topicSource })}
+            {...(screen.initialTopicSession === null
+              ? {}
+              : { initialTopicSession: screen.initialTopicSession })}
+            title={screen.title}
+            selfNames={screen.selfNames}
+            identity={screen.identity}
+            notice={screen.notice}
+            {...(screen.pollIntervalMs === undefined
+              ? {}
+              : { pollIntervalMs: screen.pollIntervalMs })}
+            onOpenSettings={() => {
+              void showSettings(screen);
+            }}
+            {...(screen.source === null ? {} : { source: screen.source })}
+            {...(openLocalFolder === null && openLocalFileList === undefined
+              ? {}
+              : {
+                  onPickLocalFolder: () => {
+                    if (openLocalFolder !== null) void chooseLocalFolder(screen);
+                    else beginFilePick(screen);
                   },
-                },
-              }
-            : {})}
-        />
+                })}
+            {...(screen.liveDemo === null ? {} : { onCheckLiveNow: () => checkLiveNow(screen) })}
+            {...(screen.demo && !screen.signedIn
+              ? {
+                  onUseToken: () => {
+                    void showSettings(screen, { focusToken: true, demo: true });
+                  },
+                }
+              : {})}
+            limitHit={screen.limitHit}
+            {...(screen.signedIn
+              ? {
+                  signedIn: {
+                    onRemove: () => {
+                      void removeToken(screen);
+                    },
+                  },
+                }
+              : {})}
+          />
+        </>
       );
   }
 }

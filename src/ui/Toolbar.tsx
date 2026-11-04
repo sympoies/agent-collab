@@ -4,7 +4,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { LOCALE_NAMES, LOCALES } from "../i18n/catalog";
+import { LOCALE_NAMES, LOCALES, type MessageKey } from "../i18n/catalog";
 import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
 import { IconButton } from "./IconButton";
 import { FolderIcon, GlobeIcon, MoonIcon, SettingsIcon, SunIcon, UserIcon } from "./icons";
@@ -39,6 +39,7 @@ export function Toolbar({
   profileOpen,
   onToggleProfile,
   onPickLocalFolder,
+  localFolderActionLabel,
   onOpenSettings,
 }: {
   /** The refresh (or check-live) button, always first. */
@@ -47,6 +48,7 @@ export function Toolbar({
   readonly profileOpen: boolean;
   readonly onToggleProfile: () => void;
   readonly onPickLocalFolder: (() => void) | undefined;
+  readonly localFolderActionLabel?: MessageKey;
   readonly onOpenSettings: () => void;
 }) {
   const { t, locale, setLocale } = useLocale();
@@ -93,7 +95,7 @@ export function Toolbar({
           </MenuItem>
           {onPickLocalFolder !== undefined && (
             <MenuItem icon={<FolderIcon />} onSelect={onPickLocalFolder}>
-              {t("bar.localFolder")}
+              {t(localFolderActionLabel ?? "bar.localFolder")}
             </MenuItem>
           )}
           <MenuGroup label={t("language.label")}>
@@ -135,7 +137,7 @@ export function Toolbar({
         <UserIcon />
       </IconButton>
       {onPickLocalFolder !== undefined && (
-        <IconButton label={t("bar.localFolder")} onClick={onPickLocalFolder}>
+        <IconButton label={t(localFolderActionLabel ?? "bar.localFolder")} onClick={onPickLocalFolder}>
           <FolderIcon />
         </IconButton>
       )}

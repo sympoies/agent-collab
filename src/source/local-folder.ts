@@ -29,13 +29,13 @@ export interface LocalFileHandle extends LocalHandle {
   getFile(): Promise<Blob & { readonly lastModified: number }>;
 }
 
-const MAX_FILE_BYTES = 1024 * 1024;
+export const MAX_FILE_BYTES = 1024 * 1024;
 /** Entries a scan or listing may enumerate before the folder counts as too large. */
-const MAX_SCAN_ENTRIES = 50_000;
+export const MAX_SCAN_ENTRIES = 50_000;
 /** A modification time later than now plus this is clock skew or a hostile file, not a change. */
-const FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
+export const FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 const MONTH_RE = /^\d{4}-\d{2}$/;
-const TOO_LARGE = "This folder is too large to read. Choose the clone folder itself.";
+export const TOO_LARGE = "This folder is too large to read. Choose the clone folder itself.";
 const METADATA_CONCURRENCY = 6;
 const TOPIC_FOLDER_RE = /^topics\/[^/]+$/;
 const TOPIC_INBOX_RE = /^topics\/[^/]+\/inbox$/;
@@ -99,7 +99,7 @@ function safeSegment(segment: string): boolean {
 }
 
 /** A 53-bit string hash (cyrb53): a collision, which would hide a change, is very unlikely. */
-function stableId(kind: string, value: string): string {
+export function stableId(kind: string, value: string): string {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
   for (let index = 0; index < value.length; index += 1) {
