@@ -29,6 +29,8 @@ export interface RateLimit {
 export interface MessageSource {
   /** Current head of the watched branch; "not-modified" when `previous` still matches. */
   head(previous: Head | null): Promise<Head | "not-modified">;
+  /** False when the source synthesized a marker without an authoritative participant roster. */
+  readonly participantsKnown?: boolean;
   /** Complete listing of one directory at a revision; "" is the repository root. */
   listDirectory(revision: string, path: string): Promise<readonly DirectoryEntry[]>;
   /** UTF-8 text of a file entry obtained from listDirectory. */

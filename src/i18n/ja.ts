@@ -105,6 +105,8 @@ export const ja: Messages = {
   "local.unreadable": "このフォルダーを読み込めませんでした。",
   "local.snapshotNotice":
     "選択したフォルダーのスナップショットを表示しています。git pull の後は、フォルダーを選び直すと更新を確認できます。",
+  "local.snapshotNoticeRosterUnknown":
+    "選択したフォルダーのスナップショットを表示しています。git pull の後は、フォルダーを選び直して更新してください。このブラウザーでは .agent-collab が取得されなかったため、参加者一覧と質問の進行状況は不明です。読み込んだメッセージの送信者は「閲覧者」の選択肢に表示されます。",
   "hosted.unreadable": "このページと一緒に提供されているスナップショットを読み込めませんでした。",
   "live.snapshotAt": "{date} に生成されたスナップショット",
   "live.bundled": "同梱のサンプル",

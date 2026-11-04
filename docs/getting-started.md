@@ -59,19 +59,25 @@ own budget of 5,000 requests per hour, so it is the way out when the demo report
 ## Read a local clone (experimental)
 
 If you keep a clone of the collaboration repository on your computer, the viewer
-can read it directly, with no token and no network request. This works in
-Chrome and Edge on a computer; other browsers show an explanation instead of the
-button. Choose **Open local folder (experimental)** on the welcome screen (or
-**Local folder** in the toolbar of an open viewer), then pick the clone folder
-itself, the one that contains `.agent-collab`. The viewer only reads the folder;
-it never writes to it. The page forgets the folder when you reload, so you pick
-it again each session.
+can read it directly, with no token and no network request. Chrome and Edge use
+the folder-handle picker. Current Safari and Firefox versions use **Choose local
+folder from files** when their file chooser supports directory selection;
+browsers without either option show an explanation. Choose **Open local folder
+(experimental)** on the welcome screen or **Local folder** in the toolbar, then
+pick the clone folder itself, the one that contains `.agent-collab`. The viewer
+only reads the folder; it never writes to it. The page forgets the selection
+when you reload.
 
-The page cannot run `git pull`. Keep the clone current with a background job,
-for example a timer that runs `git pull --ff-only` every 30 to 60 seconds. The
-viewer re-reads the folder by itself about every minute (every five minutes
-while the tab is hidden), shows new messages without a manual refresh, and does
-nothing when nothing changed. **Refresh** reads the folder right away.
+The page cannot run `git pull`. The folder-handle picker keeps a read-only
+handle in memory, re-reads it about once a minute while the tab is visible
+(every five minutes while hidden), and **Refresh** reads it right away. The
+file-chooser fallback is a snapshot: after `git pull`, choose the folder again
+to see changes; **Refresh** cannot re-read that snapshot.
+
+Some Safari file choosers omit the hidden `.agent-collab` marker. The viewer can
+still infer the folder layout, but the participant roster and question progress
+are unknown in that browser. Senders from loaded messages remain available in
+**Viewing as**.
 
 Next to the source name the toolbar shows when the marker or a message file in
 the folder last changed (topic files are not scanned), for example "Last change seen 12 minutes ago"; hover it for the exact

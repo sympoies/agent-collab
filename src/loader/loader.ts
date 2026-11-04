@@ -270,7 +270,7 @@ export class Loader {
         const participantData = await this.readMarker(root);
         this.participants = participantData.participants;
         this.formerParticipants = participantData.formerParticipants;
-        this.rosterKnown = true;
+        this.rosterKnown = this.source.participantsKnown !== false;
         // The topic layout has no root inbox of its own; a missing one is an empty listing.
         const inbox = await this.listOrEmpty(head.revision, "inbox");
         this.head = head;
@@ -415,7 +415,7 @@ export class Loader {
         this.inbox = inbox;
         this.participants = participantData.participants;
         this.formerParticipants = participantData.formerParticipants;
-        this.rosterKnown = true;
+        this.rosterKnown = this.source.participantsKnown !== false;
         this.publish([...added, ...recovered]);
         return arrived.length;
       } catch (error) {

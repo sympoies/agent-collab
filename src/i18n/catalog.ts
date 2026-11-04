@@ -112,6 +112,8 @@ export const en = {
   "local.unreadable": "This folder could not be read.",
   "local.snapshotNotice":
     "This is a snapshot of the selected folder. After a git pull, choose the folder again to see updates.",
+  "local.snapshotNoticeRosterUnknown":
+    "This is a snapshot of the selected folder. After a git pull, choose the folder again to see updates. This browser omitted .agent-collab, so the participant roster and question progress are unknown; loaded senders appear under “Viewing as”.",
   "hosted.unreadable": "The snapshot served with this page could not be read.",
   "live.snapshotAt": "the snapshot generated at {date}",
   "live.bundled": "the bundled sample",

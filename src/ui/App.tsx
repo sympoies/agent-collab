@@ -479,10 +479,6 @@ export function App({
     lastTopicButton.current = button;
     setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
   };
-  const viewer = useMemo(
-    () => resolveViewer(preferences, snapshot.participants, [...selfNames]),
-    [preferences, snapshot.participants, selfNames],
-  );
   const order = useMemo(
     () =>
       colorOrder(
@@ -491,6 +487,11 @@ export function App({
         snapshot.items.flatMap((item) => (item.kind === "message" ? [item.message.from] : [])),
       ),
     [snapshot.participants, snapshot.formerParticipants, snapshot.items],
+  );
+  const viewingAsParticipants = snapshot.rosterKnown ? snapshot.participants : order;
+  const viewer = useMemo(
+    () => resolveViewer(preferences, viewingAsParticipants, [...selfNames]),
+    [preferences, selfNames, viewingAsParticipants],
   );
   const people = useMemo(() => buildPeople(order, preferences), [order, preferences]);
   const messages = useMemo(
@@ -706,7 +707,7 @@ export function App({
                 }}
               >
                 <option value="">{t("bar.observer")}</option>
-                {snapshot.participants.map((name) => (
+                {viewingAsParticipants.map((name) => (
                   <option key={name} value={name}>
                     {people.label(name)}
                   </option>

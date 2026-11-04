@@ -460,7 +460,9 @@ public blobs.
   guarded browser storage; a saved person who is not a participant is ignored
   (not forgotten). Without a saved choice the default is the first of the
   settings' "my names" that is a participant, else Observer. The demos keep
-  the choice in memory only and do not touch browser storage.
+  the choice in memory only and do not touch browser storage. If a browser omits
+  the marker from a local snapshot, the roster and question progress are
+  unknown; the select can offer sender names from messages that have loaded.
 - **Person colors.** Each person gets one of eight palette slots (`--person-N`,
   a value per theme). The default follows roster order, then former
   participants, then other senders by name, and wraps around after eight. The
@@ -567,9 +569,14 @@ public blobs.
 
 The viewer's toolbar is a row of icon buttons (`src/ui/icons.tsx`, `src/ui/IconButton.tsx`,
 `src/ui/Toolbar.tsx`). Refresh is leftmost (the same glyph is "Check live now" on the static demo),
-then the compact labelled "Viewing as" select, Profile & colors, Local folder (only where the picker
-exists), the language selector with a globe, the theme toggle (a sun when it switches to Paper, a
+then the compact labelled "Viewing as" select, Profile & colors, Local folder (where the folder
+handle picker or file-chooser fallback is available), the language selector with a globe, the theme toggle (a sun when it switches to Paper, a
 moon when it switches to Night Owl) and Settings.
+
+The file-chooser fallback keeps an in-memory snapshot. After `git pull`, select
+the folder again to see its updates; Refresh cannot read the disk again. Some
+Safari file choosers omit `.agent-collab`, so the layout is inferred but the
+participant roster and question progress remain unknown.
 
 - **Glyphs.** Inline SVG, 24x24 viewBox, outline, `stroke="currentColor"` at width 1.8, round caps
   and joins, `aria-hidden`, so they follow the theme and need no remote asset or dependency. The

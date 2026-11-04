@@ -431,7 +431,14 @@ export function Root(props: RootProps) {
         { key: "app.localTitle", params: { name: opened.name } },
         [],
         MEMORY_ONLY,
-        opened.snapshot === true ? { key: "local.snapshotNotice" } : null,
+        opened.snapshot === true
+          ? {
+              key:
+                opened.source.participantsKnown === false
+                  ? "local.snapshotNoticeRosterUnknown"
+                  : "local.snapshotNotice",
+            }
+          : null,
         undefined,
         null,
         {

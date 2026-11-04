@@ -71,9 +71,16 @@ export async function filesFromFolderDrop(
     });
 
   const walk = async (entry: FolderDropEntry, root: string, parent: string): Promise<void> => {
-    // Ignored folders are excluded before counting; unrelated entries count before path filtering.
-    if (entry.isDirectory && IGNORED_DIRECTORIES.has(entry.name)) return;
     const insidePath = parent === "" ? entry.name : `${parent}/${entry.name}`;
+    const repositoryRoot = pathSegments(insidePath)[0] ?? "";
+    // Ignore build and dependency names only outside the selected repository data directories.
+    if (
+      entry.isDirectory &&
+      IGNORED_DIRECTORIES.has(entry.name) &&
+      !REPOSITORY_DIRECTORIES.has(repositoryRoot)
+    ) {
+      return;
+    }
     entries += 1;
     if (entries > maxEntries) throw new SourceError("too-large", "", null, null, TOO_LARGE);
     const selectedPath = selectedRepositoryPath(`${root}/${insidePath}`, entry.isDirectory);
@@ -134,9 +141,11 @@ function copyDropFileList(files: FileList, maxEntries: number, maxBytes: number)
     if (entries > maxEntries) {
       throw new SourceError("too-large", "", null, null, TOO_LARGE);
     }
-    bytes += file.size;
-    if (bytes > maxBytes) throw new SourceError("too-large", "", null, null, TOO_LARGE);
-    if (classification.kind === "selected") selected.push(file);
+    if (classification.kind === "selected") {
+      bytes += file.size;
+      if (bytes > maxBytes) throw new SourceError("too-large", "", null, null, TOO_LARGE);
+      selected.push(file);
+    }
   }
   return selected;
 }
@@ -209,13 +218,15 @@ function selectedRepositoryPath(
     throw new SourceError("forbidden", "");
   }
 
+  if (REPOSITORY_DIRECTORIES.has(parts[0] ?? "")) {
+    const path = parts.join("/");
+    if (!safeRelativePath(path)) throw new SourceError("forbidden", "");
+    return { kind: "selected", root, path };
+  }
+
   const directories = entryIsDirectory ? parts : parts.slice(0, -1);
   if (directories.some((part) => IGNORED_DIRECTORIES.has(part))) return { kind: "ignored" };
-  if (!REPOSITORY_DIRECTORIES.has(parts[0] ?? "")) return { kind: "unrelated" };
-
-  const path = parts.join("/");
-  if (!safeRelativePath(path)) throw new SourceError("forbidden", "");
-  return { kind: "selected", root, path };
+  return { kind: "unrelated" };
 }
 
 function inferredLayout(paths: readonly string[]): string | null {
@@ -248,6 +259,7 @@ function inferredLayout(paths: readonly string[]): string | null {
 
 /** A read-only snapshot backed by the File objects from a directory input or folder drop. */
 export class FileListFolderSource implements MessageSource {
+  readonly participantsKnown: boolean;
   private readonly root: SnapshotDirectory = { path: "", children: new Map() };
   private readonly files = new Map<string, SnapshotFile>();
   private readonly text = new Map<string, Promise<string>>();
@@ -274,11 +286,12 @@ export class FileListFolderSource implements MessageSource {
       const classification = selectedRepositoryPath(relative);
       if (classification.kind === "ignored") continue;
       fileCount += 1;
-      bytes += file.size;
-      if (fileCount > maxFiles || bytes > maxBytes) {
+      if (fileCount > maxFiles) {
         throw new SourceError("too-large", "", null, null, TOO_LARGE);
       }
       if (classification.kind === "unrelated") continue;
+      bytes += file.size;
+      if (bytes > maxBytes) throw new SourceError("too-large", "", null, null, TOO_LARGE);
       const selectedPath = classification;
       firstSegments.add(selectedPath.root);
       if (firstSegments.size > 1) throw new SourceError("forbidden", "");
@@ -290,9 +303,10 @@ export class FileListFolderSource implements MessageSource {
       selected.push({ file, path });
     }
 
-    // Safari may omit the marker from a directory input. Infer it only from message files in a
-    // recognized inbox tree; a present marker always remains the source of layout truth.
-    if (!seen.has(".agent-collab")) {
+    // Safari may omit the marker from a directory input. Infer only its layout from message files;
+    // a present marker remains the source of both layout and participant-roster truth.
+    this.participantsKnown = seen.has(".agent-collab");
+    if (!this.participantsKnown) {
       const layout = inferredLayout(selected.map(({ path }) => path));
       if (layout !== null) {
         const marker = new File([`collab-protocol: 1\ninbox-layout: ${layout}\n`], ".agent-collab");

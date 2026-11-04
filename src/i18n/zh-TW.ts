@@ -96,6 +96,8 @@ export const zhTW: Messages = {
   "local.unreadable": "無法讀取此資料夾。",
   "local.snapshotNotice":
     "目前顯示所選資料夾的快照。執行 git pull 後，請重新選取資料夾以查看更新。",
+  "local.snapshotNoticeRosterUnknown":
+    "目前顯示所選資料夾的快照。執行 git pull 後，請重新選取資料夾以查看更新。此瀏覽器未提供 .agent-collab，因此參與者清單和問題進度未知；已載入訊息的寄件者會出現在「檢視身分」選項中。",
   "hosted.unreadable": "無法讀取隨此頁面提供的快照。",
   "live.snapshotAt": "{date} 產生的快照",
   "live.bundled": "內建範例",

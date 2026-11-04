@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { Loader } from "../src/loader/loader";
 import { TopicSession } from "../src/loader/topic-session";
+import { deriveQuestionStates } from "../src/message/questions";
 import { FileListFolderSource, filesFromFolderDrop } from "../src/source/file-list-folder";
 import { SourceError } from "../src/source/types";
 import { messageText } from "./support";
@@ -134,6 +135,29 @@ describe("FileListFolderSource", () => {
     expect(reads.count).toBe(1);
   });
 
+  it("keeps question state unknown when it synthesizes a missing topic marker", async () => {
+    const id = "2026-11-04T0900-alice-agent-api-01";
+    const source = new FileListFolderSource([
+      folderFile(
+        `topics/api/inbox/2026-11/${id}.md`,
+        messageText(id, "alice-agent", "api", { type: "question", replies: "any" }, "Question."),
+      ),
+    ]);
+    const loader = new Loader(source);
+    await loader.open();
+    const snapshot = loader.getSnapshot();
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+
+    expect(snapshot.rosterKnown).toBe(false);
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null });
+  });
+
   it.each([
     ["flat", "inbox/2026-10-01T0901-alice-agent-api-01.md"],
     ["monthly", "inbox/2026-10/2026-10-01T0901-alice-agent-api-01.md"],
@@ -249,21 +273,57 @@ describe("FileListFolderSource", () => {
     ).toThrow("This folder is too large to read. Choose the clone folder itself.");
   });
 
-  it("counts safe unrelated files toward the whole-folder file and byte caps", () => {
+  it("counts unrelated files toward the entry cap but not the selected-file byte cap", () => {
     const id = "2026-10-01T0901-alice-agent-api-01";
     const message = folderFile(`inbox/${id}.md`, messageText(id, "alice-agent", "api"));
+    const unrelated = folderFile("docs/large.txt", "x".repeat(200));
 
     expect(
       () =>
         new FileListFolderSource([folderFile("docs/readme.txt", "a"), message], { maxFiles: 1 }),
     ).toThrow("This folder is too large to read. Choose the clone folder itself.");
     expect(
-      () =>
-        new FileListFolderSource([folderFile("docs/large.txt", "123456789"), message], {
-          maxBytes: 8,
-        }),
-    ).toThrow("This folder is too large to read. Choose the clone folder itself.");
+      () => new FileListFolderSource([unrelated, message], { maxBytes: message.size }),
+    ).not.toThrow();
   });
+
+  it.each(["directory input", "entry-based folder drop"])(
+    "keeps a topic named build in the %s path",
+    async (selection) => {
+      const id = "2026-11-04T0900-alice-agent-api-01";
+      const marker = "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent\n";
+      const text = messageText(id, "alice-agent", "build", {}, "The build topic is present.");
+      const files =
+        selection === "directory input"
+          ? [
+              folderFile(".agent-collab", marker),
+              folderFile(`topics/build/inbox/2026-11/${id}.md`, text),
+            ]
+          : await filesFromFolderDrop(
+              dataTransfer(
+                droppedDirectory("clone", [
+                  droppedFile(".agent-collab", marker),
+                  droppedDirectory("topics", [
+                    droppedDirectory("build", [
+                      droppedDirectory("inbox", [
+                        droppedDirectory("2026-11", [droppedFile(`${id}.md`, text)]),
+                      ]),
+                    ]),
+                  ]),
+                ]),
+              ),
+            );
+      const loader = new Loader(new FileListFolderSource(files));
+      await loader.open();
+
+      expect(loader.getSnapshot().items).toMatchObject([
+        {
+          kind: "message",
+          message: { path: `topics/build/inbox/2026-11/${id}.md` },
+        },
+      ]);
+    },
+  );
 
   it("rejects a file larger than the shared 1 MiB limit", () => {
     expect(
@@ -384,6 +444,36 @@ describe("FileListFolderSource", () => {
     await expect(filesFromFolderDrop(transfer, { maxBytes: 8 })).rejects.toMatchObject({
       kind: "too-large",
     });
+  });
+
+  it("counts only selected file bytes in the FileList drop fallback", async () => {
+    const id = "2026-10-01T0901-alice-agent-api-01";
+    const message = folderFile(`inbox/${id}.md`, messageText(id, "alice-agent", "api"));
+    const transfer = {
+      items: [],
+      files: [folderFile("docs/large.txt", "x".repeat(200)), message],
+    } as unknown as DataTransfer;
+
+    await expect(filesFromFolderDrop(transfer, { maxBytes: message.size })).resolves.toHaveLength(
+      1,
+    );
+  });
+
+  it("counts only selected file bytes in entry-based folder drops", async () => {
+    const id = "2026-10-01T0901-alice-agent-api-01";
+    const marker = "collab-protocol: 1\ninbox-layout: flat\nparticipants: alice-agent\n";
+    const message = messageText(id, "alice-agent", "api");
+    const transfer = dataTransfer(
+      droppedDirectory("clone", [
+        droppedFile(".agent-collab", marker),
+        droppedFile("README.md", "x".repeat(200)),
+        droppedDirectory("inbox", [droppedFile(`${id}.md`, message)]),
+      ]),
+    );
+
+    await expect(
+      filesFromFolderDrop(transfer, { maxBytes: marker.length + message.length }),
+    ).resolves.toHaveLength(2);
   });
 
   it("stops walking a dropped folder as soon as its size cap is exceeded", async () => {

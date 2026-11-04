@@ -2346,6 +2346,9 @@ test("a file input opens a local snapshot in each language on a phone without ne
   page.on("request", (request) => requests.push(request.url()));
   const input = page.locator('input[type="file"][webkitdirectory]');
   const fixturePath = fileURLToPath(new URL("./fixtures/local-folder", import.meta.url));
+  const updatedFixturePath = fileURLToPath(
+    new URL("./fixtures/local-folder-updated", import.meta.url),
+  );
 
   for (const locale of ["en", "ja", "zh-TW"] as const) {
     if (locale !== "en") await page.reload();
@@ -2398,19 +2401,87 @@ test("a file input opens a local snapshot in each language on a phone without ne
       const reselectChooserOpened = page.waitForEvent("filechooser");
       await chooseAgain.click();
       const reselectChooser = await reselectChooserOpened;
-      await reselectChooser.setFiles(fixturePath);
+      await reselectChooser.setFiles(updatedFixturePath);
       await page.getByRole("button", { name: /^#api/ }).click();
-      await expect(page.getByText("A message from a selected folder.")).toBeVisible();
+      await expect(page.getByText("A message added in the second folder selection.")).toBeVisible();
     } else {
       await page.keyboard.press("Escape");
     }
     await expect(page.locator("h1")).toHaveCount(1);
-    await expect(page.getByText(catalogsByLocale[locale]["local.snapshotNotice"])).toBeVisible();
+    if (browserName === "webkit") {
+      await expect(page.getByText(/\.agent-collab/)).toBeVisible();
+    } else {
+      await expect(page.getByText(catalogsByLocale[locale]["local.snapshotNotice"])).toBeVisible();
+    }
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
     ).toBeLessThanOrEqual(0);
     expect(requests).toEqual([]);
   }
+});
+
+test("a topic folder snapshot keeps questions visible when WebKit omits the marker @csp", async ({
+  page,
+  browserName,
+}) => {
+  expect(["chromium", "webkit"]).toContain(browserName);
+  await page.addInitScript(() => Reflect.deleteProperty(window, "showDirectoryPicker"));
+  await page.goto("/");
+  const requests: string[] = [];
+  page.on("request", (request) => requests.push(request.url()));
+  const input = page.locator('input[type="file"][webkitdirectory]');
+  const fixturePath = fileURLToPath(new URL("./fixtures/local-folder-topic", import.meta.url));
+
+  await input.evaluate((element) => {
+    element.addEventListener(
+      "change",
+      (event) => {
+        const selected = Array.from((event.currentTarget as HTMLInputElement).files ?? []).map(
+          (file) => file.webkitRelativePath,
+        );
+        (window as Window & { __selectedFolderPaths?: string[] }).__selectedFolderPaths = selected;
+      },
+      { capture: true, once: true },
+    );
+  });
+  const chooserOpened = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: en["welcome.openLocalFiles"] }).click();
+  const chooser = await chooserOpened;
+  await chooser.setFiles(fixturePath);
+  const selectedPaths = await page.evaluate(
+    () => (window as Window & { __selectedFolderPaths?: string[] }).__selectedFolderPaths ?? [],
+  );
+  expect(selectedPaths.some((path) => path.endsWith("/.agent-collab"))).toBe(
+    browserName === "chromium",
+  );
+
+  await expect(page.getByRole("heading", { name: /local-folder/ })).toBeVisible();
+  await page.getByRole("button", { name: "api", exact: true }).click();
+  await expect(page.getByText("Question about the API.")).toBeVisible();
+  const viewingAs = page.getByLabel("Viewing as");
+  await expect(viewingAs.locator("option")).toHaveText(["Observer", "alice-agent", "bob-agent"]);
+
+  const questions = page.getByRole("button", { name: /^Questions/ });
+  await expect(questions).toContainText(browserName === "chromium" ? "1 open" : "0 open");
+  await questions.click();
+  await expect(page.locator("#conversation-heading")).toHaveText("Questions");
+  await expect(page.getByText("Question about the API.")).toBeVisible();
+  if (browserName === "webkit") {
+    await expect(page.getByRole("region", { name: /Not yet known/ })).toBeVisible();
+    await expect(
+      page.getByText(/participants.*unavailable|participant roster.*unknown/i),
+    ).toBeVisible();
+  } else {
+    await expect(page.getByRole("region", { name: "Open" })).toBeVisible();
+  }
+
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await expect(page.locator("#conversation-heading")).toHaveText("All conversations");
+  await expect(page.getByText("Question about the API.")).toBeVisible();
+  await page.getByRole("button", { name: "Files", exact: true }).click();
+  await expect(page.locator("#conversation-heading")).toHaveText("Files");
+  await expect(page.locator(".files .file-name")).toContainText("notes.md");
+  expect(requests).toEqual([]);
 });
 
 test("cancelling the picker, choosing a non-clone folder and revoked permission have clear states", async ({
