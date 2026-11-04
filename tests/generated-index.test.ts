@@ -147,6 +147,16 @@ describe("the per-topic index", () => {
     expect(parseTopicIndex(index([row(ID(1))]), "../x").count).toBeNull();
   });
 
+  it("reads the same from a file with a BOM, CRLF line endings and a BOM inside a cell", () => {
+    const lf = index([row(ID(1)), row(ID(2)), row(ID(3))]);
+    const expected = parseTopicIndex(lf, "api");
+    const crlf = `\uFEFF${lf.replace(/\n/g, "\r\n")}`;
+    expect(parseTopicIndex(crlf, "api")).toEqual(expected);
+    const inCell = lf.replace(ID(2), `\uFEFF${ID(2)}\u061c`);
+    expect(parseTopicIndex(inCell, "api")).toEqual(expected);
+    expect(expected).toMatchObject({ count: 3 });
+  });
+
   it("an empty index is zero messages, not unknown", () => {
     expect(parseTopicIndex(index([]), "api")).toMatchObject({ count: 0, newestId: null });
   });

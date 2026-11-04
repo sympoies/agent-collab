@@ -64,38 +64,53 @@ export class TopicSession {
 
   /**
    * Checks the repository for changes with one conditional request. When the head moved, the
-   * `topics/` listing is read again and only the opened topics whose tree id changed refresh their
-   * loader; the others, closed or merely idle, make no request at all. Resolves to the names of
-   * the topics that changed, new ones included.
+   * `topics/` listing is read again. Every opened topic whose tree id differs from the one its
+   * loader last caught up with refreshes its loader, each on its own: one that fails does not stop
+   * the others, stays marked as behind, and is tried again by the next `refresh()` even when the
+   * repository has not moved since. Resolves to the names of the topics that changed (new ones
+   * included); if any loader failed, it throws after the others finished.
    */
   async refresh(): Promise<readonly string[]> {
     if (this.head === null) {
       await this.open();
       return this.topics().map((topic) => topic.name);
     }
-    const head = await this.source.head(this.head);
-    if (head === "not-modified") return [];
     const before = this.states;
-    await this.read(head);
-    const changed: string[] = [];
+    const head = await this.source.head(this.head);
+    if (head !== "not-modified") await this.read(head);
+    const changed = new Set<string>();
     for (const [name, state] of this.states) {
       if (before.get(name)?.treeId !== state.treeId || before.get(name) === undefined) {
-        changed.push(name);
+        changed.add(name);
       }
     }
-    for (const name of before.keys()) if (!this.states.has(name)) changed.push(name);
-    for (const name of changed) {
-      const opened = this.loaders.get(name);
-      if (opened === undefined) continue;
-      // An opened topic with a new tree id reads its changes; one that was removed is dropped.
-      if (this.states.has(name)) {
-        opened.treeId = this.states.get(name)?.treeId ?? null;
-        await opened.loader.refresh();
-      } else {
+    for (const name of before.keys()) if (!this.states.has(name)) changed.add(name);
+
+    const behind: string[] = [];
+    for (const [name, opened] of [...this.loaders]) {
+      const state = this.states.get(name);
+      if (state === undefined) {
         this.loaders.delete(name);
+      } else if (state.treeId !== opened.treeId) {
+        behind.push(name);
       }
     }
-    return changed.sort();
+    const results = await Promise.allSettled(
+      behind.map(async (name) => {
+        const opened = this.loaders.get(name);
+        await opened?.loader.refresh();
+        // Only now is this topic current; a failure leaves it behind for the next refresh.
+        if (opened !== undefined) opened.treeId = this.states.get(name)?.treeId ?? null;
+        return name;
+      }),
+    );
+    const failures = results.flatMap((result) =>
+      result.status === "rejected" ? [result.reason as unknown] : [],
+    );
+    for (const name of behind) changed.add(name);
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures);
+    return [...changed].sort();
   }
 
   /**

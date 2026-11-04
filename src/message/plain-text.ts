@@ -5,7 +5,7 @@ const MAX_CELL = 200;
 // Control characters, bidirectional overrides and isolates, zero-width and byte-order characters.
 const HIDDEN = new RegExp(
   // eslint-disable-next-line no-control-regex
-  "[\\u0000-\\u001f\\u007f\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\ufeff]",
+  "[\\u0000-\\u001f\\u007f\\u061c\\u200b-\\u200f\\u202a-\\u202e\\u2060-\\u2064\\u2066-\\u2069\\ufeff]",
   "g",
 );
 
