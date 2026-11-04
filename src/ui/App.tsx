@@ -205,7 +205,8 @@ export function App({
   );
   const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
-  const messagePane = useRef<HTMLElement | null>(null);
+  // State, not a ref: the pane renders once the topics are known, and landing waits for it.
+  const [messagePane, setMessagePane] = useState<HTMLElement | null>(null);
   const [dateLanding, setDateLanding] = useState<DateLanding | null>(null);
   const conversationHeading = useRef<HTMLHeadingElement | null>(null);
   const lastTopicButton = useRef<HTMLButtonElement | null>(null);
@@ -824,7 +825,7 @@ export function App({
             className="conversation"
             aria-labelledby="conversation-heading"
             tabIndex={0}
-            ref={messagePane}
+            ref={setMessagePane}
           >
             <button
               type="button"

@@ -67,7 +67,7 @@ function firstOfDay(pane: HTMLElement, day: string): HTMLElement | null {
  * the bottom again.
  */
 export function useFollowLatest(
-  pane: RefObject<HTMLElement | null>,
+  pane: HTMLElement | null,
   viewKey: string | null,
   shown: boolean,
   rows: readonly Row[],
@@ -87,12 +87,20 @@ export function useFollowLatest(
     dateLanding: null as DateLanding | null,
     observer: null as ResizeObserver | null,
     observed: null as Element | null,
+    element: null as HTMLElement | null,
+    detach: null as (() => void) | null,
   });
 
-  useEffect(() => {
-    const element = pane.current;
-    if (element === null) return;
+  // The pane may render after this hook first runs (the viewer shows it once its topics are
+  // known), so the listeners follow the element: attached when it appears, dropped when it goes.
+  const attach = (element: HTMLElement | null) => {
     const current = state.current;
+    if (element === current.element) return;
+    current.detach?.();
+    current.element = element;
+    current.detach = null;
+    current.observed = null;
+    if (element === null) return;
     const track = () => {
       const bottom = atBottom(element);
       if (!bottom) current.held = false;
@@ -101,8 +109,8 @@ export function useFollowLatest(
     };
     element.addEventListener("scroll", track, { passive: true });
     // Content that grows after landing (a preview that finishes loading, a wrapped line) keeps
-    // the bottom in view while following, and otherwise only refreshes the remembered height.
-    current.observer =
+    // the bottom in view while following, and otherwise only refreshes the remembered anchor.
+    const observer =
       typeof ResizeObserver === "undefined"
         ? null
         : new ResizeObserver(() => {
@@ -111,22 +119,25 @@ export function useFollowLatest(
             }
             current.anchor = visibleAnchor(element);
           });
-    // A timeline that is already there (the viewer remounted with messages loaded) is watched now;
-    // the layout effect ran first, when there was no observer yet.
-    const timeline = element.querySelector(".timeline");
-    if (timeline !== null) current.observer?.observe(timeline);
-    current.observed = timeline;
-    return () => {
+    current.observer = observer;
+    current.detach = () => {
       element.removeEventListener("scroll", track);
-      current.observer?.disconnect();
+      observer?.disconnect();
       current.observer = null;
-      current.observed = null;
     };
-  }, [pane]);
+  };
+  useEffect(
+    () => () => {
+      state.current.detach?.();
+      state.current.element = null;
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
     const current = state.current;
-    const element = pane.current;
+    const element = pane;
+    attach(element);
     if (viewKey !== current.key) {
       current.key = viewKey;
       current.landed = false;
@@ -175,7 +186,7 @@ export function useFollowLatest(
   // focus back (a child effect), whose own scrolling would otherwise win.
   useEffect(() => {
     const current = state.current;
-    const element = pane.current;
+    const element = pane;
     if (dateLanding === current.dateLanding) return;
     current.dateLanding = dateLanding;
     if (dateLanding === null || element === null || !current.landed || current.last === null) {

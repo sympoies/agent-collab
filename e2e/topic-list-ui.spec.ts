@@ -349,6 +349,8 @@ test.describe("the topic list holds still for the reader", () => {
     const before = await order(list);
 
     const row = list.getByRole("button", { name: "topic-03", exact: true });
+    // The list scrolls inside its pane: bring the row into view so the pointer is over the list.
+    await row.scrollIntoViewIfNeeded();
     const box = await row.boundingBox();
     if (box === null) throw new Error("The row has no box.");
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
