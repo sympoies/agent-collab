@@ -700,7 +700,9 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   );
   await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
   const timestamp = page.locator("time").first();
-  await timestamp.focus();
+  // A message time is not a tab stop; its full timestamp shows on hover.
+  await expect(page.locator("time[tabindex]")).toHaveCount(0);
+  await timestamp.hover();
   await expect(timestamp.locator(".time-tooltip")).toBeVisible();
   await expect(timestamp.locator(".time-tooltip")).toHaveText("2026-10-09 10:00");
   assertRequests();
@@ -1757,6 +1759,92 @@ for (const theme of ["paper", "night-owl"] as const) {
   });
 }
 
+for (const identity of identityCases) {
+  test(`every topic and its counter are visible on ${identity.label} in ${identity.theme}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: identity.scheme });
+    await page.setViewportSize(identity.viewport);
+    const assertRequests = await openViewer(page, "attachments");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", identity.theme);
+    const chips = page.locator(".topics button");
+    await expect(page.getByRole("button", { name: /^#ops/ })).toBeVisible();
+    expect(await chips.count()).toBeGreaterThan(1);
+    // Nothing is cut at the screen edge or hidden in a scroller, and the counters are readable.
+    const boxes = await chips.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        const count = node.querySelector(".count")?.getBoundingClientRect();
+        return {
+          inside: box.left >= 0 && box.right <= window.innerWidth + 0.5,
+          counter:
+            count === undefined || (count.right <= window.innerWidth + 0.5 && count.width > 0),
+        };
+      }),
+    );
+    expect(await page.locator(".topics .count").count()).toBeGreaterThan(1);
+    expect(boxes.every((box) => box.inside && box.counter)).toBe(true);
+    const scroller = await page
+      .locator(".topics")
+      .evaluate((node) => node.scrollWidth - node.clientWidth);
+    expect(scroller).toBeLessThanOrEqual(1);
+    await saveScreenshot(page, `topics-${identity.label}-${identity.theme}.png`);
+    assertRequests();
+  });
+}
+
+test("activating a message link with the keyboard moves focus to the message", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "attachments");
+  await page.getByRole("button", { name: /^#api/ }).click();
+  const focused = () => page.evaluate(() => document.activeElement?.id ?? "");
+
+  // Same topic: the target message takes the focus and keeps its highlight.
+  const link = page
+    .locator("#msg-2026-10-08T0905-bob-agent-api-02")
+    .getByRole("link", { name: /^Message 2026-10-08 09:00/ });
+  await link.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(focused).toBe("msg-2026-10-08T0900-alice-agent-api-01");
+  await expect(page.locator("#msg-2026-10-08T0900-alice-agent-api-01")).toHaveCSS(
+    "outline-style",
+    "solid",
+  );
+
+  // Another topic: the viewer switches topic and the focus lands on the message there.
+  const other = page
+    .locator("#msg-2026-10-08T0900-alice-agent-api-01")
+    .getByRole("link", { name: /^Message 2026-10-08 09:10/ });
+  await other.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#conversation-heading")).toHaveText("#ops");
+  await expect.poll(focused).toBe("msg-2026-10-08T0910-alice-agent-ops-01");
+
+  // The message itself is a focus target, not an extra tab stop.
+  await expect(page.locator("time[tabindex], .message[tabindex='0']")).toHaveCount(0);
+  assertRequests();
+});
+
+test("settings have one h1 and fields named without their hints, with errors connected", async ({
+  page,
+}) => {
+  await installApiStub(page, "empty");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open another repository" }).click();
+  await expect(page.locator("h1")).toHaveCount(1);
+  // The hint is a description, not part of the field's name.
+  const names = page.getByRole("textbox", { name: "My names", exact: true });
+  await expect(names).toHaveAccessibleDescription(/default "Viewing as" person/);
+  const repository = page.getByRole("textbox", { name: "Repository", exact: true });
+  await expect(repository).not.toHaveAttribute("aria-invalid", "true");
+  await page.getByRole("button", { name: "Save and open" }).click();
+  await expect(repository).toHaveAttribute("aria-invalid", "true");
+  const error = page.locator("[role=alert]", { hasText: /owner\/repository/i });
+  await expect(error).toBeVisible();
+  await expect(repository).toHaveAccessibleDescription(/owner\/repository/i);
+  await expect(page.locator("h1")).toHaveCount(1);
+});
+
 test("a browser without a folder picker gets an explanation instead of a broken button", async ({
   page,
 }) => {
@@ -1878,7 +1966,7 @@ for (const code of LOCALES) {
       await page.getByRole("button", { name: messages["welcome.openAnother"] }).click();
       await expectNoClipping(
         page,
-        ".settings button, .settings .field > span, .settings legend, .settings .note, .token-help, .token-help p, .token-help a",
+        ".settings button, .settings .field > label, .settings legend, .settings .note, .token-help, .token-help p, .token-help a",
       );
       await saveScreenshot(page, `i18n-settings-${code}-${view.label}.png`);
       await page.getByRole("button", { name: messages["settings.openOffline"] }).click();

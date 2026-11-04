@@ -255,6 +255,9 @@ export function App({
     // The hash scrolls to the message and styles it through :target.
     if (window.location.hash === `#msg-${id}`) window.location.hash = "";
     window.location.hash = `msg-${id}`;
+    // The activated chip may be gone (another topic) or keep focus on itself; either way the
+    // reader lands on the message, which the hash has already scrolled to.
+    document.getElementById(`msg-${id}`)?.focus({ preventScroll: true });
   };
   /** Shows a message in the chat, in `nextTopic` (null shows every topic). */
   const jumpToMessage = (target: Message, nextTopic: string | null) => {

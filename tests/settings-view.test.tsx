@@ -38,7 +38,7 @@ describe("SettingsView", () => {
   });
 
   it("masks the token input and leaves it empty", () => {
-    const secretInputs = render(true).match(/<input type="password"[^>]*>/g) ?? [];
+    const secretInputs = render(true).match(/<input[^>]*type="password"[^>]*>/g) ?? [];
     expect(secretInputs).toHaveLength(1);
     for (const input of secretInputs) {
       expect(input).toContain('value=""');

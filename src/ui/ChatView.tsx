@@ -155,6 +155,7 @@ function MessageRow({
     <article
       id={`msg-${message.id}`}
       className="message"
+      tabIndex={-1}
       data-type={message.type ?? "unknown"}
       data-compact={compact}
       data-fresh={view.fresh}
@@ -162,7 +163,6 @@ function MessageRow({
     >
       <header className="meta">
         <time
-          tabIndex={0}
           dateTime={message.timestamp.replace(" ", "T")}
           title={message.timestamp}
           aria-label={message.timestamp}

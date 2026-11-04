@@ -668,8 +668,7 @@ button:hover {
   white-space: nowrap;
 }
 
-.meta time:hover .time-tooltip,
-.meta time:focus-visible .time-tooltip {
+.meta time:hover .time-tooltip {
   display: block;
 }
 
@@ -1100,7 +1099,8 @@ span.chip {
   padding-top: 12px;
 }
 
-.settings h1 {
+.settings h1,
+.settings h2 {
   margin: 0;
   font-size: 1.15rem;
 }
@@ -1208,14 +1208,13 @@ span.chip {
   }
 
   .topics {
-    flex-direction: row;
-    overflow-x: auto;
-    padding: 2px 2px 5px;
+    flex-flow: row wrap;
+    padding: 2px;
   }
 
   .topics button {
     width: auto;
-    min-width: max-content;
+    max-width: 100%;
   }
 
   .conversation {

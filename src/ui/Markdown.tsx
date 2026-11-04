@@ -5,10 +5,12 @@ import type { ReactNode } from "react";
 
 import { classifyRef } from "../message/refs";
 
+// A link target may contain one level of balanced parentheses (`[a](https://x.example/a_(b))`),
+// so a target such as `javascript:alert(1)` is consumed whole instead of leaving a stray `)`.
 // Every quantifier is bounded so a hostile file cannot make the scan quadratic, and a line longer
 // than MAX_INLINE_LENGTH is shown as plain text without any scan at all.
 const INLINE_RE =
-  /(`[^`]{1,500}`|\*\*[^*]{1,500}\*\*|\*[^*\s][^*]{0,500}\*|!?\[[^\]]{0,500}\]\([^)\s]{0,2000}\))/;
+  /(`[^`]{1,500}`|\*\*[^*]{1,500}\*\*|\*[^*\s][^*]{0,500}\*|!?\[[^\]]{0,500}\]\((?:[^()\s]|\([^()\s]{0,500}\)){0,2000}\))/;
 const MAX_INLINE_LENGTH = 2000;
 
 function inline(text: string, keyPrefix: string): ReactNode[] {
@@ -25,7 +27,7 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
       return [<em key={key}>{part.slice(1, -1)}</em>];
     }
-    const link = /^(!?)\[([^\]]*)\]\(([^)\s]*)\)$/.exec(part);
+    const link = /^(!?)\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))*)\)$/.exec(part);
     if (link !== null) {
       const [, image, label = "", target = ""] = link;
       // An image is never fetched; its alt text is shown instead.

@@ -55,6 +55,17 @@ describe("Markdown", () => {
     expect(out).toContain("bad");
   });
 
+  it("drops no characters around an unsafe link whose target has parentheses", () => {
+    expect(html("see [bad](javascript:alert(1)) now")).toContain("<p>see bad now</p>");
+    expect(html("![chart](x.png(1)) end")).toContain("<p>chart end</p>");
+  });
+
+  it("keeps a balanced parenthesis inside a link target", () => {
+    const out = html("[wiki](https://docs.example.com/a_(b)) and more");
+    expect(out).toContain('href="https://docs.example.com/a_(b)"');
+    expect(out).toContain("</a> and more");
+  });
+
   it("does not load images: image syntax becomes text", () => {
     const out = html("![chart](https://evil.example/x.png)");
     expect(out).not.toContain("<img");
