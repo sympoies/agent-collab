@@ -31,6 +31,9 @@ const ALLOWED = new Set<string>([
   "src/ui/Attachments.tsx: TXT",
   "src/ui/Attachments.tsx: CSV",
   "src/ui/Attachments.tsx: IMG",
+  // CSS tokens: the icon button class list and the phone media query.
+  "src/ui/IconButton.tsx: icon-button #",
+  "src/ui/Toolbar.tsx: (max-width: 720px)",
   // The error class name and the protocol token the marker file must start with.
   "src/loader/loader.ts: SetupError",
   "src/loader/loader.ts: collab-protocol: 1",

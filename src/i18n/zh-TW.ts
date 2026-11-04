@@ -202,4 +202,5 @@ export const zhTW: Messages = {
   "error.localPermission": "需要重新授予本機資料夾的權限。請從工具列重新選擇資料夾。",
   "error.needsToken": "此儲存庫需要權杖，或不存在。",
   "file.badgeOther": "檔案",
+  "bar.more": "更多",
 };

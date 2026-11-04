@@ -225,6 +225,7 @@ export const en = {
     "Local folder permission needs to be granted again. Choose the folder again from the toolbar.",
   "error.needsToken": "This repository needs a token or does not exist.",
   "file.badgeOther": "FILE",
+  "bar.more": "More",
 } as const;
 
 export type MessageKey = keyof typeof en;

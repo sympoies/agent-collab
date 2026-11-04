@@ -1,4 +1,6 @@
 import { useT } from "../i18n/LocaleProvider";
+import { IconButton } from "./IconButton";
+import { MoonIcon, SunIcon } from "./icons";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 type Theme = "night-owl" | "paper";
@@ -75,18 +77,33 @@ export function ThemeProvider({
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
-export function ThemeToggle() {
+export function useTheme(): ThemeContextValue {
   const context = useContext(ThemeContext);
-  if (context === null) throw new Error("ThemeToggle must be inside ThemeProvider.");
+  if (context === null) throw new Error("useTheme must be inside ThemeProvider.");
+  return context;
+}
+
+/** The label of the action: it names the theme the button switches to. */
+export function useThemeAction(): {
+  readonly label: string;
+  readonly toggle: () => void;
+  readonly toLight: boolean;
+} {
+  const { theme, toggleTheme } = useTheme();
   const t = useT();
-  const next = t(context.theme === "night-owl" ? "theme.paper" : "theme.nightOwl");
+  const toLight = theme === "night-owl";
+  return {
+    label: t("theme.use", { theme: t(toLight ? "theme.paper" : "theme.nightOwl") }),
+    toggle: toggleTheme,
+    toLight,
+  };
+}
+
+export function ThemeToggle() {
+  const { label, toggle, toLight } = useThemeAction();
   return (
-    <button
-      type="button"
-      aria-label={t("theme.use", { theme: next })}
-      onClick={context.toggleTheme}
-    >
-      {next}
-    </button>
+    <IconButton label={label} onClick={toggle}>
+      {toLight ? <SunIcon /> : <MoonIcon />}
+    </IconButton>
   );
 }

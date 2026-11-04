@@ -435,6 +435,45 @@ public blobs.
   This version cannot decrypt it yet"); malformed files show the malformed
   card; messages with `issues` show a warning marker with the list.
 
+### Toolbar
+
+The viewer's toolbar is a row of icon buttons (`src/ui/icons.tsx`, `src/ui/IconButton.tsx`,
+`src/ui/Toolbar.tsx`). Refresh is leftmost (the same glyph is "Check live now" on the static demo),
+then the compact labelled "Viewing as" select, Profile & colors, Local folder (only where the picker
+exists), the language selector with a globe, the theme toggle (a sun when it switches to Paper, a
+moon when it switches to Night Owl) and Settings.
+
+- **Glyphs.** Inline SVG, 24x24 viewBox, outline, `stroke="currentColor"` at width 1.8, round caps
+  and joins, `aria-hidden`, so they follow the theme and need no remote asset or dependency. The
+  gear, folder, globe, sun, moon, three dots and user outlines follow the Feather icon set
+  (https://feathericons.com, MIT License, Copyright (c) 2013-2023 Cole Bemis), as credited in the
+  source; the refresh glyph (one arc, one arrowhead) is drawn here.
+- **Icon button.** A native button that fixes only the geometry: 34px square (40px on touch
+  screens), centered glyph, theme border radius. The accessible name and the tooltip are the same
+  catalog text (`aria-label` and `title`), so every icon-only button is named in all languages; state
+  attributes such as `aria-expanded` pass through.
+- **Phone.** At 720px and below the toolbar keeps Refresh and "Viewing as" and puts everything else
+  behind one "More" button. The icons plus the labelled select do not fit a 390px screen in
+  Japanese or Traditional Chinese (about five 34px buttons, the select and the language selector
+  need roughly 460px), so the menu is needed. The menu has menu semantics: opening moves focus to the
+  first item, and Up, Down, Home and End move (wrapping). Profile & colors is a
+  `menuitemcheckbox` that carries `aria-checked` for the open panel (the wide button has
+  `aria-expanded`); the language entries are `menuitemradio`. It lists Profile & colors, Local
+  folder, the language radios, the theme and, last, Settings.
+- **Focus rule.** Whenever the menu closes, focus goes back to the More button unless something
+  else already has it. Escape, choosing an item and Tab always return it (Tab is consumed, so the
+  tab order continues from the trigger rather than from an item that has just unmounted); an action
+  that moves focus itself, such as opening the Profile panel into a field, keeps it. A pointer
+  press outside the menu closes it; a focusable target that was pressed keeps the focus, and a
+  press on nothing focusable returns it to the More button. When the window crosses the 720px
+  threshold with the menu open, the focused item is gone with the layout, and focus moves to the
+  control that replaces it: the More button on the way to a phone, Profile & colors on the way
+  back. The width query is subscribed once and released on unmount, the document pointer listener
+  is removed when the menu closes. Nothing else in the viewer listens for Escape, so the menu's
+  Escape cannot also act on another screen (a test pins that the key is handled once).
+- **Contrast.** The glyph color is the text color on the toolbar surface, at least 3:1 in both
+  themes (checked in the browser suite for every locale and viewport).
+
 ## 6. Credentials
 
 Two different secrets with different purposes:

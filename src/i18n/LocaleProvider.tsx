@@ -3,6 +3,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { GlobeIcon } from "../ui/icons";
 import { LOCALE_NAMES, LOCALES, type Locale, type MessageKey } from "./catalog";
 import { detectLocale, formatDateTime, translate, type Params } from "./translate";
 
@@ -90,7 +91,8 @@ export function useT(): Translate {
 export function LanguageSwitcher() {
   const { locale, setLocale, t } = useLocale();
   return (
-    <label className="language-switcher">
+    <label className="language-switcher" title={t("language.label")}>
+      <GlobeIcon />
       <span className="sr-only">{t("language.label")}</span>
       <select
         aria-label={t("language.label")}

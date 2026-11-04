@@ -22,14 +22,16 @@ import { SourceError } from "../source/types";
 import { FilesView, type AttachmentContext } from "./Attachments";
 import { ChatView } from "./ChatView";
 import type { MessageKey } from "../i18n/catalog";
-import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
+import { useLocale } from "../i18n/LocaleProvider";
 import type { MessageRef, Params } from "../i18n/translate";
 import { buildPeople } from "./people";
 import { errorText, say } from "./errorText";
+import { IconButton } from "./IconButton";
+import { RefreshIcon } from "./icons";
 import { relativeTime } from "./relativeTime";
+import { Toolbar } from "./Toolbar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
-import { ThemeToggle } from "./ThemeProvider";
 import { buildRows, topicSummaries } from "./timeline";
 
 function localDate(now: Date): string {
@@ -326,72 +328,65 @@ export function App({
             )}
           </p>
         )}
-        <div className="bar-actions">
-          {onCheckLiveNow === undefined ? (
-            <button
-              type="button"
-              disabled={busy || retryingAfterLimit}
-              aria-busy={busy}
-              onClick={() => {
-                run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
-              }}
-            >
-              {t("bar.refresh")}
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={checkingLive}
-              aria-busy={checkingLive}
-              onClick={() => {
-                setCheckingLive(true);
-                void onCheckLiveNow().finally(() => {
-                  setCheckingLive(false);
-                });
-              }}
-            >
-              {t("bar.checkLive")}
-            </button>
-          )}
-          <label className="viewing-as">
-            <span>{t("bar.viewingAs")}</span>
-            <select
-              value={viewer ?? ""}
-              onChange={(event) => {
-                updatePreferences(
-                  withViewingAs(preferences, event.target.value === "" ? null : event.target.value),
-                );
-              }}
-            >
-              <option value="">{t("bar.observer")}</option>
-              {snapshot.participants.map((name) => (
-                <option key={name} value={name}>
-                  {people.label(name)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            type="button"
-            aria-expanded={profileOpen}
-            aria-controls="profile-panel"
-            onClick={() => {
-              setProfileOpen(!profileOpen);
-            }}
-          >
-            {t("bar.profile")}
-          </button>
-          {onPickLocalFolder !== undefined && (
-            <button type="button" onClick={onPickLocalFolder}>
-              {t("bar.localFolder")}
-            </button>
-          )}
-          <LanguageSwitcher />
-          <ThemeToggle />
-          <button type="button" onClick={onOpenSettings}>
-            {t("bar.settings")}
-          </button>
-        </div>
+        <Toolbar
+          primary={
+            onCheckLiveNow === undefined ? (
+              <IconButton
+                label={t("bar.refresh")}
+                disabled={busy || retryingAfterLimit}
+                aria-busy={busy}
+                onClick={() => {
+                  run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
+                }}
+              >
+                <RefreshIcon />
+              </IconButton>
+            ) : (
+              <IconButton
+                label={t("bar.checkLive")}
+                disabled={checkingLive}
+                aria-busy={checkingLive}
+                onClick={() => {
+                  setCheckingLive(true);
+                  void onCheckLiveNow().finally(() => {
+                    setCheckingLive(false);
+                  });
+                }}
+              >
+                <RefreshIcon />
+              </IconButton>
+            )
+          }
+          viewingAs={
+            <label className="viewing-as">
+              <span>{t("bar.viewingAs")}</span>
+              <select
+                value={viewer ?? ""}
+                onChange={(event) => {
+                  updatePreferences(
+                    withViewingAs(
+                      preferences,
+                      event.target.value === "" ? null : event.target.value,
+                    ),
+                  );
+                }}
+              >
+                <option value="">{t("bar.observer")}</option>
+                {snapshot.participants.map((name) => (
+                  <option key={name} value={name}>
+                    {people.label(name)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          }
+          profileOpen={profileOpen}
+          onToggleProfile={() => {
+            setProfileOpen(!profileOpen);
+          }}
+          onPickLocalFolder={onPickLocalFolder}
+          onOpenSettings={onOpenSettings}
+        />
       </header>
       {profileOpen && (
         <div id="profile-panel">

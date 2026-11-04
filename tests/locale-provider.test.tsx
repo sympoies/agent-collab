@@ -249,8 +249,8 @@ describe("LocaleProvider", () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
       const refresh = () =>
-        [...host.querySelectorAll("button")].find(
-          (button) => button.textContent === "Refresh" || button.textContent === "更新",
+        [...host.querySelectorAll("button")].find((button) =>
+          ["Refresh", "更新"].includes(button.getAttribute("aria-label") ?? ""),
         );
       // The first manual refresh runs; the second inside the five-minute interval is refused.
       for (let attempt = 0; attempt < 2; attempt += 1) {
