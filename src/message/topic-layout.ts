@@ -2,6 +2,8 @@
 // TOPIC.md and the root topic index. Pure: parsers never throw on file content, and everything
 // read from a generated file is treated as untrusted text.
 
+import { plainText } from "./plain-text";
+
 /** A topic folder name: lowercase letters and digits with single hyphens between parts. */
 const TOPIC_FOLDER_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Names that cannot be topic folders: they are reserved inside `topics/<topic>/`. */
@@ -57,12 +59,8 @@ export interface TopicSummary {
   readonly folder: boolean;
 }
 
-/** Plain text of a cell: control characters dropped, a markdown link reduced to its label. */
 function cellText(value: string, limit: number): string {
-  const link = /^\[([^\]]*)\]\([^)]*\)$/.exec(value.trim());
-  const text = (link?.[1] ?? value).trim();
-  // eslint-disable-next-line no-control-regex
-  return text.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, limit);
+  return plainText(value, limit);
 }
 
 function splitRow(line: string): string[] | null {

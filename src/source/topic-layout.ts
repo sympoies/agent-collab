@@ -50,6 +50,13 @@ export class TopicLayoutSource implements MessageSource {
   /** The topic inbox listings of the latest revision asked about, shared by the inbox and months. */
   private cached: { readonly revision: string; readonly listings: Promise<TopicInboxes> } | null =
     null;
+  /**
+   * Listings kept across revisions, keyed by the object id of the directory they list: a topic
+   * folder or a month folder whose id did not change is not listed again (the ids come from the
+   * parent listing, so reusing a listing costs no request and no directory read).
+   */
+  private inboxMemo = new Map<string, readonly DirectoryEntry[]>();
+  private monthMemo = new Map<string, readonly DirectoryEntry[]>();
 
   constructor(
     private readonly inner: MessageSource,
@@ -123,14 +130,18 @@ export class TopicLayoutSource implements MessageSource {
     }
   }
 
-  /** The topic folders to read: every valid folder of `topics/`, or just the scoped one. */
-  private async topicFolders(revision: string): Promise<readonly string[]> {
+  /** The topic folders to read, with their object ids: every valid folder, or just the scoped one. */
+  private async topicFolders(
+    revision: string,
+  ): Promise<readonly { readonly name: string; readonly objectId: string | null }[]> {
     const wanted = this.options.topic;
-    if (wanted !== undefined) return isTopicFolderName(wanted) ? [wanted] : [];
+    if (wanted !== undefined) {
+      return isTopicFolderName(wanted) ? [{ name: wanted, objectId: null }] : [];
+    }
     const entries = await this.optional(revision, "topics");
     const folders = entries
       .filter((entry) => entry.kind === "directory" && isTopicFolderName(entry.name))
-      .map((entry) => entry.name);
+      .map((entry) => ({ name: entry.name, objectId: entry.objectId }));
     if (folders.length > MAX_MERGED_TOPICS) {
       throw new SourceError(
         "too-large",
@@ -143,15 +154,36 @@ export class TopicLayoutSource implements MessageSource {
     return folders;
   }
 
-  /** `topics/<topic>/inbox` of every topic, listed at most a few at a time, once per revision. */
+  /**
+   * `topics/<topic>/inbox` of every topic, listed at most a few at a time and once per revision.
+   * A topic whose folder id did not change since an earlier revision is not listed again.
+   */
   private inboxes(revision: string): Promise<TopicInboxes> {
     if (this.cached?.revision !== revision) {
       const listings = (async (): Promise<TopicInboxes> => {
-        const topics = await this.topicFolders(revision);
-        const lists = await mapLimit(topics, LISTING_CONCURRENCY, (topic) =>
-          this.optional(revision, `topics/${topic}/inbox`),
+        const folders = await this.topicFolders(revision);
+        const next = new Map<string, readonly DirectoryEntry[]>();
+        const lists = await mapLimit(folders, LISTING_CONCURRENCY, async (folder) => {
+          const key = folder.objectId === null ? null : `${folder.name}:${folder.objectId}`;
+          const known = key === null ? undefined : this.inboxMemo.get(key);
+          const list = known ?? (await this.optional(revision, `topics/${folder.name}/inbox`));
+          if (key !== null) next.set(key, list);
+          return list;
+        });
+        const result: TopicInboxes = new Map(
+          folders.map((folder, index) => [folder.name, lists[index] ?? []]),
         );
-        return new Map(topics.map((topic, index) => [topic, lists[index] ?? []]));
+        // Only what this revision uses is kept, so the memory follows the repository.
+        this.inboxMemo = next;
+        const liveMonths = new Set<string>();
+        for (const [topic, entries] of result) {
+          for (const entry of entries) {
+            if (entry.kind === "directory")
+              liveMonths.add(`${topic}/${entry.name}:${entry.objectId}`);
+          }
+        }
+        this.monthMemo = new Map([...this.monthMemo].filter(([key]) => liveMonths.has(key)));
+        return result;
       })();
       this.cached = { revision, listings };
       listings.catch(() => {
@@ -199,15 +231,19 @@ export class TopicLayoutSource implements MessageSource {
       this.optional(revision, `inbox/${month}`),
       this.inboxes(revision),
     ]);
-    // Only the topics that have this month are listed.
-    const withMonth = [...inboxes]
-      .filter(([, entries]) =>
-        entries.some((entry) => entry.kind === "directory" && entry.name === month),
-      )
-      .map(([topic]) => topic);
-    const lists = await mapLimit(withMonth, LISTING_CONCURRENCY, (topic) =>
-      this.optional(revision, `topics/${topic}/inbox/${month}`),
-    );
+    // Only the topics that have this month are listed, and a month folder whose id did not change
+    // since an earlier revision is not listed again.
+    const withMonth = [...inboxes].flatMap(([topic, entries]) => {
+      const folder = entries.find((entry) => entry.kind === "directory" && entry.name === month);
+      return folder === undefined ? [] : [{ topic, key: `${topic}/${month}:${folder.objectId}` }];
+    });
+    const lists = await mapLimit(withMonth, LISTING_CONCURRENCY, async ({ topic, key }) => {
+      const known = this.monthMemo.get(key);
+      if (known !== undefined) return known;
+      const list = await this.optional(revision, `topics/${topic}/inbox/${month}`);
+      this.monthMemo.set(key, list);
+      return list;
+    });
     const entries = [...legacy.filter((entry) => this.keepLegacy(entry)), ...lists.flat()].filter(
       (entry) => entry.kind === "file",
     );
