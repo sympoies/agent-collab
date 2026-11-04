@@ -73,6 +73,9 @@ export const en = {
   "time.minutes": "{count, plural, one {# minute ago} other {# minutes ago}}",
   "time.hours": "{count, plural, one {# hour ago} other {# hours ago}}",
   "time.days": "{count, plural, one {# day ago} other {# days ago}}",
+  "time.spanMinutes": "{count, plural, one {# minute} other {# minutes}}",
+  "time.spanHours": "{count, plural, one {# hour} other {# hours}}",
+  "time.spanDays": "{count, plural, one {# day} other {# days}}",
   "size.unknown": "size unknown",
   "size.bytes": "{value} B",
   "size.kb": "{value} KB",
@@ -158,6 +161,8 @@ export const en = {
   "questions.answered": "Answered",
   "questions.unknown": "Not yet known (loading)",
   "questions.progress": "{answered}/{target} answered",
+  "questions.overdue": "Overdue · due {date}",
+  "questions.unanswered": "Unanswered for {span}",
   "profile.title": "Profile & colors",
   "profile.reset": "Reset colors and names",
   "profile.note":

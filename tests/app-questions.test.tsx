@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Loader } from "../src/loader/loader";
 import { FixtureSource } from "../src/source/fixture";
@@ -204,5 +204,137 @@ describe("receipts and the Questions view", () => {
     expect(host.querySelector(`#msg-${OPEN} .recipients`)?.textContent).toContain(
       "bob-agent acknowledged 09:02",
     );
+  });
+
+  describe("answers, overdue and waiting time", () => {
+    const THREE = "collab-protocol: 1\nparticipants: alice-agent, bob-agent, carol-agent\n";
+    const ASKED = id(0, "alice-agent", "ship");
+    const QUIET = id(2, "alice-agent", "ship");
+    const DONE = id(3, "alice-agent", "ship");
+    const ACK = id(1, "bob-agent", "ship");
+    const ANSWER = id(5, "bob-agent", "ship");
+    const REMINDER = id(10, "alice-agent", "ship");
+    const repository: Record<string, string> = { ".agent-collab": THREE };
+    const put = (
+      messageId: string,
+      from: string,
+      type: string,
+      fields: Record<string, string>,
+      body: string,
+    ) => {
+      repository[`inbox/${messageId}.md`] = messageText(
+        messageId,
+        from,
+        "ship",
+        { type, ...fields },
+        body,
+      );
+    };
+    put(
+      ASKED,
+      "alice-agent",
+      "question",
+      { to: "bob-agent, carol-agent", due: "2026-09-30" },
+      "Ship it?",
+    );
+    put(
+      ACK,
+      "bob-agent",
+      "ack",
+      { to: "alice-agent", reply_to: ASKED },
+      "Received. Expected reply: within 10 minutes",
+    );
+    put(
+      ANSWER,
+      "bob-agent",
+      "answer",
+      { to: "alice-agent", reply_to: ASKED },
+      "Yes, ship.\nAfter the freeze.\nCheck the docs.\nFourth line stays hidden.",
+    );
+    put(
+      REMINDER,
+      "alice-agent",
+      "info",
+      { to: "carol-agent", reply_to: ASKED },
+      "Carol, please answer.",
+    );
+    put(QUIET, "alice-agent", "question", { to: "carol-agent" }, "Any objection?");
+    put(DONE, "alice-agent", "question", { to: "bob-agent" }, "Is it done?");
+    put(
+      id(4, "bob-agent", "ship"),
+      "bob-agent",
+      "answer",
+      { to: "alice-agent", reply_to: DONE },
+      "Done.",
+    );
+
+    async function open(): Promise<HTMLElement> {
+      // 2026-10-01 11:10 local: the first question is 2 h 10 min old and past its due date.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(2026, 9, 1, 11, 10));
+      const host = await render([], repository);
+      await click(button(host, "Questions"));
+      return host;
+    }
+    const item = (host: HTMLElement, text: string) =>
+      [...host.querySelectorAll(".question-item")].find((node) => node.textContent.includes(text));
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("shows the replies under each question, newest-last, as links to the full message", async () => {
+      const host = await open();
+      const asked = item(host, "Ship it?");
+      const replies = [...(asked?.querySelectorAll(".question-reply") ?? [])];
+      expect(replies.map((reply) => reply.getAttribute("data-kind"))).toEqual([
+        "answer",
+        "reminder",
+      ]);
+      const [answer, reminder] = replies;
+      expect(answer?.textContent).toContain("bob-agent");
+      expect(answer?.textContent).toContain("09:05");
+      expect(answer?.textContent).toContain("answer");
+      expect(answer?.textContent).toContain("Yes, ship.");
+      expect(answer?.textContent).toContain("Check the docs.");
+      expect(answer?.textContent).not.toContain("Fourth line");
+      expect(reminder?.textContent).toContain("reminder");
+      expect(reminder?.textContent).toContain("Carol, please answer.");
+      // Acknowledgements without text are one compact line, not a card.
+      expect(asked?.querySelector(".question-ack")?.textContent).toBe(
+        "bob-agent acknowledged 2026-10-01 09:01 · reply expected within 10 minutes",
+      );
+      await click(answer?.querySelector("button") ?? undefined);
+      expect(host.querySelector("#conversation-heading")?.textContent).toBe("#ship");
+      expect(host.querySelector(`#msg-${ANSWER}`)).not.toBeNull();
+    });
+
+    it("shows the overdue badge, the waiting time and the reminder count on an open question", async () => {
+      const host = await open();
+      const asked = item(host, "Ship it?");
+      expect(asked?.querySelector(".question-overdue")?.textContent).toBe(
+        "Overdue · due 2026-09-30",
+      );
+      expect(asked?.querySelector(".question-waiting")?.textContent).toBe("Unanswered for 2 hours");
+      expect(asked?.querySelector(".reminder-count")?.textContent).toBe(
+        "1 reminder, last 2026-10-01 09:10",
+      );
+    });
+
+    it("shows waiting time but no overdue badge when the question has no due date", async () => {
+      const host = await open();
+      const quiet = item(host, "Any objection?");
+      expect(quiet?.querySelector(".question-waiting")?.textContent).toBe("Unanswered for 2 hours");
+      expect(quiet?.querySelector(".question-overdue")).toBeNull();
+    });
+
+    it("shows neither badge once a question is answered", async () => {
+      const host = await open();
+      const done = item(host, "Is it done?");
+      expect(done?.closest("section")?.getAttribute("aria-label")).toBe("Answered");
+      expect(done?.querySelector(".question-waiting")).toBeNull();
+      expect(done?.querySelector(".question-overdue")).toBeNull();
+      expect(done?.querySelector(".question-reply")?.textContent).toContain("Done.");
+    });
   });
 });

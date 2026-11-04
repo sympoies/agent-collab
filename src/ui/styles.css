@@ -931,6 +931,92 @@ button:hover {
   white-space: pre-wrap;
 }
 
+.question-badges {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.question-badges .reminder-count {
+  flex-basis: auto;
+}
+
+.question-overdue {
+  border: 1px solid var(--error);
+  border-radius: 10px;
+  padding: 0 7px;
+  color: var(--error);
+  font-weight: 650;
+}
+
+.question-overdue::before {
+  content: "! ";
+}
+
+.question-replies {
+  display: flex;
+  flex-basis: 100%;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid var(--border-soft);
+  list-style: none;
+}
+
+.reply-link {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  text-align: left;
+}
+
+.reply-link:hover {
+  background: none;
+}
+
+.reply-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.reply-from {
+  font-weight: 650;
+}
+
+.reply-time {
+  color: var(--muted);
+}
+
+.reply-text {
+  overflow-wrap: anywhere;
+  color: var(--secondary);
+  font-size: 0.85rem;
+  white-space: pre-line;
+}
+
+.question-reply[data-kind="reminder"] .reply-text {
+  font-style: italic;
+}
+
+.question-ack {
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
 .message {
   scroll-margin-top: 96px;
 }

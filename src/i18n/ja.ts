@@ -61,6 +61,9 @@ export const ja: Messages = {
   "time.minutes": "{count, plural, other {# 分前}}",
   "time.hours": "{count, plural, other {# 時間前}}",
   "time.days": "{count, plural, other {# 日前}}",
+  "time.spanMinutes": "{count, plural, other {# 分}}",
+  "time.spanHours": "{count, plural, other {# 時間}}",
+  "time.spanDays": "{count, plural, other {# 日}}",
   "size.unknown": "サイズ不明",
   "size.bytes": "{value} B",
   "size.kb": "{value} KB",
@@ -151,6 +154,8 @@ export const ja: Messages = {
   "questions.answered": "回答済み",
   "questions.unknown": "不明（読み込み中）",
   "questions.progress": "{answered}/{target} 件回答済み",
+  "questions.overdue": "期限切れ · 期限 {date}",
+  "questions.unanswered": "{span} 未回答",
   "profile.title": "プロフィールと色",
   "profile.reset": "色と名前をリセット",
   "profile.note":
