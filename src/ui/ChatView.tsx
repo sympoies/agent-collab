@@ -120,6 +120,14 @@ function Receipts({ receipts, people }: { receipts: MessageReceipts; people: Peo
           <span className="question-state">{t(`receipt.state.${question.state}`)}</span> {status}
         </p>
       )}
+      {question !== null && question.reminders.length > 0 && (
+        <p className="reminder-count">
+          {t("receipt.reminders", {
+            count: question.reminders.length,
+            time: (question.reminders.at(-1)?.timestamp ?? "").slice(11),
+          })}
+        </p>
+      )}
       {acknowledgements.length > 0 && (
         <ul className="acks">
           {acknowledgements.map((ack) => (
@@ -201,7 +209,9 @@ function MessageRow({
             {message.timestamp}
           </span>
         </time>
-        <span className="badge">{typeLabel(message.type, t)}</span>
+        <span className="badge">
+          {view.reminder ? t("type.reminder") : typeLabel(message.type, t)}
+        </span>
         <span className="to-label">{t("chat.to")}</span>
         {recipients(message.to, people, t).map((name, index) => (
           <span key={`${String(index)}-${name}`} className="to">
