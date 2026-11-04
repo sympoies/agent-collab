@@ -3341,6 +3341,32 @@ test("content that grows after landing keeps a following pane at the bottom and 
   assertRequests();
 });
 
+// An App that mounts with its messages already loaded (back from Settings) has its timeline in the
+// first commit; growth after that must still keep a following reader at the bottom.
+test("a viewer remounted with messages loaded still follows growth at the bottom @csp", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "long");
+  await expect(page.locator(".message")).toHaveCount(30);
+  await toolbarAction(page, "Settings");
+  await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.locator(".message")).toHaveCount(30);
+  const pane = page.getByRole("main");
+  const fromBottom = () =>
+    pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop);
+  await expect.poll(fromBottom).toBeLessThan(2);
+  await page.evaluate(() => {
+    const filler = document.createElement("li");
+    filler.className = "latest-anchor";
+    filler.style.height = "600px";
+    document.querySelector(".timeline")?.append(filler);
+  });
+  await expect.poll(fromBottom).toBeLessThan(2);
+  assertRequests();
+});
+
 for (const theme of [
   { name: "Night Owl", scheme: "dark", action: "Use Night Owl theme", id: "night-owl" },
   { name: "Paper", scheme: "light", action: "Use Paper theme", id: "paper" },

@@ -111,6 +111,11 @@ export function useFollowLatest(
             }
             current.anchor = visibleAnchor(element);
           });
+    // A timeline that is already there (the viewer remounted with messages loaded) is watched now;
+    // the layout effect ran first, when there was no observer yet.
+    const timeline = element.querySelector(".timeline");
+    if (timeline !== null) current.observer?.observe(timeline);
+    current.observed = timeline;
     return () => {
       element.removeEventListener("scroll", track);
       current.observer?.disconnect();
