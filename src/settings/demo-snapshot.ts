@@ -3,6 +3,12 @@ import { SourceError, type DirectoryEntry, type Head, type MessageSource } from 
 export interface DemoSnapshotFile {
   readonly path: string;
   readonly text: string;
+  /**
+   * A listing-only entry (a binary or oversized attachment): the file is listed, with its size,
+   * so a message's refs resolve, but its content is not in the snapshot and `text` is empty.
+   */
+  readonly omitted?: true;
+  readonly size?: number;
 }
 
 export interface DemoSnapshot {
@@ -55,7 +61,19 @@ export function parseDemoSnapshot(text: string): DemoSnapshot | null {
       return null;
     }
     seen.add(entry.path);
-    files.push({ path: entry.path, text: entry.text });
+    if (entry.omitted === undefined) {
+      files.push({ path: entry.path, text: entry.text });
+    } else if (
+      entry.omitted === true &&
+      entry.text === "" &&
+      typeof entry.size === "number" &&
+      Number.isSafeInteger(entry.size) &&
+      entry.size >= 0
+    ) {
+      files.push({ path: entry.path, text: "", omitted: true, size: entry.size });
+    } else {
+      return null;
+    }
   }
   if (!seen.has(".agent-collab")) return null;
   return {
@@ -96,11 +114,18 @@ function hash(text: string): string {
 export class DemoSnapshotSource implements MessageSource {
   private readonly files = new Map<string, string>();
   private readonly ids = new Map<string, string>();
+  /** Sizes of listing-only files, whose content is not in the snapshot. */
+  private readonly omitted = new Map<string, number>();
 
   constructor(private readonly snapshot: DemoSnapshot) {
     for (const file of snapshot.files) {
-      this.files.set(file.path, file.text);
-      this.ids.set(file.path, hash(file.text));
+      if (file.omitted === true) {
+        this.omitted.set(file.path, file.size ?? 0);
+        this.ids.set(file.path, hash(`omitted:${file.path}:${String(file.size ?? 0)}`));
+      } else {
+        this.files.set(file.path, file.text);
+        this.ids.set(file.path, hash(file.text));
+      }
     }
   }
 
@@ -117,7 +142,11 @@ export class DemoSnapshotSource implements MessageSource {
     }
     const prefix = path === "" ? "" : `${path}/`;
     const children = new Map<string, DirectoryEntry>();
-    for (const [filePath, text] of this.files) {
+    const listed = [
+      ...[...this.files].map(([filePath, text]) => [filePath, text] as const),
+      ...[...this.omitted.keys()].map((filePath) => [filePath, null] as const),
+    ];
+    for (const [filePath, text] of listed) {
       if (!filePath.startsWith(prefix)) continue;
       const rest = filePath.slice(prefix.length);
       const slash = rest.indexOf("/");
@@ -128,8 +157,11 @@ export class DemoSnapshotSource implements MessageSource {
           name,
           path: childPath,
           kind: "file",
-          objectId: this.ids.get(filePath) ?? hash(text),
-          size: new TextEncoder().encode(text).length,
+          objectId: this.ids.get(filePath) ?? hash(filePath),
+          size:
+            text === null
+              ? (this.omitted.get(filePath) ?? 0)
+              : new TextEncoder().encode(text).length,
         });
       } else if (!children.has(name)) {
         children.set(name, { name, path: childPath, kind: "directory", objectId: hash(childPath) });
@@ -140,6 +172,7 @@ export class DemoSnapshotSource implements MessageSource {
 
   readFile(entry: DirectoryEntry): Promise<string> {
     const text = this.files.get(entry.path);
+    // A listing-only file is listed so refs resolve, but has no content to read.
     if (text === undefined) return Promise.reject(new SourceError("not-found", entry.path));
     return Promise.resolve(text);
   }
