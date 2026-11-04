@@ -49,6 +49,8 @@ const ALL_CONCURRENCY = 4;
 /** Names a source that is not a repository, so it is always visible which data is shown. */
 export interface SourceIndicator {
   readonly label: MessageKey;
+  /** The action that returns to a source that cannot be refreshed live. */
+  readonly actionLabel?: MessageKey;
   /** Shown as experimental until the source is released. */
   readonly experimental: boolean;
   /**
@@ -477,10 +479,6 @@ export function App({
     lastTopicButton.current = button;
     setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
   };
-  const viewer = useMemo(
-    () => resolveViewer(preferences, snapshot.participants, [...selfNames]),
-    [preferences, snapshot.participants, selfNames],
-  );
   const order = useMemo(
     () =>
       colorOrder(
@@ -489,6 +487,11 @@ export function App({
         snapshot.items.flatMap((item) => (item.kind === "message" ? [item.message.from] : [])),
       ),
     [snapshot.participants, snapshot.formerParticipants, snapshot.items],
+  );
+  const viewingAsParticipants = snapshot.rosterKnown ? snapshot.participants : order;
+  const viewer = useMemo(
+    () => resolveViewer(preferences, viewingAsParticipants, [...selfNames]),
+    [preferences, selfNames, viewingAsParticipants],
   );
   const people = useMemo(() => buildPeople(order, preferences), [order, preferences]);
   const messages = useMemo(
@@ -704,7 +707,7 @@ export function App({
                 }}
               >
                 <option value="">{t("bar.observer")}</option>
-                {snapshot.participants.map((name) => (
+                {viewingAsParticipants.map((name) => (
                   <option key={name} value={name}>
                     {people.label(name)}
                   </option>
@@ -717,6 +720,9 @@ export function App({
             setProfileOpen(!profileOpen);
           }}
           onPickLocalFolder={onPickLocalFolder}
+          {...(source?.actionLabel === undefined
+            ? {}
+            : { localFolderActionLabel: source.actionLabel })}
           onOpenSettings={onOpenSettings}
         />
         {profileOpen && (

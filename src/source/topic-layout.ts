@@ -63,6 +63,10 @@ export class TopicLayoutSource implements MessageSource {
     private readonly options: TopicLayoutOptions = {},
   ) {}
 
+  get participantsKnown(): boolean {
+    return this.inner.participantsKnown !== false;
+  }
+
   head(previous: Head | null): Promise<Head | "not-modified"> {
     return this.inner.head(previous);
   }

@@ -11,13 +11,16 @@ export const zhTW: Messages = {
   "welcome.openSaved": "開啟已儲存的儲存庫",
   "welcome.openAnother": "開啟其他儲存庫",
   "welcome.openLocal": "開啟本機資料夾（實驗性）",
+  "welcome.openLocalFiles": "從檔案選擇器選取本機資料夾",
   "welcome.localUnsupported":
-    "開啟本機資料夾需要能開啟資料夾的瀏覽器，例如電腦上的 Chrome 或 Edge。",
+    "此瀏覽器無法直接開啟資料夾。請使用上方的「從檔案選擇器選取本機資料夾」開啟快照。執行 git pull 後，請重新選取資料夾以查看更新。",
+  "welcome.localDrop": "如果瀏覽器支援，也可以將資料夾拖放到此處。",
   "bar.refresh": "重新整理",
   "bar.viewingAs": "檢視身分",
   "bar.observer": "觀察者",
   "bar.profile": "個人檔案與顏色",
   "bar.localFolder": "本機資料夾",
+  "bar.localFolderSnapshot": "重新選取資料夾",
   "bar.hostedSnapshot": "快照副本（非即時）",
   "bar.settings": "設定",
   "bar.checkLive": "立即檢查",
@@ -91,6 +94,10 @@ export const zhTW: Messages = {
   "local.tooLarge": "資料夾太大，無法讀取。請選擇複製的資料夾本身。",
   "local.notClone": "這不是協作的複製資料夾（找不到 .agent-collab 檔案）。請選擇複製的資料夾本身。",
   "local.unreadable": "無法讀取此資料夾。",
+  "local.snapshotNotice":
+    "目前顯示所選資料夾的快照。執行 git pull 後，請重新選取資料夾以查看更新。",
+  "local.snapshotNoticeRosterUnknown":
+    "目前顯示所選資料夾的快照。執行 git pull 後，請重新選取資料夾以查看更新。此瀏覽器未提供 .agent-collab，因此參與者清單和問題進度未知；已載入訊息的寄件者會出現在「檢視身分」選項中。",
   "hosted.unreadable": "無法讀取隨此頁面提供的快照。",
   "live.snapshotAt": "{date} 產生的快照",
   "live.bundled": "內建範例",

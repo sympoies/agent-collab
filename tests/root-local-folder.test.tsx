@@ -7,8 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MemoryStore } from "../src/credentials/store";
 import { FixtureSource } from "../src/source/fixture";
+import { FileListFolderSource } from "../src/source/file-list-folder";
 import { SourceError } from "../src/source/types";
-import { Root, type LocalFolderOpen } from "../src/ui/Root";
+import { Root, type LocalFolderOpen, type LocalFolderSelection } from "../src/ui/Root";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { flat, MARKER, messageText } from "./support";
 
@@ -46,6 +47,7 @@ describe("Root with a local folder", () => {
   async function render(
     openLocalFolder: (() => Promise<LocalFolderOpen>) | null,
     storage = { getItem: () => null, setItem: () => undefined },
+    openLocalFileList?: (selection: LocalFolderSelection) => Promise<LocalFolderOpen>,
   ): Promise<HTMLElement> {
     const host = document.createElement("div");
     document.body.append(host);
@@ -61,6 +63,7 @@ describe("Root with a local folder", () => {
             createDemoSource={() => new FixtureSource({})}
             createLiveDemoSource={() => new FixtureSource({})}
             openLocalFolder={openLocalFolder}
+            {...(openLocalFileList === undefined ? {} : { openLocalFileList })}
           />
         </ThemeProvider>,
       );
@@ -85,11 +88,39 @@ describe("Root with a local folder", () => {
     });
   }
 
-  it("explains instead of showing a broken button when the browser has no folder picker", async () => {
-    const host = await render(null);
+  async function chooseSelectedFiles(host: HTMLElement): Promise<void> {
+    await click(button(host, "Choose local folder from files"));
+    const input = host.querySelector<HTMLInputElement>('input[type="file"][webkitdirectory]');
+    expect(input).not.toBeNull();
+    const file = new File(["message"], "message.md");
+    Object.defineProperty(file, "webkitRelativePath", { value: "clone/inbox/message.md" });
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [file],
+    });
+    await act(async () => {
+      input?.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+  }
+
+  it("offers the file-list fallback and points the unsupported browser hint to it", async () => {
+    const host = await render(null, undefined, (selection) =>
+      Promise.resolve({
+        source: new FixtureSource({
+          ".agent-collab": MARKER,
+          [flat("2026-10", 1, 1)]: messageText(ID, "alice-agent", "api"),
+        }),
+        name:
+          selection.kind === "files"
+            ? (selection.files[0]?.webkitRelativePath.split("/")[0] ?? "clone")
+            : "clone",
+      }),
+    );
     expect(button(host, "Open local folder")).toBeUndefined();
+    expect(button(host, "Choose local folder from files")).toBeDefined();
     expect(host.querySelector(".local-unsupported")?.textContent).toContain(
-      "needs a browser that can open folders",
+      "Choose local folder from files",
     );
   });
 
@@ -114,6 +145,30 @@ describe("Root with a local folder", () => {
       "not a collaboration clone",
     );
     expect(host.querySelector("h1")?.textContent).toBe("Collab Viewer");
+  });
+
+  it("shows the too-large message when building a FileList source fails", async () => {
+    const openLocalFileList = () =>
+      Promise.reject(new SourceError("too-large", "", null, null, "local.tooLarge"));
+    const host = await render(null, undefined, openLocalFileList);
+
+    await chooseSelectedFiles(host);
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("too large");
+  });
+
+  it("shows the non-clone message for FileList selections without inbox or topics", async () => {
+    const file = new File(["not a clone"], "README.md");
+    Object.defineProperty(file, "webkitRelativePath", { value: "other/README.md" });
+    const openLocalFileList = () =>
+      Promise.resolve({ source: new FileListFolderSource([file]), name: "other" });
+    const host = await render(null, undefined, openLocalFileList);
+
+    await chooseSelectedFiles(host);
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      "not a collaboration clone",
+    );
   });
 
   it("opens the clone read-only, labels it experimental and shows when it last changed", async () => {

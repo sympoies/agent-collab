@@ -11,13 +11,17 @@ export const ja: Messages = {
   "welcome.openSaved": "保存したリポジトリを開く",
   "welcome.openAnother": "別のリポジトリを開く",
   "welcome.openLocal": "ローカルフォルダーを開く（試験的）",
+  "welcome.openLocalFiles": "ローカルフォルダーを選択",
   "welcome.localUnsupported":
-    "ローカルフォルダーを開くには、フォルダーを開けるブラウザー（パソコンの Chrome や Edge など）が必要です。",
+    "このブラウザーではフォルダーを直接開けません。上の「ローカルフォルダーを選択」からスナップショットを開いてください。git pull の後は、フォルダーを選び直すと更新を確認できます。",
+  "welcome.localDrop":
+    "ブラウザーが対応している場合は、ここにフォルダーをドロップすることもできます。",
   "bar.refresh": "更新",
   "bar.viewingAs": "閲覧者",
   "bar.observer": "オブザーバー",
   "bar.profile": "プロフィールと色",
   "bar.localFolder": "ローカルフォルダー",
+  "bar.localFolderSnapshot": "フォルダーを選び直す",
   "bar.hostedSnapshot": "スナップショットのコピー（ライブではありません）",
   "bar.settings": "設定",
   "bar.checkLive": "今すぐ確認",
@@ -99,6 +103,10 @@ export const ja: Messages = {
   "local.notClone":
     "共同作業のクローンではありません（.agent-collab ファイルがありません）。クローンのフォルダーそのものを選んでください。",
   "local.unreadable": "このフォルダーを読み込めませんでした。",
+  "local.snapshotNotice":
+    "選択したフォルダーのスナップショットを表示しています。git pull の後は、フォルダーを選び直すと更新を確認できます。",
+  "local.snapshotNoticeRosterUnknown":
+    "選択したフォルダーのスナップショットを表示しています。git pull の後は、フォルダーを選び直して更新してください。このブラウザーでは .agent-collab が取得されなかったため、参加者一覧と質問の進行状況は不明です。読み込んだメッセージの送信者は「閲覧者」の選択肢に表示されます。",
   "hosted.unreadable": "このページと一緒に提供されているスナップショットを読み込めませんでした。",
   "live.snapshotAt": "{date} に生成されたスナップショット",
   "live.bundled": "同梱のサンプル",
