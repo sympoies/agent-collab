@@ -235,8 +235,8 @@ test.describe("topic list navigation", () => {
           // The list does not reorder under the pointer: keep it out of the list.
           await page.mouse.move(width - 20, 300);
           // Activity arrives after the list: the topic with a message moves up.
-          await expect(rows.nth(3)).toHaveText("The API");
-          await expect(rows.nth(4)).toHaveText(LONG_TOPIC);
+          await expect(rows.nth(3)).toHaveText("#api");
+          await expect(rows.nth(4)).toHaveText(`#${LONG_TOPIC}`);
           if (width === 390) {
             await expect(page.locator(".conversation")).toBeHidden();
           } else {
@@ -253,13 +253,13 @@ test.describe("topic list navigation", () => {
           // Only the twelve most recent topics show; the button discloses the rest in place.
           const showAll = list.getByRole("button", { name: text.showAll });
           await expect(showAll).toHaveAttribute("aria-expanded", "false");
-          await expect(list.getByRole("button", { name: "topic-12", exact: true })).toHaveCount(0);
+          await expect(list.getByRole("button", { name: "#topic-12", exact: true })).toHaveCount(0);
           await showAll.focus();
           await page.keyboard.press("Enter");
           const showFewer = list.getByRole("button", { name: text.showFewer });
           await expect(showFewer).toHaveAttribute("aria-expanded", "true");
           await expect(showFewer).toBeFocused();
-          await expect(list.getByRole("button", { name: "topic-12", exact: true })).toBeVisible();
+          await expect(list.getByRole("button", { name: "#topic-12", exact: true })).toBeVisible();
           if (width === 1280) {
             // A long list scrolls inside the pane, never moving the page.
             const scrolls = await list.evaluate((pane) => ({
@@ -276,27 +276,27 @@ test.describe("topic list navigation", () => {
 
           await saveScreenshot(page, `topic-list-${locale}-${theme}-${String(width)}.png`);
           // The selected topic stays listed when the list is collapsed again.
-          const hidden = list.getByRole("button", { name: "topic-12", exact: true });
+          const hidden = list.getByRole("button", { name: "#topic-12", exact: true });
           await hidden.click();
           if (width === 390) await page.getByRole("button", { name: text.back }).click();
           await showFewer.click();
           await expect(list.getByRole("button", { name: text.showAll })).toBeVisible();
           await expect(hidden).toBeVisible();
-          await expect(list.getByRole("button", { name: "topic-11", exact: true })).toHaveCount(0);
+          await expect(list.getByRole("button", { name: "#topic-11", exact: true })).toHaveCount(0);
           await expect(hidden).toHaveAttribute("aria-pressed", "true");
 
           // Opening the closed group reads that topic's activity, never its messages.
           const closedGroup = page.locator(".closed-topics summary");
           await closedGroup.focus();
           await page.keyboard.press("Enter");
-          const archive = list.getByRole("button", { name: "Archive", exact: true });
+          const archive = list.getByRole("button", { name: "#archive", exact: true });
           await expect(archive).toBeVisible();
           await expect.poll(() => requests.includes("/git/trees/month:archive")).toBe(true);
           expect(requests.some((path) => path === "/git/blobs/message:archive")).toBe(false);
           await page.keyboard.press("Enter");
 
           // A long name wraps inside its row: nothing is clipped or pushes the page sideways.
-          const longTopic = list.getByRole("button", { name: LONG_TOPIC, exact: true });
+          const longTopic = list.getByRole("button", { name: `#${LONG_TOPIC}`, exact: true });
           const heights = await Promise.all([rows.first().boundingBox(), longTopic.boundingBox()]);
           expect(heights[1]?.height ?? 0).toBeGreaterThan(heights[0]?.height ?? 0);
           expect(
@@ -304,14 +304,16 @@ test.describe("topic list navigation", () => {
           ).toBe(true);
           await longTopic.focus();
           await page.keyboard.press("Enter");
-          await expect(page.getByRole("heading", { name: LONG_TOPIC, exact: true })).toBeVisible();
+          await expect(
+            page.getByRole("heading", { name: `#${LONG_TOPIC}`, exact: true }),
+          ).toBeVisible();
           if (width === 390) {
             await page.getByRole("button", { name: text.back }).click();
             await expect(longTopic).toBeFocused();
             await expect(page.locator(".conversation")).toBeHidden();
           }
 
-          await page.getByRole("button", { name: "The API", exact: true }).click();
+          await page.getByRole("button", { name: "#api", exact: true }).click();
           await expect(page.getByText("Topic list message body.")).toBeVisible();
           expect(requests.filter((path) => path.startsWith("/git/blobs/message:"))).toEqual([
             "/git/blobs/message:api",
@@ -337,9 +339,9 @@ test.describe("the topic list holds still for the reader", () => {
     await serveRepository(page, requests, state);
     await openRepository(page);
     const list = page.locator(".topics-pane");
-    await expect(list.getByRole("button", { name: "The API", exact: true })).toBeVisible();
+    await expect(list.getByRole("button", { name: "#api", exact: true })).toBeVisible();
     await page.mouse.move(1260, 300);
-    await expect(list.locator(".topics > button").nth(3)).toHaveText("The API");
+    await expect(list.locator(".topics > button").nth(3)).toHaveText("#api");
     await list.getByRole("button", { name: "Show all 14 topics" }).click();
     return { list, requests };
   }
@@ -352,7 +354,7 @@ test.describe("the topic list holds still for the reader", () => {
     const { list } = await openExpanded(page, state);
     const before = await order(list);
 
-    const row = list.getByRole("button", { name: "topic-03", exact: true });
+    const row = list.getByRole("button", { name: "#topic-03", exact: true });
     // The list scrolls inside its pane: bring the row into view so the pointer is over the list.
     await row.scrollIntoViewIfNeeded();
     const box = await row.boundingBox();
@@ -383,13 +385,13 @@ test.describe("the topic list holds still for the reader", () => {
     expect(await order(list)).toEqual(before);
 
     await page.mouse.move(1260, 300);
-    await expect(list.locator(".topics > button").nth(3)).toHaveText(BUMPED_TOPIC);
+    await expect(list.locator(".topics > button").nth(3)).toHaveText(`#${BUMPED_TOPIC}`);
   });
 
   test("the selection and the scroll position stay when the list re-sorts", async ({ page }) => {
     const state: RepositoryState = { bumped: false };
     const { list, requests } = await openExpanded(page, state);
-    const selected = list.getByRole("button", { name: "topic-02", exact: true });
+    const selected = list.getByRole("button", { name: "#topic-02", exact: true });
     await selected.click();
     await expect(selected).toHaveAttribute("aria-pressed", "true");
     // A middle offset: the rows at the top of the view are ones that shift down when topic-05
@@ -407,7 +409,7 @@ test.describe("the topic list holds still for the reader", () => {
     state.bumped = true;
     await page.keyboard.press("Enter");
     await expect.poll(() => requests.includes("/git/trees/month:new")).toBe(true);
-    await expect(list.locator(".topics > button").nth(3)).toHaveText(BUMPED_TOPIC);
+    await expect(list.locator(".topics > button").nth(3)).toHaveText(`#${BUMPED_TOPIC}`);
 
     await expect(selected).toHaveAttribute("aria-pressed", "true");
     expect(await list.evaluate((pane) => pane.scrollTop)).toBe(scrolled);

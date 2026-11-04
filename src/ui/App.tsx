@@ -904,9 +904,7 @@ export function App({
                     : t("heading.filesIn", { topic })
                   : topic === null
                     ? t("heading.all")
-                    : topicLayout
-                      ? (topicList.find((summary) => summary.name === topic)?.title ?? topic)
-                      : `#${topic}`}
+                    : `#${topic}`}
             </h2>
             {topicLayout && loadedTopics.length === 0 && (
               <p className="topic-prompt">{t("topic.selectPrompt")}</p>

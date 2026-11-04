@@ -143,7 +143,7 @@ test("a 5,000-message topic repository opens on All with every topic's newest pa
   await page.getByRole("button", { name: "Save and open" }).click();
 
   const selectedTopic = "topic-7";
-  await expect(page.getByRole("button", { name: selectedTopic, exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: `#${selectedTopic}`, exact: true })).toBeVisible();
   const messageBlobs = () => requests.filter((path) => path.startsWith("/git/blobs/message:"));
   const numbers = (paths: string[]) =>
     paths.map((path) => Number(path.slice("/git/blobs/message:".length))).sort((x, y) => x - y);
@@ -162,7 +162,7 @@ test("a 5,000-message topic repository opens on All with every topic's newest pa
   expect(numbers(messageBlobs())).toEqual(wanted({}));
 
   // Choosing a topic reads nothing more; its older pages come one page at a time.
-  await page.getByRole("button", { name: selectedTopic, exact: true }).click();
+  await page.getByRole("button", { name: `#${selectedTopic}`, exact: true }).click();
   await expect(page.locator(".message")).toHaveCount(50);
   expect(numbers(messageBlobs())).toEqual(wanted({}));
   await page.getByRole("button", { name: "Load older messages" }).click();
