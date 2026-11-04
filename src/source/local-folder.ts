@@ -2,6 +2,7 @@
 // of the collaboration files (docs/design/local-source.md) and answers "not modified" when nothing
 // changed, so an unchanged folder republishes nothing.
 
+import { MAX_MERGED_TOPICS } from "./topic-layout";
 import { SourceError, type DirectoryEntry, type Head, type MessageSource } from "./types";
 
 /** The small structural surface needed by native handles and in-memory tests. */
@@ -37,6 +38,16 @@ const FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 const MONTH_RE = /^\d{4}-\d{2}$/;
 const TOO_LARGE = "This folder is too large to read. Choose the clone folder itself.";
 const METADATA_CONCURRENCY = 6;
+const TOPIC_FOLDER_RE = /^topics\/[^/]+$/;
+const TOPIC_INBOX_RE = /^topics\/[^/]+\/inbox$/;
+
+/** The directories a scan walks: the inbox and its months, `topics`, and each topic's inbox. */
+function isScannedPath(path: string, name: string, parent: string): boolean {
+  if (path === "inbox" || path === "topics") return true;
+  if (parent === "inbox" || TOPIC_INBOX_RE.test(parent)) return MONTH_RE.test(name);
+  if (parent === "topics") return true;
+  return TOPIC_FOLDER_RE.test(parent) && name === "inbox";
+}
 
 async function mapLimit<T, R>(values: readonly T[], limit: number, fn: (value: T) => Promise<R>) {
   const results: R[] = new Array<R>(values.length);
@@ -210,9 +221,9 @@ export class LocalFolderSource implements MessageSource {
   /**
    * One walk of the collaboration files: every inbox directory is listed once and every file's
    * metadata read once. The revision covers all of it, so any edit, addition or removal changes
-   * it. Only the inbox and its month folders are walked, and at most `maxEntries` entries are
-   * enumerated, so a hostile clone fails fast instead of hanging. Topic files are not part of the
-   * scan; they are read when a card is opened.
+   * it. Only the inbox, `topics/<topic>/inbox` and their month folders are walked, and at most
+   * `maxEntries` entries are enumerated, so a hostile clone fails fast instead of hanging. Other
+   * topic files are not part of the scan; they are read when a card is opened.
    */
   private async scanTree(): Promise<Scan> {
     const listings = new Map<string, readonly DirectoryEntry[]>();
@@ -233,8 +244,21 @@ export class LocalFolderSource implements MessageSource {
         const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
         if (validRepoPath(entryPath)) handles.push(handle);
       }
+      // A topic folder is walked only for its inbox, and only the first MAX_MERGED_TOPICS topics
+      // are walked: the merged view refuses more than that anyway.
+      const skipped = new Set<LocalHandle>();
+      if (path === "topics") {
+        handles.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        handles
+          .filter(isDirectoryHandle)
+          .slice(MAX_MERGED_TOPICS)
+          .forEach((extra) => skipped.add(extra));
+      }
+      const topicFolder = TOPIC_FOLDER_RE.test(path);
       const entries = await mapLimit(handles, METADATA_CONCURRENCY, async (handle) => {
         const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
+        // Topic files outside the inbox (the notes, attachments) are read on demand.
+        if (topicFolder && !(handle.name === "inbox" && isDirectoryHandle(handle))) return null;
         if (isFileHandle(handle)) {
           const meta = await this.fileMetadata(entryPath, handle, withMetadata);
           if (
@@ -253,9 +277,9 @@ export class LocalFolderSource implements MessageSource {
           };
         }
         if (isDirectoryHandle(handle)) {
-          // Only the inbox and its month folders are walked; anything deeper, and topics, are
-          // listed on demand.
-          const scanned = entryPath === "inbox" || (path === "inbox" && MONTH_RE.test(handle.name));
+          // The inbox, its month folders and, in the topic layout, the same under every topic are
+          // walked; anything deeper is listed on demand.
+          const scanned = isScannedPath(entryPath, handle.name, path) && !skipped.has(handle);
           const children = scanned ? await scanDirectory(handle, entryPath) : null;
           return {
             name: handle.name,
@@ -269,7 +293,8 @@ export class LocalFolderSource implements MessageSource {
         return null;
       });
       const listed = entries.filter((entry) => entry !== null);
-      listings.set(path, listed);
+      // A topic folder's own listing is partial (its inbox only), so it is read on demand.
+      if (!topicFolder) listings.set(path, listed);
       return listed;
     };
 
