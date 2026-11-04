@@ -8,15 +8,15 @@ regenerates its index files) were checked against its source and by running it o
 ## 1. Decisions that are fixed
 
 1. **The topic is the folder unit.** There is no "project" term in the protocol, the tool or the
-   viewer. A topic is a project, a channel, a customer, an incident, whatever the team uses it for.
+   viewer. A topic is a workstream, a channel, a customer, an incident, whatever the team uses it for.
 2. **The layout is opt-in and additive.** Existing repositories keep working without any change.
    The public demo repository is the exception: it is rebuilt in the new layout on a branch, with no
    upgrade path, and the owner replaces its default branch. Nothing in this work force-pushes a default
    branch.
 3. **Multi-repository workspaces are not planned.** Section 10 records the conclusions only.
 
-The target team: about eight participants with one roster, a few projects at a time, each lasting a
-few months, who want to open an old project later and read only that project.
+The target team: about eight participants with one roster, a few workstreams at a time, each lasting
+a few months, who want to open an old workstream later and read only that one.
 
 ## 2. Facts today (verified)
 
@@ -61,9 +61,9 @@ The repository is the permission and retention boundary; the topic is the organi
 | Different retention, export or deletion rules? | no | yes (deleting history means deleting a repository) |
 | Different outside collaborators (customer, vendor)? | no | yes |
 | Would a leaked clone be a different kind of incident? | no | yes |
-| Is it a different project of the same team? | yes | only if one of the rows above says so |
+| Is it a different workstream of the same team? | yes | only if one of the rows above says so |
 | Does it need its own `to` addressing, roster and message ids? | no, one roster | yes |
-| Is the history so large that clones are slow? | topics are cheap; check after thousands of messages | splitting an old, closed project out is possible but rewrites nothing: the old repository stays as it is |
+| Is the history so large that clones are slow? | topics are cheap; check after thousands of messages | splitting an old, closed topic out is possible but rewrites nothing: the old repository stays as it is |
 
 Rule of thumb: a topic is for **work**, a repository is for **trust**. When in doubt, start with a
 topic; moving a topic to its own repository later is a copy plus a new marker, because message ids
@@ -84,9 +84,9 @@ way.
 ```
 .agent-collab                          marker (inbox-layout: topic)
 index.md                               root index: the list of topics (generated)
-open.md                                root open items (generated; see 4.4)
+open.md                                root open items (only if kept; see 4.4)
 topics/
-  general/                             permanent, created with the repository
+  general/                             permanent topic (created by `init`, see 4.5)
     TOPIC.md                           optional title, description, status
     inbox/YYYY-MM/<id>.md              messages of this topic
     index.md  open.md                  per-topic generated files
@@ -132,9 +132,17 @@ shown by its name.
   but more states to read and more ways to disagree.
 
 A **closed topic is immutable**: the tool refuses new messages and new attachments for it
-(`topic reopen` first), and the check fails if a message was added to a closed topic after the
-closing commit (judged by the tree, so it needs no timestamps). Immutable is what lets the viewer
-cache a closed topic forever (section 6).
+(`topic reopen` first). Immutability is checked with a digest, not with history. `topic close`
+writes `closed-digest:` into `TOPIC.md`: the SHA-256 of the sorted relative paths of every file under
+`topics/<topic>/` except `TOPIC.md`, `index.md` and `open.md` (message files and attachments, with
+their sidecars). While `status: closed`, `check` recomputes the digest from the tree and fails on a
+mismatch ("a file was added to or removed from a closed topic"). `topic reopen` removes the
+digest and a later `topic close` computes a new one, so close, reopen and close again is
+ordinary. The rule needs the tree only: no commit order, no timestamps and no history walk. It
+detects an accidental addition (a late push, a clone that was behind); it does not stop a participant
+who edits `TOPIC.md` too, which nothing in a plain Git repository can, and the history shows who
+did. Under choice B the digest lives in the `CLOSED` marker file instead. Immutable is what lets the
+viewer cache a closed topic forever (section 6).
 
 ### 4.4 Generated files
 
@@ -161,9 +169,17 @@ files are the record.
 - **Default topic per clone.** A local config value (`topic`) chosen at `init` or `topic use`; a
   `post` without `--topic` uses it. Unset: the tool asks the user to choose rather than guessing,
   and `general` is the documented fallback for team-wide messages.
-- **Unknown and closed topics.** `post` to a topic that has no `TOPIC.md` and no messages is refused
-  with a pointer to `topic new` (this stops typos creating topics); a closed topic is refused with a
-  pointer to `topic reopen`.
+- **`general`: who creates it, and the typo guard.** `init` creates `topics/general/` (with a
+  `TOPIC.md` titled "General") in a new topic-layout repository, and the command that switches an
+  existing repository to the topic layout (changing the marker) creates it in the same commit, so
+  a repository never has the layout without it. `general` is the one name exempt from the typo
+  guard below: posting to it creates it if it is somehow missing. It cannot be closed (`topic
+  close general` is refused). `check` fails when the marker says `topic` and `topics/general/` is
+  missing, and `repair` creates it, so a hand-edited marker is caught and fixed.
+- **Unknown and closed topics.** Except for `general`, `post` to a topic that has no `TOPIC.md` and
+  no messages is refused with a pointer to `topic new` (this stops typos creating topics); a closed
+  topic is refused with a pointer to `topic reopen`. A legacy-only topic whose name the new grammar
+  rejects (4.6) is refused with a pointer to choose a valid topic.
 - **`topic new <name> [--title ... --description ...]`** creates `TOPIC.md` and the folders in one
   commit. `topic close` and `topic reopen` change `status` (4.3). `topic list` prints the topics
   with status and counts from the working tree.
@@ -187,6 +203,18 @@ include them. No forced migration. The viewer and the tool read both locations, 
 already do for flat plus monthly. A repository may therefore adopt the new layout at any point:
 change the marker, post new messages into `topics/<topic>/inbox/`, and leave the old ones in place.
 
+**Legacy topics and the tightened grammar.** The tightened grammar (4.2) applies to **topic
+folders** only. A legacy message keeps whatever topic passed the existing rule (`[a-z0-9-]`),
+including a doubled or edge hyphen (`a--b`, `-x`) or the names `inbox`, `index` and `open`. Such a
+legacy-only topic has no folder, so it has no `TOPIC.md` (it cannot be titled or closed) and no
+per-topic files. How it is shown: the root `index.md` lists it by name with the marker
+`legacy` (the tool writes that row when it finds legacy messages for a name without a folder); the
+viewer lists it from the legacy messages it already reads, grouped by front-matter topic, with
+counters from the loaded messages, as today. A name the new grammar accepts that is legacy-only
+(`api`) becomes a normal topic as soon as `topic new api` creates its folder; its old messages stay
+under the root `inbox/` and count with the new ones. New messages for a name the grammar rejects are
+refused in the topic layout (4.5): the participant picks a valid topic.
+
 A later, optional `migrate` command may move legacy messages into topic folders. Ids do not change;
 only paths do, and `refs` that name ids keep working. It is not needed for the first slices.
 
@@ -205,14 +233,20 @@ documents.
 >   (`[a-z0-9]+(-[a-z0-9]+)*`). It is not `inbox`, `index` or `open`.
 > - The topic in the path equals the `topic` field of the message. The month folder equals the month
 >   of the id. The file name equals the id. A message id is unique in the whole repository.
-> - The topic `general` exists in every repository that uses this layout. Use it for messages that
->   belong to no other topic.
+> - The topic `general` exists in every repository that uses this layout (the tool creates it when
+>   the repository is created or switched to this layout) and cannot be closed. Use it for messages
+>   that belong to no other topic.
 > - Inside `topics/<topic>/`, the names `inbox`, `TOPIC.md`, `index.md` and `open.md` are reserved.
 >   Attachments and their sidecars live directly in `topics/<topic>/`, as before.
 > - `topics/<topic>/TOPIC.md` is optional. Its front matter may contain `title` (one line, at most 80
 >   characters), `description` (one line, at most 200) and `status` (`open` or `closed`; `open` when
 >   absent). A topic with no `TOPIC.md` is open.
-> - A closed topic accepts no new message and no new attachment. Reopen it first.
+> - A closed topic accepts no new message and no new attachment. Reopen it first. Closing writes
+>   `closed-digest:` (the SHA-256 of the sorted relative paths of every file under the topic except
+>   `TOPIC.md`, `index.md` and `open.md`) into `TOPIC.md`; a check recomputes it while the topic is
+>   closed.
+> - The topic grammar applies to topic folders. Messages under the root `inbox/` keep whatever topic
+>   they already have; a topic that has no folder is listed in the root `index.md` as `legacy`.
 > - Messages under the root `inbox/` stay valid. They belong to the topic in their front matter.
 > - `topics/<topic>/index.md` and `topics/<topic>/open.md` are generated from that topic's messages
 >   and regenerated in the same commit as each message of the topic. Root `index.md` lists the
@@ -245,10 +279,11 @@ and UI reading more of the repository, never writing.
 5. Legacy `inbox/` messages are read with the existing loader code and merged into their topics.
    The flat and monthly layouts keep working exactly as today.
 
-Request budget for a cold anonymous open of a repository with 12 topics: reference and commit
-(2), root tree (1), `topics/` tree (1), root `index.md` (1): **about 5 requests** before any
-message, against the current open that reads a page of 50 message files. Opening one topic adds
-its `inbox` tree, the month trees and the files of the first page.
+Request budget for a cold anonymous open of a repository with 12 topics, counted like section 2:
+repository metadata (1), ref (1), commit (1), root tree (1), `topics/` tree (1), root `index.md` (1):
+**about 6 requests** before any message, against about 24 today for a small repository (and about 55
+for one with a full first page of 50 messages: today's open reads that page at once). Opening one
+topic adds its `inbox` tree, the month trees and the files of its first page.
 
 ### 6.2 Caching and closed topics
 
@@ -261,13 +296,22 @@ changes, only topics whose tree id changed are revisited.
 
 ### 6.3 The Attention view
 
-One view across topics answering "what needs me": (a) open questions addressed to the viewer (the
-existing question state, computed per topic) and (b) messages addressed to the viewer in **followed**
-topics. Because it needs messages, it loads the newest page of each followed topic (not every
-topic) and the open-question files named by the per-topic `open.md` when present (untrusted,
-verified when the message is opened, 6.5). The viewer sees a "last updated" per section so a
-partial load is not mistaken for completeness. Unfollowed topics appear in Attention only through a
-direct address to the viewer that the viewer has already loaded.
+One view across topics answering "what needs me". **Default follow state: nothing is followed.**
+A viewer who has followed nothing still gets a useful Attention view, at a known cost:
+
+- For every **open** topic the viewer reads its per-topic `open.md` (one blob each, about 12 requests
+  for 12 topics, none for closed topics) and lists the rows addressed to the viewer. These rows are
+  untrusted (6.5): opening one loads the message, whose front matter wins.
+- For every **followed** topic it also loads the newest page of messages (an `inbox` tree, the
+  month trees and up to 50 files, so up to about 55 requests per followed topic), so messages
+  addressed to the viewer, not only open items, show up and question state is computed.
+
+All-followed by default would make the lazy-loading claim false (6.1: it costs the sum of every
+topic's first page); none-followed by default costs about one request per open topic and computes
+question state only for topics the viewer opens or follows. The viewer says which topics Attention
+covers fully and which only through `open.md` ("last updated" per section), so a partial load is
+never mistaken for completeness. If a repository has no per-topic `open.md` (an older tool),
+Attention covers followed topics only and says so.
 
 ### 6.4 Per-viewer local state
 
@@ -331,17 +375,18 @@ separate per-viewer preference and are not shared with the tool.
 | P1 | Protocol text for the topic layout (section 5) after owner approval, with the owner's choices for 4.3 and 4.4 | protocol and tool repository (not this one) | design approval | text reviewed by the owner |
 | P2 | Tool: layout marker, path rules, `check`, per-topic generated files, `topic new/close/reopen/list/use`, `show`, `inbox`, `watch`, `repair`, tests incl. flat, monthly, topic and mixed repositories | protocol and tool repository | P1 | the tool's own test suite and `check` pass on all three layouts |
 | P3 | `watch` filter (`follow`, `addressed`) | protocol and tool repository | P2 | wake-up tests |
-| V1 | Viewer reader: marker value, `topics/` listing, root index, per-topic loading, legacy merge, request budget test | this repository | P1 text (the format only; no tool needed, fixtures suffice) | topic fixtures load; flat and monthly fixtures unchanged; request count asserted |
+| V1 | Viewer reader: marker value, `topics/` listing, root index, per-topic loading, legacy merge, request budget test | this repository | P1 text and the owner's choices for 4.3 (what `TOPIC.md` holds) and 4.4 (the index formats); no tool needed, fixtures suffice | topic fixtures load; flat and monthly fixtures unchanged; request count asserted |
 | V2 | Topic list UI: open and closed groups, titles, sorting by recent activity, phone drill-down | this repository | V1 | browser tests at desktop and phone, both themes |
 | V3 | Local state (follow, mute, pin, hide, last-seen), unread counters, Attention view | this repository | V1, V2 | unit and browser tests; storage failure still works |
 | V4 | Index fast path and closed-topic caching by tree id; untrusted-parsing rules of 6.5 | this repository | V1 | hostile index fixtures; unchanged tree makes no request |
-| V5 | More than eight participants: variants, Profile panel, contrast tests | this repository | none (independent) | contrast and uniqueness tests |
+| V5 | More than eight participants: variants, Profile panel, contrast tests | this repository | none: independent of P1 and of every other slice, can start at any time (needs the owner's choice of mark, section 11) | contrast and uniqueness tests |
 | V6 | Search over loaded topics with the explicit "load all" action | this repository | V1, V2 | tests |
 | D1 | Demo repository rebuilt in the topic layout on a branch; the owner replaces its default branch | demo repository | P2, V1 | the live demo opens from the new layout |
 
-Order that gives the owner something visible early: P1, then V1 and V5 in parallel (they need only
-the text), then V2, P2 (the tool, for real repositories), D1, V3, V4, V6, P3. V1 can be built on
-fixtures before P2 exists, because the viewer reads files, not the tool.
+Order that gives the owner something visible early: V5 can run at any time (it depends on nothing
+here); P1 first (the decisions in 4.3 and 4.4 are part of it); then V1, then V2, P2 (the tool, for
+real repositories), D1, V3, V4, V6, P3. V1 can be built on fixtures before P2 exists, because the
+viewer reads files, not the tool, but it needs P1's text and the owner's 4.3 and 4.4 choices first.
 
 Each slice is one Draft PR in its repository; V-slices are expected to stay under about 1,500 lines
 each. Follow-up issues are created after the owner approves this design, not before.
@@ -369,6 +414,19 @@ Recorded so the question does not have to be answered again.
 
 ## 11. What could not be verified, and open decisions
 
+**Viewer facts this design relies on, and their status**
+
+| Fact | Status |
+| --- | --- |
+| The palette has eight color slots, and a ninth person wraps to slot 0 | Verified in the code (`PALETTE_SIZE`) and by a unit test |
+| A person's color is a `data-slot` attribute mapped in the stylesheet, with no inline style | Verified: merged, with unit and browser tests including WebKit |
+| Avatars and glyphs keep 3:1 contrast in both themes | Verified for the current palette by browser tests; **not verified** for the proposed variants of section 7 |
+| Identity preferences live in guarded browser storage that works when storage throws | Verified by unit and browser tests |
+| Trees and blobs are cached by object id for the session; the public demo has a guarded blob cache | Verified in the loader and cache code and its tests |
+| On a phone the topic list is the first screen and a topic is a drill-down with a back control | Verified in the code and browser tests |
+| A closed topic's tree id stays unchanged, so nothing is re-read | **Not verified**: follows from Git's object model, not exercised against GitHub's API here |
+| Listing one directory at a time avoids GitHub's tree truncation | **Not verified** (see below) |
+
 **Not verified**
 
 - The viewer was **not** run against a repository with thousands of messages. The loader reads a
@@ -391,3 +449,9 @@ Recorded so the question does not have to be answered again.
 4. Variants for participants nine and beyond (section 7): outlined and notched avatars, or another
    mark.
 5. Whether a `migrate` command for legacy messages is wanted at all (4.6).
+6. The default follow state (section 6.3): none followed, Attention from each open topic's
+   `open.md` (recommended), or all open topics followed at a much higher request cost.
+7. The closed-topic mechanism (section 4.3): the digest recorded at closing (recommended), or no
+   automatic check and a documented convention only.
+8. Legacy-only topics whose names the new grammar rejects: refused for new messages in the topic
+   layout (proposed), or allowed to keep growing in the legacy `inbox/`.
