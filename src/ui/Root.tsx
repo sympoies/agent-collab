@@ -124,8 +124,13 @@ type Screen =
 
 export function Root(props: RootProps) {
   const { t, formatDateTime } = useLocale();
-  const { createSource, createDemoSource, createLiveDemoSource, openLocalFolder, openLocalFileList } =
-    props;
+  const {
+    createSource,
+    createDemoSource,
+    createLiveDemoSource,
+    openLocalFolder,
+    openLocalFileList,
+  } = props;
   const createHostedSource = props.createHostedSource ?? null;
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);

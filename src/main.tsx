@@ -105,9 +105,7 @@ function folderPicker(): (() => Promise<{ source: MessageSource; name: string }>
   };
 }
 
-function fileListFolder(
-  selection: LocalFolderSelection,
-): Promise<LocalFolderOpen> {
+function fileListFolder(selection: LocalFolderSelection): Promise<LocalFolderOpen> {
   const open = (selected: readonly File[] | FileList) => {
     const name = selected[0]?.webkitRelativePath.split("/")[0] ?? "";
     return { source: new FileListFolderSource(selected), name, snapshot: true as const };

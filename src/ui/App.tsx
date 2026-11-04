@@ -719,7 +719,9 @@ export function App({
             setProfileOpen(!profileOpen);
           }}
           onPickLocalFolder={onPickLocalFolder}
-          localFolderActionLabel={source?.actionLabel}
+          {...(source?.actionLabel === undefined
+            ? {}
+            : { localFolderActionLabel: source.actionLabel })}
           onOpenSettings={onOpenSettings}
         />
         {profileOpen && (

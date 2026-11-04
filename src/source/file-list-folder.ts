@@ -20,6 +20,8 @@ const IGNORED_DIRECTORIES = new Set([
   ".next",
   ".turbo",
 ]);
+const REPOSITORY_DIRECTORIES = new Set([".agent-collab", "inbox", "topics"]);
+const MESSAGE_FILE_NAME = /^\d{4}-\d{2}-\d{2}T\d{4}-.+-\d{2}\.md$/;
 
 interface FolderDropEntry {
   readonly name: string;
@@ -68,13 +70,13 @@ export async function filesFromFolderDrop(
       reader.readEntries(resolve, reject);
     });
 
-  const walk = async (entry: FolderDropEntry, parent: string): Promise<void> => {
-    if (!safeSegment(entry.name)) throw new SourceError("forbidden", "");
-    // Ignore these directories before opening a reader or requesting any file objects.
+  const walk = async (entry: FolderDropEntry, root: string, parent: string): Promise<void> => {
+    // Excluded folders and unrelated repository paths are skipped before inspecting their names.
     if (entry.isDirectory && IGNORED_DIRECTORIES.has(entry.name)) return;
-
-    const path = parent === "" ? entry.name : `${parent}/${entry.name}`;
-    if (!safeRelativePath(path)) throw new SourceError("forbidden", "");
+    const insidePath = parent === "" ? entry.name : `${parent}/${entry.name}`;
+    const selectedPath = selectedRepositoryPath(`${root}/${insidePath}`, entry.isDirectory);
+    if (selectedPath.kind !== "selected") return;
+    const path = `${root}/${insidePath}`;
     entries += 1;
     if (entries > maxEntries) throw new SourceError("too-large", "", null, null, TOO_LARGE);
 
@@ -82,11 +84,7 @@ export async function filesFromFolderDrop(
       if (entry.file === undefined) return;
       const file = await readEntry(entry);
       if (file === null) return;
-      const rootSlash = path.indexOf("/");
-      const repoPath = rootSlash === -1 ? "" : path.slice(rootSlash + 1);
-      if (validRepoPath(repoPath) && file.size > MAX_FILE_BYTES) {
-        throw new SourceError("too-large", path);
-      }
+      if (file.size > MAX_FILE_BYTES) throw new SourceError("too-large", path);
       bytes += file.size;
       if (bytes > maxBytes) throw new SourceError("too-large", "", null, null, TOO_LARGE);
       Object.defineProperty(file, "webkitRelativePath", { value: path });
@@ -99,30 +97,46 @@ export async function filesFromFolderDrop(
     for (;;) {
       const batch = await readBatch(reader);
       if (batch.length === 0) return;
-      for (const child of batch) await walk(child, path);
+      for (const child of batch) await walk(child, root, insidePath);
     }
   };
 
-  for (const root of roots) await walk(root, "");
+  for (const root of roots) {
+    if (!root.isDirectory) continue;
+    if (!safeSegment(root.name) || /^[a-zA-Z]:$/.test(root.name)) {
+      throw new SourceError("forbidden", "");
+    }
+    if (IGNORED_DIRECTORIES.has(root.name)) continue;
+    entries += 1;
+    if (entries > maxEntries) throw new SourceError("too-large", "", null, null, TOO_LARGE);
+    if (root.createReader === undefined) continue;
+    const reader = root.createReader();
+    for (;;) {
+      const batch = await readBatch(reader);
+      if (batch.length === 0) break;
+      for (const child of batch) await walk(child, root.name, "");
+    }
+  }
   return files;
 }
 
 function copyDropFileList(files: FileList, maxEntries: number, maxBytes: number): File[] {
   const selected: File[] = [];
+  let entries = 0;
   let bytes = 0;
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
     if (file === undefined) continue;
     const relative = file.webkitRelativePath;
-    if (relative !== "" && !safeRelativePath(relative)) throw new SourceError("forbidden", "");
-    const segments = pathSegments(relative);
-    if (segments.slice(1, -1).some((segment) => IGNORED_DIRECTORIES.has(segment))) continue;
-    selected.push(file);
-    if (selected.length > maxEntries) {
+    const classification = selectedRepositoryPath(relative);
+    if (classification.kind === "ignored") continue;
+    entries += 1;
+    if (entries > maxEntries) {
       throw new SourceError("too-large", "", null, null, TOO_LARGE);
     }
     bytes += file.size;
     if (bytes > maxBytes) throw new SourceError("too-large", "", null, null, TOO_LARGE);
+    if (classification.kind === "selected") selected.push(file);
   }
   return selected;
 }
@@ -171,6 +185,67 @@ function pathSegments(path: string): string[] {
   return path === "" ? [] : path.split("/");
 }
 
+/** Classify a selected path before validating names in folders the snapshot will not read. */
+function selectedRepositoryPath(
+  relativePath: string,
+  entryIsDirectory = false,
+):
+  | { readonly kind: "selected"; readonly root: string; readonly path: string }
+  | { readonly kind: "ignored" }
+  | { readonly kind: "unrelated" } {
+  if (relativePath === "") return { kind: "unrelated" };
+  if (relativePath.startsWith("/") || /^[a-zA-Z]:/.test(relativePath)) {
+    throw new SourceError("forbidden", "");
+  }
+
+  const segments = pathSegments(relativePath);
+  const root = segments[0];
+  if (root === undefined || !safeSegment(root) || /^[a-zA-Z]:$/.test(root)) {
+    throw new SourceError("forbidden", "");
+  }
+  const parts = segments.slice(1);
+  if (parts.length === 0) return { kind: "unrelated" };
+  if (parts.some((part) => part === "" || part === "." || part === "..")) {
+    throw new SourceError("forbidden", "");
+  }
+
+  const directories = entryIsDirectory ? parts : parts.slice(0, -1);
+  if (directories.some((part) => IGNORED_DIRECTORIES.has(part))) return { kind: "ignored" };
+  if (!REPOSITORY_DIRECTORIES.has(parts[0] ?? "")) return { kind: "unrelated" };
+
+  const path = parts.join("/");
+  if (!safeRelativePath(path)) throw new SourceError("forbidden", "");
+  return { kind: "selected", root, path };
+}
+
+function inferredLayout(paths: readonly string[]): string | null {
+  const messages = paths.filter((path) => MESSAGE_FILE_NAME.test(pathSegments(path).at(-1) ?? ""));
+  if (
+    messages.some((path) => {
+      const segments = pathSegments(path);
+      return segments[0] === "topics" && segments[2] === "inbox" && segments.length >= 4;
+    })
+  ) {
+    return "topic";
+  }
+  if (
+    messages.some((path) => {
+      const segments = pathSegments(path);
+      return (
+        segments[0] === "inbox" && /^\d{4}-\d{2}$/.test(segments[1] ?? "") && segments.length >= 3
+      );
+    })
+  ) {
+    return "monthly";
+  }
+  return messages.some((path) => {
+    const segments = pathSegments(path);
+    return segments[0] === "inbox" && segments.length === 2;
+  })
+    ? "flat"
+    : null;
+}
+
 /** A read-only snapshot backed by the File objects from a directory input or folder drop. */
 export class FileListFolderSource implements MessageSource {
   private readonly root: SnapshotDirectory = { path: "", children: new Map() };
@@ -195,27 +270,34 @@ export class FileListFolderSource implements MessageSource {
       const file = files[index];
       if (file === undefined) continue;
       const relative = (file as File & { readonly webkitRelativePath?: string }).webkitRelativePath;
-      if (typeof relative !== "string" || !safeRelativePath(relative)) {
-        throw new SourceError("forbidden", "");
-      }
-      const segments = pathSegments(relative);
-      if (segments.length < 2) throw new SourceError("forbidden", "");
-      firstSegments.add(segments[0] ?? "");
-      if (firstSegments.size > 1) throw new SourceError("forbidden", "");
-      const path = segments.slice(1).join("/");
-      if (!safeRelativePath(path)) throw new SourceError("forbidden", "");
-      if (seen.has(path)) throw new SourceError("forbidden", path);
-      seen.add(path);
-
-      // Skip repository metadata and dependency/build folders before counting or inspecting size.
-      if (segments.slice(1, -1).some((segment) => IGNORED_DIRECTORIES.has(segment))) continue;
+      if (typeof relative !== "string") throw new SourceError("forbidden", "");
+      const classification = selectedRepositoryPath(relative);
+      if (classification.kind === "ignored") continue;
       fileCount += 1;
       bytes += file.size;
       if (fileCount > maxFiles || bytes > maxBytes) {
         throw new SourceError("too-large", "", null, null, TOO_LARGE);
       }
+      if (classification.kind === "unrelated") continue;
+      const selectedPath = classification;
+      firstSegments.add(selectedPath.root);
+      if (firstSegments.size > 1) throw new SourceError("forbidden", "");
+      const path = selectedPath.path;
+      if (seen.has(path)) throw new SourceError("forbidden", path);
+      seen.add(path);
+
       if (!validRepoPath(path)) continue;
       selected.push({ file, path });
+    }
+
+    // Safari may omit the marker from a directory input. Infer it only from message files in a
+    // recognized inbox tree; a present marker always remains the source of layout truth.
+    if (!seen.has(".agent-collab")) {
+      const layout = inferredLayout(selected.map(({ path }) => path));
+      if (layout !== null) {
+        const marker = new File([`collab-protocol: 1\ninbox-layout: ${layout}\n`], ".agent-collab");
+        selected.push({ file: marker, path: ".agent-collab" });
+      }
     }
 
     let newest: number | null = null;
@@ -247,6 +329,7 @@ export class FileListFolderSource implements MessageSource {
       const snapshot = { file, entry };
       directory.children.set(name, snapshot);
       this.files.set(path, snapshot);
+      if (segments[0] !== "inbox" && segments[0] !== "topics") continue;
       if (
         Number.isFinite(file.lastModified) &&
         file.lastModified <= latestTrusted &&

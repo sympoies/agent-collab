@@ -137,7 +137,10 @@ export function Toolbar({
         <UserIcon />
       </IconButton>
       {onPickLocalFolder !== undefined && (
-        <IconButton label={t(localFolderActionLabel ?? "bar.localFolder")} onClick={onPickLocalFolder}>
+        <IconButton
+          label={t(localFolderActionLabel ?? "bar.localFolder")}
+          onClick={onPickLocalFolder}
+        >
           <FolderIcon />
         </IconButton>
       )}

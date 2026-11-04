@@ -2346,43 +2346,6 @@ test("a file input opens a local snapshot in each language on a phone without ne
   page.on("request", (request) => requests.push(request.url()));
   const input = page.locator('input[type="file"][webkitdirectory]');
   const fixturePath = fileURLToPath(new URL("./fixtures/local-folder", import.meta.url));
-  const pickFixture = async () => {
-    if (browserName === "webkit") {
-      // Playwright's WebKit directory fixture omits dotfiles; keep the picked files and add the
-      // repository marker to model the FileList a directory chooser returns to the app.
-      await input.evaluate((element) => {
-        element.addEventListener(
-          "change",
-          (event) => {
-            event.stopImmediatePropagation();
-          },
-          { capture: true, once: true },
-        );
-      });
-    }
-    await input.setInputFiles(fixturePath);
-    if (browserName !== "webkit") return;
-    await input.evaluate((element) => {
-      const inputElement = element as HTMLInputElement;
-      const transfer = new DataTransfer();
-      for (const file of Array.from(inputElement.files ?? [])) transfer.items.add(file);
-      if (
-        !Array.from(inputElement.files ?? []).some((file) =>
-          file.webkitRelativePath.endsWith("/.agent-collab"),
-        )
-      ) {
-        const marker = new File(["collab-protocol: 1\ninbox-layout: flat\n"], ".agent-collab", {
-          type: "text/plain",
-        });
-        Object.defineProperty(marker, "webkitRelativePath", {
-          value: "local-folder/.agent-collab",
-        });
-        transfer.items.add(marker);
-      }
-      inputElement.files = transfer.files;
-      inputElement.dispatchEvent(new Event("change", { bubbles: true }));
-    });
-  };
 
   for (const locale of ["en", "ja", "zh-TW"] as const) {
     if (locale !== "en") await page.reload();
@@ -2396,22 +2359,46 @@ test("a file input opens a local snapshot in each language on a phone without ne
     const choose = page.getByRole("button", {
       name: catalogsByLocale[locale]["welcome.openLocalFiles"],
     });
+    await input.evaluate((element) => {
+      element.addEventListener(
+        "change",
+        (event) => {
+          const selected = Array.from((event.currentTarget as HTMLInputElement).files ?? []).map(
+            (file) => file.webkitRelativePath,
+          );
+          (window as Window & { __selectedFolderPaths?: string[] }).__selectedFolderPaths =
+            selected;
+        },
+        { capture: true, once: true },
+      );
+    });
+    const chooserOpened = page.waitForEvent("filechooser");
     await choose.focus();
     await page.keyboard.press("Enter");
-    await pickFixture();
+    const chooser = await chooserOpened;
+    await chooser.setFiles(fixturePath);
+    const selectedPaths = await page.evaluate(
+      () => (window as Window & { __selectedFolderPaths?: string[] }).__selectedFolderPaths ?? [],
+    );
+    expect(selectedPaths.length).toBeGreaterThan(0);
+    if (browserName === "webkit") {
+      expect(selectedPaths.some((path) => path.endsWith("/.agent-collab"))).toBe(false);
+    }
 
     await expect(page.getByRole("heading", { name: /local-folder/ })).toBeVisible();
     await page.getByRole("button", { name: /^#api/ }).click();
     await expect(page.getByText("A message from a selected folder.")).toBeVisible();
     await page.getByRole("button", { name: catalogsByLocale[locale]["bar.more"] }).click();
     const chooseAgain = page.getByRole("menuitem", {
-      name: catalogsByLocale[locale]["bar.localFolder"],
+      name: catalogsByLocale[locale]["bar.localFolderSnapshot"],
       exact: true,
     });
     await expect(chooseAgain).toBeVisible();
     if (locale === "en") {
+      const reselectChooserOpened = page.waitForEvent("filechooser");
       await chooseAgain.click();
-      await pickFixture();
+      const reselectChooser = await reselectChooserOpened;
+      await reselectChooser.setFiles(fixturePath);
       await page.getByRole("button", { name: /^#api/ }).click();
       await expect(page.getByText("A message from a selected folder.")).toBeVisible();
     } else {

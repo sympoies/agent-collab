@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MemoryStore } from "../src/credentials/store";
 import { FixtureSource } from "../src/source/fixture";
+import { FileListFolderSource } from "../src/source/file-list-folder";
 import { SourceError } from "../src/source/types";
 import { Root, type LocalFolderOpen, type LocalFolderSelection } from "../src/ui/Root";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
@@ -87,6 +88,22 @@ describe("Root with a local folder", () => {
     });
   }
 
+  async function chooseSelectedFiles(host: HTMLElement): Promise<void> {
+    await click(button(host, "Choose local folder from files"));
+    const input = host.querySelector<HTMLInputElement>('input[type="file"][webkitdirectory]');
+    expect(input).not.toBeNull();
+    const file = new File(["message"], "message.md");
+    Object.defineProperty(file, "webkitRelativePath", { value: "clone/inbox/message.md" });
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [file],
+    });
+    await act(async () => {
+      input?.dispatchEvent(new Event("change", { bubbles: true }));
+      await Promise.resolve();
+    });
+  }
+
   it("offers the file-list fallback and points the unsupported browser hint to it", async () => {
     const host = await render(null, undefined, (selection) =>
       Promise.resolve({
@@ -128,6 +145,30 @@ describe("Root with a local folder", () => {
       "not a collaboration clone",
     );
     expect(host.querySelector("h1")?.textContent).toBe("Collab Viewer");
+  });
+
+  it("shows the too-large message when building a FileList source fails", async () => {
+    const openLocalFileList = () =>
+      Promise.reject(new SourceError("too-large", "", null, null, "local.tooLarge"));
+    const host = await render(null, undefined, openLocalFileList);
+
+    await chooseSelectedFiles(host);
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("too large");
+  });
+
+  it("shows the non-clone message for FileList selections without inbox or topics", async () => {
+    const file = new File(["not a clone"], "README.md");
+    Object.defineProperty(file, "webkitRelativePath", { value: "other/README.md" });
+    const openLocalFileList = () =>
+      Promise.resolve({ source: new FileListFolderSource([file]), name: "other" });
+    const host = await render(null, undefined, openLocalFileList);
+
+    await chooseSelectedFiles(host);
+
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain(
+      "not a collaboration clone",
+    );
   });
 
   it("opens the clone read-only, labels it experimental and shows when it last changed", async () => {
