@@ -32,10 +32,11 @@ import { errorText, say } from "./errorText";
 import { IconButton } from "./IconButton";
 import { RefreshIcon } from "./icons";
 import { localDate, relativeTime } from "./relativeTime";
-import { Toolbar } from "./Toolbar";
+import { Toolbar, useNarrow } from "./Toolbar";
 import { RangeBar } from "./RangeBar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
+import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
 import { useMergedSnapshot } from "./merged-snapshot";
 import { useTopicDigests } from "./useTopicDigests";
@@ -204,6 +205,9 @@ export function App({
   );
   const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
+  // State, not a ref: the pane renders once the topics are known, and landing waits for it.
+  const [messagePane, setMessagePane] = useState<HTMLElement | null>(null);
+  const [dateLanding, setDateLanding] = useState<DateLanding | null>(null);
   const conversationHeading = useRef<HTMLHeadingElement | null>(null);
   const lastTopicButton = useRef<HTMLButtonElement | null>(null);
   const announcedMessages = useRef<Set<string>>(new Set());
@@ -232,6 +236,61 @@ export function App({
     identity.storage === null ? EMPTY_PREFERENCES : readPreferences(identity.storage, identity.key),
   );
   const [profileOpen, setProfileOpen] = useState(false);
+
+  // The panel is an overlay: Escape or a click outside closes it and focus goes back to the
+  // control that opens it (the icon button, or the More button on a phone).
+  const restoreProfileFocus = useRef(false);
+  const closeProfile = () => {
+    restoreProfileFocus.current = true;
+    setProfileOpen(false);
+  };
+  // Focus goes back after the panel is gone: while a phone sheet is open the rest of the page is
+  // inert, which cannot take focus.
+  useEffect(() => {
+    if (profileOpen || !restoreProfileFocus.current) return;
+    restoreProfileFocus.current = false;
+    (
+      document.querySelector<HTMLElement>(".bar-actions [aria-controls=profile-panel]") ??
+      document.querySelector<HTMLElement>(".bar-actions [aria-haspopup=menu]")
+    )?.focus();
+  }, [profileOpen]);
+  const narrow = useNarrow();
+  const sheetOpen = profileOpen && narrow;
+  // The phone sheet covers the whole screen: nothing behind it may take focus.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const behind = [
+      ...document.querySelectorAll<HTMLElement>(
+        ".app-shell > :not(header), .app-shell > header > :not(#profile-panel)",
+      ),
+    ];
+    for (const element of behind) element.inert = true;
+    return () => {
+      for (const element of behind) element.inert = false;
+    };
+  }, [sheetOpen]);
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeProfile();
+    };
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("#profile-panel") === null &&
+        target.closest(".bar-actions") === null
+      ) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [profileOpen]);
 
   const updatePreferences = (next: IdentityPreferences) => {
     setPreferences(next);
@@ -421,6 +480,15 @@ export function App({
       }),
     [snapshot.items, snapshot.fresh, viewer, topic, receipts],
   );
+  // Before the effect below consumes a pending jump: a message opened by link keeps its place.
+  useFollowLatest(
+    messagePane,
+    view === "chat" ? (topic ?? "") : null,
+    mobileConversation,
+    rows,
+    pendingJump,
+    dateLanding,
+  );
   const showMessage = (id: string) => {
     // The hash scrolls to the message and styles it through :target.
     if (window.location.hash === `#msg-${id}`) window.location.hash = "";
@@ -475,7 +543,7 @@ export function App({
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (mobileConversation) {
-        conversationHeading.current?.focus();
+        conversationHeading.current?.focus({ preventScroll: true });
       } else {
         lastTopicButton.current?.focus();
       }
@@ -501,7 +569,7 @@ export function App({
   const retryingAfterLimit = retryAt !== null && readyRetryAt?.getTime() !== retryAt.getTime();
 
   return (
-    <div className="app">
+    <div className="app app-shell">
       <header className="bar">
         <h1>{typeof title === "string" ? title : t(title.key, title.params)}</h1>
         {source !== undefined && (
@@ -597,25 +665,26 @@ export function App({
           onPickLocalFolder={onPickLocalFolder}
           onOpenSettings={onOpenSettings}
         />
+        {profileOpen && (
+          <div id="profile-panel">
+            <ProfilePanel
+              order={order}
+              preferences={preferences}
+              people={people}
+              onColor={(person, slot) => {
+                updatePreferences(withColor(preferences, person, slot));
+              }}
+              onDisplayName={(person, name) => {
+                updatePreferences(withDisplayName(preferences, person, name));
+              }}
+              onReset={() => {
+                updatePreferences(resetProfile(preferences));
+              }}
+              onClose={closeProfile}
+            />
+          </div>
+        )}
       </header>
-      {profileOpen && (
-        <div id="profile-panel">
-          <ProfilePanel
-            order={order}
-            preferences={preferences}
-            people={people}
-            onColor={(person, slot) => {
-              updatePreferences(withColor(preferences, person, slot));
-            }}
-            onDisplayName={(person, name) => {
-              updatePreferences(withDisplayName(preferences, person, name));
-            }}
-            onReset={() => {
-              updatePreferences(resetProfile(preferences));
-            }}
-          />
-        </div>
-      )}
       {notice !== null && (
         <p className="notice" role="status">
           {say(notice, t)}
@@ -752,7 +821,12 @@ export function App({
               )}
             </nav>
           </aside>
-          <main className="conversation" aria-labelledby="conversation-heading">
+          <main
+            className="conversation"
+            aria-labelledby="conversation-heading"
+            tabIndex={0}
+            ref={setMessagePane}
+          >
             <button
               type="button"
               className="back-to-topics"
@@ -797,7 +871,14 @@ export function App({
                 jumpedTo={paging.jumpedTo}
                 disabled={busy || retryingAfterLimit}
                 onJump={(date) => {
-                  run(() => selectedLoader.jumpTo(date), 0, "jump");
+                  run(
+                    async () => {
+                      await selectedLoader.jumpTo(date);
+                      setDateLanding({ date });
+                    },
+                    0,
+                    "jump",
+                  );
                 }}
               />
             )}

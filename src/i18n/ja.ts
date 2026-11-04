@@ -166,6 +166,7 @@ export const ja: Messages = {
   "questions.showFewer": "返信の表示を減らす",
   "profile.title": "プロフィールと色",
   "profile.reset": "色と名前をリセット",
+  "profile.close": "閉じる",
   "profile.note":
     "色と表示名は、このリポジトリ用としてこのブラウザーにだけ保存されます。共同作業のリポジトリには何も書き込まれません。",
   "profile.empty": "表示できる人はまだいません。",

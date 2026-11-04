@@ -156,6 +156,7 @@ export const zhTW: Messages = {
   "questions.showFewer": "顯示較少回覆",
   "profile.title": "個人檔案與顏色",
   "profile.reset": "重設顏色與名稱",
+  "profile.close": "關閉",
   "profile.note": "顏色與顯示名稱只會儲存在此瀏覽器中，且僅用於此儲存庫。不會寫入協作儲存庫。",
   "profile.empty": "目前沒有可顯示的人員。",
   "profile.displayName": "{name} 的顯示名稱",

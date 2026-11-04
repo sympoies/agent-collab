@@ -2496,6 +2496,11 @@ for (const code of LOCALES) {
         await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
       ).toBeLessThanOrEqual(0);
       await saveScreenshot(page, `i18n-profile-${code}-${view.label}.png`);
+      // The panel is an overlay (a full-screen sheet on the phone): close it to reach the content.
+      await page
+        .locator(".profile")
+        .getByRole("button", { name: messages["profile.close"] })
+        .click();
 
       // The Files view and an attachment card.
       if (view.size.width < 721) {
@@ -3034,4 +3039,437 @@ test("a topic-layout local folder shows a message added under a topic after Refr
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByText("A message that arrived under a topic.")).toBeVisible();
   await expect(last).toContainText("· bob-agent");
+});
+
+// The viewer is a fixed-height chat shell: the page does not scroll, the conversation list and the
+// message pane scroll on their own, and toolbar panels open over the content. "@csp" runs these
+// in WebKit too, which resolves 100dvh and nested scrolling differently from Chromium.
+test("the page stays put while the message pane and the list scroll inside it @csp", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "long");
+  await expect(page.locator(".message")).toHaveCount(30);
+  const pane = page.getByRole("main");
+  const metrics = await page.evaluate(() => {
+    const scroller = (selector: string) => {
+      const node = document.querySelector(selector) as HTMLElement;
+      return { overflowY: getComputedStyle(node).overflowY, clientHeight: node.clientHeight };
+    };
+    return {
+      documentHeight: document.documentElement.scrollHeight,
+      viewport: window.innerHeight,
+      pane: scroller("main.conversation"),
+      list: scroller(".topics-pane"),
+    };
+  });
+  expect(metrics.documentHeight).toBeLessThanOrEqual(metrics.viewport);
+  expect(metrics.pane.overflowY).toBe("auto");
+  expect(metrics.list.overflowY).toBe("auto");
+  expect(await pane.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(500);
+  await pane.evaluate((node) => {
+    node.scrollTo({ top: 400, behavior: "instant" });
+  });
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(await pane.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  // The pane is a keyboard-scrollable region with a name.
+  await expect(pane).toHaveAttribute("tabindex", "0");
+  await pane.evaluate((node) => {
+    node.scrollTo({ top: 0, behavior: "instant" });
+    node.focus();
+  });
+  await page.keyboard.press("PageDown");
+  await expect.poll(() => pane.evaluate((node) => node.scrollTop)).toBeGreaterThan(200);
+  await page.keyboard.press("End");
+  await expect
+    .poll(() => pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
+    .toBeLessThan(2);
+  await expect(page.locator("h1")).toHaveCount(1);
+  assertRequests();
+});
+
+test("the Profile & colors panel opens over the content and closes with Escape or a click outside @csp", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "long");
+  await expect(page.locator(".message")).toHaveCount(30);
+  const pane = page.getByRole("main");
+  await pane.evaluate((node) => {
+    node.scrollTo({ top: 300, behavior: "instant" });
+  });
+  const before = await pane.evaluate((node) => ({
+    height: node.clientHeight,
+    top: node.scrollTop,
+    box: node.getBoundingClientRect().top,
+  }));
+  const opener = page.getByRole("button", { name: "Profile & colors" });
+  await opener.click();
+  const panel = page.getByRole("region", { name: "Profile & colors" });
+  await expect(panel).toBeVisible();
+  const after = await pane.evaluate((node) => ({
+    height: node.clientHeight,
+    top: node.scrollTop,
+    box: node.getBoundingClientRect().top,
+  }));
+  expect(after).toEqual(before);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true);
+  // The panel overlaps the pane instead of pushing it.
+  const panelBox = await panel.boundingBox();
+  const paneBox = await pane.boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(paneBox).not.toBeNull();
+  expect((panelBox?.y ?? 0) + (panelBox?.height ?? 0)).toBeGreaterThan(paneBox?.y ?? 0);
+  expect(
+    await panel.evaluate((node) => getComputedStyle(node.parentElement as HTMLElement).position),
+  ).toMatch(/absolute|fixed/);
+  // Focus moves into the panel; Escape closes it and returns focus to the opener.
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.querySelector(".profile")?.contains(document.activeElement)),
+    )
+    .toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  // A click outside closes it too.
+  await opener.click();
+  await expect(panel).toBeVisible();
+  await page
+    .locator(".message")
+    .nth(5)
+    .click({ position: { x: 5, y: 5 } });
+  await expect(panel).toHaveCount(0);
+  assertRequests();
+});
+
+for (const code of LOCALES) {
+  const messages = catalogsByLocale[code];
+  test(`on a phone the page does not scroll and Profile & colors is a sheet with a close button in ${LOCALE_NAMES[code]} @csp`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript((locale) => {
+      localStorage.setItem("agent-collab-viewer.locale", locale);
+    }, code);
+    const assertRequests = await installApiStub(page, "long");
+    await page.goto("/");
+    await page.getByRole("button", { name: messages["welcome.openAnother"] }).click();
+    await page
+      .getByRole("textbox", { name: messages["settings.repository"], exact: true })
+      .fill("alice-agent/fixture-repo");
+    await page.getByLabel(messages["settings.branch"]).fill("main");
+    await page.getByLabel(messages["settings.myNames"]).fill("alice-agent");
+    await page.getByLabel(messages["settings.token"]).fill("fake-token");
+    await page.getByRole("button", { name: messages["settings.saveOpen"] }).click();
+    await page.getByRole("button", { name: messages["nav.all"] }).click();
+    await expect(page.locator(".message")).toHaveCount(30);
+    const fits = () =>
+      page.evaluate(() => ({
+        document: document.documentElement.scrollHeight - window.innerHeight,
+        sideways: document.documentElement.scrollWidth - window.innerWidth,
+      }));
+    expect((await fits()).document).toBeLessThanOrEqual(0);
+    expect((await fits()).sideways).toBeLessThanOrEqual(0);
+
+    await page.getByRole("button", { name: messages["bar.more"], exact: true }).click();
+    await page.getByRole("menuitemcheckbox", { name: messages["bar.profile"] }).click();
+    const panel = page.getByRole("region", { name: messages["profile.title"] });
+    await expect(panel).toBeVisible();
+    await expect(page.locator("h1")).toHaveCount(1);
+    // Nothing behind the sheet can take focus: Tab stays inside it.
+    for (let press = 0; press < 14; press += 1) {
+      await page.keyboard.press("Tab");
+      // Tab may leave the page for the browser's own controls (then nothing is focused), but it
+      // never lands on the content behind the sheet.
+      expect(
+        await page.evaluate(
+          () =>
+            document.activeElement === document.body ||
+            (document.querySelector("#profile-panel")?.contains(document.activeElement) ?? false),
+        ),
+      ).toBe(true);
+    }
+    // Escape closes the sheet and focus returns to the More button.
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: messages["bar.more"], exact: true }),
+    ).toBeFocused();
+    await page.getByRole("button", { name: messages["bar.more"], exact: true }).click();
+    await page.getByRole("menuitemcheckbox", { name: messages["bar.profile"] }).click();
+    await expect(panel).toBeVisible();
+    const box = await panel.boundingBox();
+    expect(box?.x).toBe(0);
+    expect(box?.width).toBe(390);
+    expect((await fits()).document).toBeLessThanOrEqual(0);
+    expect((await fits()).sideways).toBeLessThanOrEqual(0);
+    await panel.getByRole("button", { name: messages["profile.close"], exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    assertRequests();
+  });
+}
+
+// A long conversation opens at its latest message. Tagged "@csp" so WebKit covers it too: it does
+// not implement CSS scroll anchoring the way Chromium does.
+for (const code of LOCALES) {
+  const messages = catalogsByLocale[code];
+  for (const view of [
+    { label: "desktop", size: { width: 1280, height: 800 } },
+    { label: "phone", size: { width: 390, height: 844 } },
+  ] as const) {
+    test(`a long conversation opens at the latest message in ${LOCALE_NAMES[code]} on ${view.label} @csp`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(view.size);
+      await page.addInitScript((locale) => {
+        localStorage.setItem("agent-collab-viewer.locale", locale);
+      }, code);
+      const assertRequests = await installApiStub(page, "long");
+      await page.goto("/");
+      await page.getByRole("button", { name: messages["welcome.openAnother"] }).click();
+      await page
+        .getByRole("textbox", { name: messages["settings.repository"], exact: true })
+        .fill("alice-agent/fixture-repo");
+      await page.getByLabel(messages["settings.branch"]).fill("main");
+      await page.getByLabel(messages["settings.myNames"]).fill("alice-agent");
+      await page.getByLabel(messages["settings.token"]).fill("fake-token");
+      await page.getByRole("button", { name: messages["settings.saveOpen"] }).click();
+      if (view.label === "phone") {
+        // The phone shows the topic list first; opening All shows the conversation.
+        await page.getByRole("button", { name: messages["nav.all"] }).click();
+      }
+      await expect(page.locator(".message")).toHaveCount(30);
+      const last = page.locator(".message").last();
+      const pane = page.getByRole("main");
+      const atLatest = () =>
+        last.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          const area = (node.closest("main") as HTMLElement).getBoundingClientRect();
+          return box.bottom <= area.bottom + 1 && box.top < area.bottom;
+        });
+      await expect.poll(atLatest).toBe(true);
+      expect(await pane.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+      // The floating "Jump to latest" link does not cover the last message.
+      const lastBox = await last.boundingBox();
+      const jumpBox = await page
+        .getByRole("link", { name: messages["nav.jumpLatest"] })
+        .boundingBox();
+      expect(lastBox).not.toBeNull();
+      expect(jumpBox).not.toBeNull();
+      expect((lastBox?.y ?? 0) + (lastBox?.height ?? 0)).toBeLessThanOrEqual(jumpBox?.y ?? 0);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+
+      // "Jump to latest" still works from the top of the pane.
+      await pane.evaluate((node) => {
+        node.scrollTo({ top: 0, behavior: "instant" });
+      });
+      await expect.poll(atLatest).toBe(false);
+      await page.getByRole("link", { name: messages["nav.jumpLatest"] }).click();
+      await expect.poll(atLatest).toBe(true);
+      assertRequests();
+    });
+  }
+}
+
+// The Welcome and Settings screens are plain pages: they scroll, and their last control can be
+// reached on a phone and at a 200 percent zoom (a 640 by 400 viewport).
+for (const size of [
+  { width: 390, height: 844 },
+  { width: 640, height: 400 },
+]) {
+  test(`the welcome and settings screens scroll to their last control at ${String(size.width)}x${String(size.height)} @csp`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(size);
+    await page.goto("/");
+    const reachesLast = async () => {
+      await page.evaluate(() => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "instant" });
+      });
+      const box = await page
+        .locator(".app")
+        .locator("button, a[href], input, select")
+        .last()
+        .boundingBox();
+      expect(box).not.toBeNull();
+      expect(box?.y ?? -1).toBeGreaterThanOrEqual(0);
+      expect((box?.y ?? 0) + (box?.height ?? 0)).toBeLessThanOrEqual(size.height + 1);
+    };
+    await expect(page.getByRole("button", { name: "Open another repository" })).toBeVisible();
+    await reachesLast();
+    await page.getByRole("button", { name: "Open another repository" }).click();
+    await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
+    await reachesLast();
+  });
+}
+
+test("content that grows after landing keeps a following pane at the bottom and leaves a reader alone @csp", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "long");
+  await expect(page.locator(".message")).toHaveCount(30);
+  const pane = page.getByRole("main");
+  const fromBottom = () =>
+    pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop);
+  await expect.poll(fromBottom).toBeLessThan(2);
+  const grow = () =>
+    page.evaluate(() => {
+      const filler = document.createElement("li");
+      filler.className = "latest-anchor";
+      filler.style.height = "600px";
+      document.querySelector(".timeline")?.append(filler);
+    });
+  // A late preview adds height under the reader who is at the bottom: the bottom stays in view.
+  await grow();
+  await expect.poll(fromBottom).toBeLessThan(2);
+  // A reader who scrolled up is not moved.
+  await pane.evaluate((node) => {
+    node.scrollTo({ top: 100, behavior: "instant" });
+  });
+  await expect.poll(() => pane.evaluate((node) => node.scrollTop)).toBe(100);
+  await grow();
+  await page.waitForTimeout(300);
+  expect(await pane.evaluate((node) => node.scrollTop)).toBe(100);
+  assertRequests();
+});
+
+// An App that mounts with its messages already loaded (back from Settings) has its timeline in the
+// first commit; growth after that must still keep a following reader at the bottom.
+test("a viewer remounted with messages loaded still follows growth at the bottom @csp", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "long");
+  await expect(page.locator(".message")).toHaveCount(30);
+  await toolbarAction(page, "Settings");
+  await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.locator(".message")).toHaveCount(30);
+  const pane = page.getByRole("main");
+  const fromBottom = () =>
+    pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop);
+  await expect.poll(fromBottom).toBeLessThan(2);
+  await page.evaluate(() => {
+    const filler = document.createElement("li");
+    filler.className = "latest-anchor";
+    filler.style.height = "600px";
+    document.querySelector(".timeline")?.append(filler);
+  });
+  await expect.poll(fromBottom).toBeLessThan(2);
+  assertRequests();
+});
+
+for (const theme of [
+  { name: "Night Owl", scheme: "dark", action: "Use Night Owl theme", id: "night-owl" },
+  { name: "Paper", scheme: "light", action: "Use Paper theme", id: "paper" },
+] as const) {
+  test(`Tab reaches the message pane and shows a visible focus ring in ${theme.name} @csp`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.emulateMedia({ colorScheme: theme.scheme });
+    const assertRequests = await openViewer(page, "long");
+    await expect(page.locator(".message")).toHaveCount(30);
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme.id);
+    let reached = false;
+    for (let press = 0; press < 80 && !reached; press += 1) {
+      await page.keyboard.press("Tab");
+      reached = await page.evaluate(
+        () => document.activeElement?.matches("main.conversation") ?? false,
+      );
+    }
+    expect(reached, "Tab reaches the message pane").toBe(true);
+    const ring = await page.getByRole("main").evaluate((node) => ({
+      style: getComputedStyle(node).outlineStyle,
+      width: getComputedStyle(node).outlineWidth,
+      color: getComputedStyle(node).outlineColor,
+      card: getComputedStyle(node).backgroundColor,
+    }));
+    expect(ring.style).toBe("solid");
+    expect(ring.width).toBe("3px");
+    expect(ring.color).not.toBe(ring.card);
+    assertRequests();
+  });
+}
+
+test("loading older messages keeps the visible message where it is @csp", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "history");
+  await expect(page.locator(".message")).toHaveCount(50);
+  const pane = page.getByRole("main");
+  await pane.evaluate((node) => {
+    node.scrollTo({ top: 0, behavior: "instant" });
+  });
+  const firstId = await page.locator(".message").first().getAttribute("id");
+  const offset = () =>
+    page.evaluate((id) => {
+      const message = document.getElementById(id ?? "") as HTMLElement;
+      const area = (message.closest("main") as HTMLElement).getBoundingClientRect();
+      return message.getBoundingClientRect().top - area.top;
+    }, firstId);
+  const before = await offset();
+  await page.locator("button.older").click();
+  await expect(page.locator(".message")).toHaveCount(60);
+  expect(Math.abs((await offset()) - before)).toBeLessThanOrEqual(2);
+  assertRequests();
+});
+
+test("the topic list scrolls on its own @csp", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 340 });
+  const assertRequests = await openViewer(page, "long");
+  await expect(page.locator(".message")).toHaveCount(30);
+  const list = page.locator(".topics-pane");
+  const pane = page.getByRole("main");
+  expect(await list.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
+  const before = await pane.evaluate((node) => node.scrollTop);
+  await list.evaluate((node) => {
+    node.scrollTo({ top: node.scrollHeight, behavior: "instant" });
+  });
+  await expect.poll(() => list.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  expect(await pane.evaluate((node) => node.scrollTop)).toBe(before);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  assertRequests();
+});
+
+test("a jump to a date lands at the start of that day, never at the bottom @csp", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 380 });
+  const assertRequests = await openViewer(page, "history");
+  await expect(page.locator(".message")).toHaveCount(50);
+  const pane = page.getByRole("main");
+  await expect
+    .poll(() => pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
+    .toBeLessThan(2);
+  const date = page.getByLabel("Jump to date");
+  await date.fill("2026-09-02");
+  // Wait for the browser's own smooth scroll to the date field to end before jumping.
+  await expect
+    .poll(async () => {
+      const before = await pane.evaluate((node) => node.scrollTop);
+      await page.waitForTimeout(150);
+      return before === (await pane.evaluate((node) => node.scrollTop));
+    })
+    .toBe(true);
+  await date.press("Enter");
+  await expect(page.locator(".message")).toHaveCount(6);
+  const offset = () =>
+    page.evaluate(() => {
+      const day = document.querySelector('[id^="msg-2026-09-02T"]') as HTMLElement;
+      const area = (day.closest("main") as HTMLElement).getBoundingClientRect();
+      return day.getBoundingClientRect().top - area.top;
+    });
+  await expect.poll(async () => Math.abs(await offset())).toBeLessThanOrEqual(3);
+  expect(
+    await pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop),
+  ).toBeGreaterThan(2);
+  assertRequests();
 });
