@@ -520,7 +520,7 @@ export function App({
                   setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
                 }}
               >
-                <span>#{summary.topic}</span>
+                <span className="topic-name">#{summary.topic}</span>
                 <span className="count">{summary.count}</span>
                 {summary.fresh > 0 && (
                   <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>

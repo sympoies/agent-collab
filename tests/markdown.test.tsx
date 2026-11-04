@@ -66,6 +66,32 @@ describe("Markdown", () => {
     expect(out).toContain("</a> and more");
   });
 
+  it("keeps the original text of an unbalanced unsafe link, with every character", () => {
+    expect(html("see [a](javascript:alert(1) now")).toContain(
+      "<p>see [a](javascript:alert(1) now</p>",
+    );
+    expect(html("[a](javascript:alert(1)")).not.toContain("<a ");
+  });
+
+  it("never links a data: or other non-http target, and keeps the label", () => {
+    for (const target of [
+      "data:text/html,<b>x</b>",
+      "vbscript:x",
+      "file:///etc/passwd",
+      "//evil.example/x",
+    ]) {
+      const out = html(`[label](${target})`);
+      expect(out, target).not.toContain("<a ");
+      expect(out, target).toContain("label");
+    }
+  });
+
+  it("renders a target with two levels of parentheses as plain text without losing characters", () => {
+    expect(html("x [a](https://docs.example.com/p(q(r))) y")).toContain(
+      "<p>x [a](https://docs.example.com/p(q(r))) y</p>",
+    );
+  });
+
   it("does not load images: image syntax becomes text", () => {
     const out = html("![chart](https://evil.example/x.png)");
     expect(out).not.toContain("<img");

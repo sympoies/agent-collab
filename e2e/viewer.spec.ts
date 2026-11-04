@@ -255,6 +255,22 @@ const TOPIC_FILES: Readonly<Record<string, { sha: string; body: string | Buffer 
   "archive.bin": { sha: "topic-bin", body: "opaque bytes" },
 };
 
+/** Two topics, one of them named by a single unbreakable word (no hyphen to break at) far wider than a phone screen. */
+function longTopicThread(): MessageFixture[] {
+  return [
+    makeMessage("2026-10-08", "0900", "alice-agent", "api", 1, "info", "Short topic message."),
+    makeMessage(
+      "2026-10-08",
+      "0910",
+      "alice-agent",
+      "anextraordinarilylongtopicnamewithoutanybreakopportunityatall0123456789abcdefghij",
+      1,
+      "info",
+      "Long topic message.",
+    ),
+  ];
+}
+
 function attachmentThread(): MessageFixture[] {
   const first = makeMessage(
     "2026-10-08",
@@ -309,7 +325,7 @@ function json(route: Route, value: unknown, status = 200, headers: Record<string
 
 async function installApiStub(
   page: Page,
-  mode: "long" | "questions" | "attachments" | "empty" | "error",
+  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic",
 ) {
   const messages =
     mode === "long"
@@ -318,7 +334,9 @@ async function installApiStub(
         ? questionThread()
         : mode === "attachments"
           ? attachmentThread()
-          : [];
+          : mode === "long-topic"
+            ? longTopicThread()
+            : [];
   const arrivalOne = makeMessage(
     "2026-10-09",
     "1030",
@@ -463,7 +481,7 @@ async function installApiStub(
 
 async function openViewer(
   page: Page,
-  mode: "long" | "questions" | "attachments" | "empty" | "error",
+  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic",
 ) {
   const assertRequests = await installApiStub(page, mode);
   await page.goto("/");
@@ -1793,6 +1811,46 @@ for (const identity of identityCases) {
   });
 }
 
+for (const code of LOCALES) {
+  test(`a very long topic name stays inside its button on a phone in ${LOCALE_NAMES[code]}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const assertRequests = await openViewer(page, "long-topic");
+    if (code !== "en") {
+      await page.getByRole("button", { name: /^(More|その他|更多)$/ }).click();
+      await page.getByRole("menuitemradio", { name: LOCALE_NAMES[code], exact: true }).click();
+      await expect(page.locator("html")).toHaveAttribute("lang", code);
+    }
+    const long = page.locator(".topics button", { hasText: "anextraordinarilylongtopic" });
+    await expect(long).toBeVisible();
+    const fit = await page.locator(".topics button").evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        const count = node.querySelector(".count")?.getBoundingClientRect();
+        return {
+          insideScreen: box.left >= 0 && box.right <= window.innerWidth + 0.5,
+          noInnerOverflow: node.scrollWidth <= node.clientWidth + 1,
+          // Buttons without a counter (Files, All) pass; the topics' counters stay inside.
+          counterInside:
+            count === undefined ||
+            (count.width > 0 && count.left >= box.left - 0.5 && count.right <= box.right + 0.5),
+        };
+      }),
+    );
+    expect(fit.length).toBeGreaterThan(2);
+    expect(await page.locator(".topics .count").count()).toBeGreaterThan(2);
+    expect(fit.every((entry) => entry.insideScreen)).toBe(true);
+    expect(fit.every((entry) => entry.noInnerOverflow)).toBe(true);
+    expect(fit.every((entry) => entry.counterInside)).toBe(true);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `long-topic-${code}.png`);
+    assertRequests();
+  });
+}
+
 test("activating a message link with the keyboard moves focus to the message", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const assertRequests = await openViewer(page, "attachments");
@@ -1952,9 +2010,8 @@ for (const code of LOCALES) {
       await expect(page.locator("html")).toHaveAttribute("lang", other);
       await page.getByLabel(catalogsByLocale[other]["language.label"]).selectOption(code);
       await expect(page.locator("html")).toHaveAttribute("lang", code);
-      await expect(
-        page.getByRole("button", { name: messages["welcome.openLiveDemo"] }),
-      ).toBeVisible();
+      // The product name is the same English name in every language.
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Collab Viewer");
       await expect(
         page.getByRole("button", { name: messages["welcome.openLiveDemo"] }),
       ).toBeVisible();
@@ -1970,6 +2027,8 @@ for (const code of LOCALES) {
         page,
         ".settings button, .settings .field > label, .settings legend, .settings .note, .token-help, .token-help p, .token-help a",
       );
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Collab Viewer");
+      await expect(page.locator("h1")).toHaveCount(1);
       await saveScreenshot(page, `i18n-settings-${code}-${view.label}.png`);
       await page.getByRole("button", { name: messages["settings.openOffline"] }).click();
       const toolbar = page.locator(".bar-actions");

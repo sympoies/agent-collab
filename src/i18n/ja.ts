@@ -135,7 +135,7 @@ export const ja: Messages = {
   "profile.reset": "色と名前をリセット",
   "profile.note":
     "色と表示名は、このリポジトリ用としてこのブラウザーにだけ保存されます。共同作業のリポジトリには何も書き込まれません。",
-  "profile.empty": "表示する人はまだいません。",
+  "profile.empty": "表示できる人はまだいません。",
   "profile.displayName": "{name} の表示名",
   "profile.color": "{name} の色",
   "color.coral": "コーラル",
@@ -180,7 +180,7 @@ export const ja: Messages = {
   "settings.branchPlaceholder": "デフォルトブランチ",
   "settings.myNames": "自分の名前",
   "settings.myNamesPlaceholder": "alice, alice-agent",
-  "settings.myNamesHint": "これらの名前は、「表示する人」の初期値として使われます。",
+  "settings.myNamesHint": "これらの名前は、「閲覧者」の初期値として使われます。",
   "settings.token": "アクセストークン",
   "settings.tokenStored": "保存済み。変更しない場合は空のままにします",
   "settings.tokenHint":
