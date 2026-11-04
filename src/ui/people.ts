@@ -1,7 +1,5 @@
 // How people are shown in the timeline: palette slot (color) and display name.
 
-import type { CSSProperties } from "react";
-
 import { assignSlots, type IdentityPreferences } from "../identity/preferences";
 
 export interface People {
@@ -31,7 +29,10 @@ export function buildPeople(order: readonly string[], preferences: IdentityPrefe
   };
 }
 
-/** The person's color as a theme-aware custom property; components never hard-code colors. */
-export function personStyle(slot: number): CSSProperties {
-  return { "--person": `var(--person-${String(slot)})` } as CSSProperties;
+/**
+ * The person's color as a data attribute. The stylesheet maps `data-slot` to the theme-aware
+ * `--person` property, so components never hard-code colors or emit inline styles.
+ */
+export function personSlot(slot: number): { "data-slot": number } {
+  return { "data-slot": slot };
 }

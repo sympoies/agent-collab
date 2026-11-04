@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import process from "node:process";
 
 const base = "/agent-collab/";
@@ -24,3 +24,10 @@ assert.match(
   /<meta http-equiv="Content-Security-Policy" content="default-src &#39;self&#39;; script-src &#39;self&#39;; object-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;; img-src &#39;self&#39; blob:; connect-src &#39;self&#39; https:">/,
   "the build-only CSP meta tag should remain in production HTML",
 );
+
+assert.match(
+  html,
+  new RegExp(`<link rel="icon" type="image/svg\\+xml" href="${base}favicon\\.svg"`),
+  "the page should link its favicon under the base path",
+);
+assert.ok(existsSync("dist/favicon.svg"), "the favicon should be copied into the build");

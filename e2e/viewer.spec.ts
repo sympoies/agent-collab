@@ -228,12 +228,20 @@ function questionThread(): MessageFixture[] {
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
+/** A table with 40 columns of long-ish values: wider than any viewport the viewer supports. */
+function wideCsv(): string {
+  const columns = Array.from({ length: 40 }, (_, index) => `column_${String(index + 1)}`);
+  const row = (name: string) => columns.map((column) => `${name}-${column}-value`).join(",");
+  return [columns.join(","), row("a"), row("b")].join("\n") + "\n";
+}
+
 const TOPIC_FILES: Readonly<Record<string, { sha: string; body: string | Buffer }>> = {
   "fields-v1.md": {
     sha: "topic-md",
     body: "# Field list\n\n- **id** is required\n- `note` is optional\n\n<script>window.pwned = true</script>\n",
   },
   "results.csv": { sha: "topic-csv", body: 'name,score\nalice,"9, great"\nbob,7\n' },
+  "wide.csv": { sha: "topic-wide-csv", body: wideCsv() },
   "diagram.png": { sha: "topic-png", body: Buffer.from(PNG_BASE64, "base64") },
   "archive.bin": { sha: "topic-bin", body: "opaque bytes" },
 };
@@ -249,7 +257,7 @@ function attachmentThread(): MessageFixture[] {
     "The review files are attached.",
     "bob-agent",
     "",
-    "topics/api/fields-v1.md, topics/api/results.csv, topics/api/diagram.png, topics/api/archive.bin, https://docs.example.com/guide, topics/api/other.md, topics/api/an-extraordinarily-long-file-name-that-keeps-going-and-going-for-the-phone-viewport-check-0123456789.md, https://a-very-long-host-name-for-the-wrapping-check-at-phone-width.example.invalid/path, 2026-10-08T0910-alice-agent-ops-01",
+    "topics/api/fields-v1.md, topics/api/results.csv, topics/api/wide.csv, topics/api/diagram.png, topics/api/archive.bin, https://docs.example.com/guide, topics/api/other.md, topics/api/an-extraordinarily-long-file-name-that-keeps-going-and-going-for-the-phone-viewport-check-0123456789.md, https://a-very-long-host-name-for-the-wrapping-check-at-phone-width.example.invalid/path, 2026-10-08T0910-alice-agent-ops-01",
   );
   return [
     first,
@@ -1091,8 +1099,16 @@ for (const identity of identityCases) {
     await page.getByRole("button", { name: /^#api/ }).click();
 
     const first = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
-    await expect(first.locator(".file-card")).toHaveCount(6);
-    await expect(first.locator(".file-badge")).toHaveText(["MD", "CSV", "IMG", "FILE", "MD", "MD"]);
+    await expect(first.locator(".file-card")).toHaveCount(7);
+    await expect(first.locator(".file-badge")).toHaveText([
+      "MD",
+      "CSV",
+      "CSV",
+      "IMG",
+      "FILE",
+      "MD",
+      "MD",
+    ]);
     const guide = first.getByRole("link", { name: "docs.example.com" });
     await expect(guide).toHaveAttribute("rel", "noopener noreferrer");
     await expect(guide).toHaveAttribute("target", "_blank");
@@ -1108,6 +1124,30 @@ for (const identity of identityCases) {
 
     await card("results.csv").locator("summary").click();
     await expect(card("results.csv").locator("td")).toHaveText(["alice", "9, great", "bob", "7"]);
+
+    // A table wider than the screen scrolls inside its card; the page and the card do not grow.
+    await card("wide.csv").locator("summary").click();
+    const wide = card("wide.csv");
+    await expect(wide.locator("th")).toHaveCount(40);
+    const fit = await wide.evaluate((node) => {
+      const table = node.querySelector<HTMLElement>(".csv-preview");
+      const box = node.getBoundingClientRect();
+      const inner = table?.getBoundingClientRect();
+      return {
+        scrolls: (table?.scrollWidth ?? 0) > (table?.clientWidth ?? 0),
+        insideCard: (inner?.right ?? Infinity) <= box.right + 0.5,
+        cardInsideViewport: box.right <= window.innerWidth + 0.5,
+        pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    expect({ ...fit, pageOverflow: Math.max(fit.pageOverflow, 0) }).toEqual({
+      scrolls: true,
+      insideCard: true,
+      cardInsideViewport: true,
+      pageOverflow: 0,
+    });
+    expect(fit.pageOverflow).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `wide-csv-${identity.label}-${identity.theme}.png`);
 
     await card("diagram.png").locator("summary").click();
     const image = card("diagram.png").locator("img");
@@ -1153,7 +1193,7 @@ for (const identity of identityCases) {
     if (phone) await page.getByRole("button", { name: "Back to conversations" }).click();
     await page.getByRole("button", { name: "Files" }).click();
     await expect(page.locator("#conversation-heading")).toHaveText("Files");
-    await expect(page.locator(".files .file-name")).toHaveCount(6);
+    await expect(page.locator(".files .file-name")).toHaveCount(7);
     await expect(page.locator(".files .file-from").first()).toContainText("alice-agent · #api");
     await expect(page.locator(".files a.chip")).toHaveCount(2);
     const filesOverflow = await page.evaluate(
@@ -1385,6 +1425,80 @@ for (const view of [
       /^Last change seen (just now|1 minute ago)$/,
     );
     expect(requests).toEqual([]);
+  });
+}
+
+// The production CSP has no `style-src`, so an inline style attribute is a violation in browsers
+// that report them. Chromium and WebKit both walk the main screens and must see no style attribute
+// in the DOM. WebKit additionally reports one `style-src-attr` violation for every `<select>` it
+// creates (its built-in popup button carries an inline style; a bare `<select>` on a page with
+// this CSP does the same), so there the violations must match the number of selects exactly:
+// anything more is an inline style of ours.
+for (const engine of ["chromium", "webkit"] as const) {
+  test(`no inline style attribute and no CSP violation of ours in ${engine}`, async ({
+    playwright,
+  }) => {
+    const browser = await playwright[engine].launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      await page.addInitScript(() => {
+        const log: string[] = [];
+        const state = { violations: log, selects: 0 };
+        Object.assign(window, { cspProbe: state });
+        document.addEventListener("securitypolicyviolation", (event) => {
+          log.push(`${event.violatedDirective} ${event.blockedURI}`);
+        });
+        // Count every select that enters the document, including those inside added subtrees.
+        new MutationObserver((records) => {
+          for (const record of records) {
+            for (const node of record.addedNodes) {
+              if (!(node instanceof Element)) continue;
+              state.selects +=
+                (node.matches("select") ? 1 : 0) + node.querySelectorAll("select").length;
+            }
+          }
+        }).observe(document, { childList: true, subtree: true });
+      });
+      const probe = () =>
+        page.evaluate(
+          () =>
+            (window as unknown as { cspProbe: { violations: string[]; selects: number } }).cspProbe,
+        );
+      const inlineStyles = () => page.locator("[style]").count();
+      const expectClean = async (step: string) => {
+        const { violations, selects } = await probe();
+        const unexpected = engine === "webkit" ? violations.length - selects : violations.length;
+        expect({
+          step,
+          styles: await inlineStyles(),
+          unexpected,
+          kinds: new Set(violations),
+        }).toEqual({
+          step,
+          styles: 0,
+          unexpected: 0,
+          kinds:
+            engine === "webkit" && selects > 0 ? new Set(["style-src-attr inline"]) : new Set(),
+        });
+      };
+
+      const assertRequests = await openViewer(page, "attachments");
+      await page.getByRole("button", { name: /^#api/ }).click();
+      const first = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
+      await first.locator(".file-card", { hasText: "wide.csv" }).locator("summary").click();
+      await expect(first.locator("th")).toHaveCount(40);
+      await expect(page.locator(".group").first()).toHaveAttribute("data-slot", /^[0-7]$/);
+      await expectClean("chat");
+      await page.getByRole("button", { name: "Profile & colors" }).click();
+      await expect(page.locator(".profile .swatch").first()).toBeVisible();
+      await expectClean("profile");
+      await page.getByRole("button", { name: "Settings" }).click();
+      await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+      await expectClean("settings");
+      assertRequests();
+    } finally {
+      await browser.close();
+    }
   });
 }
 

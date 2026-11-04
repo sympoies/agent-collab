@@ -541,6 +541,18 @@ Two different secrets with different purposes:
     so `connect-src` allows same-origin requests and any `https:` origin; packaged builds narrow it to
     the configured endpoint. The dev server runs without it because hot
     reload uses inline scripts. No third-party scripts, fonts or analytics.
+    There is no `style-src`, so the policy does not allow inline `style`
+    attributes and no component emits one: a person's color is a `data-slot`
+    attribute (0 to 7) that the stylesheet maps to the theme-aware `--person`
+    property. `tests/no-inline-style.test.tsx` scans `src` for any style
+    attribute, key or `CSSProperties` use and renders the main screens; the
+    browser suite does the same in Chromium and WebKit and collects
+    `securitypolicyviolation` events. WebKit reports one `style-src-attr`
+    violation for every `<select>` it creates (the control's own popup button;
+    a bare `<select>` does it on any page with this policy), so the WebKit
+    check requires the violations to equal the number of selects. The favicon
+    is a file under the base path (`public/favicon.svg`), covered by
+    `default-src 'self'`; the base-build check asserts the link and the file.
 - **In-memory lifetime.** When a user chooses a saved repository, its token is
   read from the store (or entered), handed to the source, and held in the source's closure for the
   app session. Changing the repository, removing the credential or signing
