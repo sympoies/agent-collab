@@ -123,4 +123,13 @@ describe("acceptance polish", () => {
     expect(zhTW["settings.keep"]).toContain("儲存");
     expect(Object.values(zhTW).some((text) => text.includes("保存"))).toBe(false);
   });
+
+  it("keeps the product and theme names in English in every language", () => {
+    for (const messages of [en, ja, zhTW]) {
+      expect(messages["app.title"]).toBe("Collab Viewer");
+      expect(messages["app.settingsTitle"]).toBe("Collab Viewer");
+      expect(messages["theme.nightOwl"]).toBe("Night Owl");
+      expect(messages["theme.paper"]).toBe("Paper");
+    }
+  });
 });

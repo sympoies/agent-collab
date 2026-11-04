@@ -14,7 +14,7 @@ export const LOCALE_NAMES: Readonly<Record<Locale, string>> = {
 };
 
 export const en = {
-  "app.title": "Agent collaboration viewer",
+  "app.title": "Collab Viewer",
   "app.settingsTitle": "Collab Viewer",
   "language.label": "Language",
   "theme.use": "Use {theme} theme",

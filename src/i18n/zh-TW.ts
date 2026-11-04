@@ -1,7 +1,7 @@
 import type { Messages } from "./catalog";
 
 export const zhTW: Messages = {
-  "app.title": "代理人協作檢視器",
+  "app.title": "Collab Viewer",
   "app.settingsTitle": "Collab Viewer",
   "language.label": "語言",
   "theme.use": "使用 {theme} 主題",

@@ -652,7 +652,7 @@ test("empty repositories and provider errors have clear states", async ({ page }
 test("welcome screen exposes live-demo, saved-repository, and theme controls", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Agent collaboration viewer" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Collab Viewer" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open live demo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open saved repository" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open another repository" })).toBeVisible();
@@ -1866,7 +1866,7 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
   await expect(page.getByRole("alert")).toHaveText(
     "No folder selected, or the browser does not allow this folder.",
   );
-  await expect(page.getByRole("heading", { name: "Agent collaboration viewer" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Collab Viewer" })).toBeVisible();
 
   const other = await page.context().newPage();
   await installFakeFolder(other, { picker: "not-a-clone" });
@@ -1952,7 +1952,9 @@ for (const code of LOCALES) {
       await expect(page.locator("html")).toHaveAttribute("lang", other);
       await page.getByLabel(catalogsByLocale[other]["language.label"]).selectOption(code);
       await expect(page.locator("html")).toHaveAttribute("lang", code);
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText(messages["app.title"]);
+      await expect(
+        page.getByRole("button", { name: messages["welcome.openLiveDemo"] }),
+      ).toBeVisible();
       await expect(
         page.getByRole("button", { name: messages["welcome.openLiveDemo"] }),
       ).toBeVisible();
@@ -2112,9 +2114,9 @@ test("the browser language picks the interface language, and an unwritable store
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page.locator("html")).toHaveAttribute("lang", "ja");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(ja["app.title"]);
+  await expect(page.getByRole("button", { name: ja["welcome.openLiveDemo"] })).toBeVisible();
   await page.getByLabel(ja["language.label"]).selectOption("zh-TW");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(zhTW["app.title"]);
+  await expect(page.getByRole("button", { name: zhTW["welcome.openLiveDemo"] })).toBeVisible();
   expect(errors).toEqual([]);
   await context.close();
 });

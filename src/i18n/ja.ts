@@ -1,7 +1,7 @@
 import type { Messages } from "./catalog";
 
 export const ja: Messages = {
-  "app.title": "エージェント協調ビューア",
+  "app.title": "Collab Viewer",
   "app.settingsTitle": "Collab Viewer",
   "language.label": "言語",
   "theme.use": "{theme}テーマを使う",

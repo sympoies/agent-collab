@@ -13,6 +13,9 @@ import {
   useLocale,
 } from "../src/i18n/LocaleProvider";
 import { Loader } from "../src/loader/loader";
+import { en } from "../src/i18n/catalog";
+import { ja } from "../src/i18n/ja";
+import { zhTW } from "../src/i18n/zh-TW";
 import { App } from "../src/ui/App";
 import { Root } from "../src/ui/Root";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
@@ -38,6 +41,10 @@ const throwing = {
     throw new DOMException("full", "QuotaExceededError");
   },
 };
+
+// The product name is the same in every language, so the welcome screen's first button (a
+// translated text) shows which language is active.
+const live = (host: HTMLElement) => host.querySelector(".settings > button")?.textContent;
 
 describe("LocaleProvider", () => {
   let mounted: { host: HTMLElement; root: ReactRoot } | null = null;
@@ -101,7 +108,7 @@ describe("LocaleProvider", () => {
   it("follows the browser language by default and sets the page language", async () => {
     languages("ja-JP", "en");
     const host = await render(memoryStorage());
-    expect(host.querySelector("h1")?.textContent).toBe("エージェント協調ビューア");
+    expect(live(host)).toBe(ja["welcome.openLiveDemo"]);
     expect(select(host)?.value).toBe("ja");
     expect(document.documentElement.lang).toBe("ja");
   });
@@ -109,14 +116,14 @@ describe("LocaleProvider", () => {
   it("prefers the saved choice over the browser language", async () => {
     languages("ja");
     const host = await render(memoryStorage({ [LOCALE_KEY]: "zh-TW" }));
-    expect(host.querySelector("h1")?.textContent).toBe("代理人協作檢視器");
+    expect(live(host)).toBe(zhTW["welcome.openLiveDemo"]);
     expect(document.documentElement.lang).toBe("zh-TW");
   });
 
   it("ignores a saved value that is not a supported language", async () => {
     languages("en");
     const host = await render(memoryStorage({ [LOCALE_KEY]: "fr" }));
-    expect(host.querySelector("h1")?.textContent).toBe("Agent collaboration viewer");
+    expect(live(host)).toBe(en["welcome.openLiveDemo"]);
   });
 
   it("switches language from the visible switcher and saves the choice", async () => {
@@ -129,19 +136,19 @@ describe("LocaleProvider", () => {
       "繁體中文",
     ]);
     await choose(host, "ja");
-    expect(host.querySelector("h1")?.textContent).toBe("エージェント協調ビューア");
+    expect(live(host)).toBe(ja["welcome.openLiveDemo"]);
     expect(storage.values.get(LOCALE_KEY)).toBe("ja");
     expect(document.documentElement.lang).toBe("ja");
     await choose(host, "en");
-    expect(host.querySelector("h1")?.textContent).toBe("Agent collaboration viewer");
+    expect(live(host)).toBe(en["welcome.openLiveDemo"]);
   });
 
   it("works when storage throws on read and on write", async () => {
     languages("zh-TW");
     const host = await render(throwing);
-    expect(host.querySelector("h1")?.textContent).toBe("代理人協作檢視器");
+    expect(live(host)).toBe(zhTW["welcome.openLiveDemo"]);
     await choose(host, "ja");
-    expect(host.querySelector("h1")?.textContent).toBe("エージェント協調ビューア");
+    expect(live(host)).toBe(ja["welcome.openLiveDemo"]);
   });
 
   it("formats dates with Intl in the chosen language", async () => {
