@@ -84,12 +84,13 @@ export function parseDemoSnapshot(text: string): DemoSnapshot | null {
   };
 }
 
-export async function readDemoSnapshot(
-  fetcher: typeof fetch = fetch,
-  documentUrl: string = document.baseURI,
+async function readSnapshotFile(
+  name: string,
+  fetcher: typeof fetch,
+  documentUrl: string,
 ): Promise<DemoSnapshot | null> {
   try {
-    const url = new URL("demo-snapshot.json", documentUrl);
+    const url = new URL(name, documentUrl);
     const response = await fetcher(url, {
       cache: "no-store",
       credentials: "omit",
@@ -100,6 +101,21 @@ export async function readDemoSnapshot(
   } catch {
     return null;
   }
+}
+
+export function readDemoSnapshot(
+  fetcher: typeof fetch = fetch,
+  documentUrl: string = document.baseURI,
+): Promise<DemoSnapshot | null> {
+  return readSnapshotFile("demo-snapshot.json", fetcher, documentUrl);
+}
+
+/** The snapshot a deployment serves next to the app, or null when there is none (or it is invalid). */
+export function readHostedSnapshot(
+  fetcher: typeof fetch = fetch,
+  documentUrl: string = document.baseURI,
+): Promise<DemoSnapshot | null> {
+  return readSnapshotFile("hosted-snapshot.json", fetcher, documentUrl);
 }
 
 function hash(text: string): string {

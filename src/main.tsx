@@ -9,6 +9,8 @@ import { FixtureSource } from "./source/fixture";
 import { LocalFolderSource, type LocalDirectoryHandle } from "./source/local-folder";
 import { GitHubSource } from "./source/github";
 import { CachedDemoSource } from "./source/cached-demo";
+import { HostedSnapshotSource } from "./source/hosted-snapshot";
+import { readHostedSnapshot } from "./settings/demo-snapshot";
 import type { MessageSource } from "./source/types";
 import { Root } from "./ui/Root";
 import { LocaleProvider } from "./i18n/LocaleProvider";
@@ -106,6 +108,9 @@ const root = document.getElementById("root");
 if (root === null) throw new Error("missing #root element");
 const storage = safeBrowserStorage();
 
+// A deployment that serves a snapshot next to the app (docs/hosted-snapshot.md) opens it directly.
+const hosted = (await readHostedSnapshot()) === null ? null : () => new HostedSnapshotSource();
+
 createRoot(root).render(
   <StrictMode>
     <LocaleProvider storage={storage}>
@@ -120,6 +125,7 @@ createRoot(root).render(
           createDemoSource={() => new FixtureSource(demoFiles)}
           createLiveDemoSource={createLiveDemoSource}
           openLocalFolder={folderPicker()}
+          createHostedSource={hosted}
         />
       </ThemeProvider>
     </LocaleProvider>

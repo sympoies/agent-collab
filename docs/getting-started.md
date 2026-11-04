@@ -103,3 +103,30 @@ profile or run code on the site may still use a saved token.
   repository may be private and need a token.
 - **Unreachable**: check your connection; the browser or network may block the
   provider API.
+
+## Serve a snapshot of a clone
+
+One person can view a clone that is kept up to date on another machine, without a
+token and without picking a folder. Build the viewer, serve it with any static file
+server, and refresh a snapshot of the clone next to it:
+
+```sh
+pnpm build
+node scripts/create-folder-snapshot.mjs /path/to/clone dist/hosted-snapshot.json
+```
+
+Run the second command from a timer (for example every minute; a cron entry or a
+systemd timer works) and serve `dist/` with any static file server. The script reads
+the marker, the root index, the inbox and `topics/` from disk with the same limits as
+the local-folder source (1 MiB per file; larger files are listed without content),
+skips `.git`, `node_modules` and symbolic links, and writes the file atomically, so a
+reader never sees a partial one. Its revision changes only when the content does.
+
+When the page finds `hosted-snapshot.json` next to it, it opens that snapshot
+straight away and fetches it again every minute (every five minutes in a hidden tab)
+and when you press refresh. It is a point-in-time copy: the toolbar says so and shows
+when the file was generated. Messages that cannot be decrypted stay as they are. A
+deployment without the file, such as the public GitHub Pages one, behaves as before.
+
+The snapshot contains the repository's messages, and the file is served to anyone who
+can reach the page. Expose it only on a network the reader trusts.

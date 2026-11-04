@@ -45,6 +45,8 @@ export interface SourceIndicator {
   readonly label: MessageKey;
   /** Shown as experimental until the source is released. */
   readonly experimental: boolean;
+  /** The data is a copy made at the time shown, not the source's current state. */
+  readonly pointInTime?: true;
 }
 
 /** The current time, refreshed every half minute while `active`, for relative texts. */
@@ -343,6 +345,13 @@ export function App({
             </span>
             {snapshot.lastChanged === null ? (
               <span className="last-changed">{t("source.noChange")}</span>
+            ) : source.pointInTime === true ? (
+              <span
+                className="last-changed"
+                title={t("source.generatedTitle", { date: formatDateTime(snapshot.lastChanged) })}
+              >
+                {t("source.generated", { time: relativeTime(snapshot.lastChanged, now, t) })}
+              </span>
             ) : (
               <span
                 className="last-changed"
