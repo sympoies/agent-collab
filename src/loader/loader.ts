@@ -3,6 +3,7 @@
 
 import { parseMessageFile } from "../message/parse";
 import { isKnownLayout, markerLayout } from "../message/topic-layout";
+import { mapLimit } from "../source/map-limit";
 import { TopicLayoutSource } from "../source/topic-layout";
 import { AttachmentReader } from "./attachments";
 import type { ParsedFile } from "../message/types";
@@ -41,6 +42,11 @@ export interface LoaderSnapshot {
 export interface LoaderOptions {
   readonly pageSize?: number;
   readonly concurrency?: number;
+  /**
+   * Drops a loaded item that does not belong in this view (a topic view of the legacy inbox, whose
+   * file names cannot say exactly which topic a message has). A dropped file is not read again.
+   */
+  readonly keep?: (item: TimelineItem) => boolean;
 }
 
 /** The repository is not a readable collaboration repository. */
@@ -134,24 +140,6 @@ function itemName(item: TimelineItem): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
-async function mapLimit<T, R>(
-  values: readonly T[],
-  limit: number,
-  fn: (value: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array<R>(values.length);
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < values.length) {
-      const index = next;
-      next += 1;
-      results[index] = await fn(values[index] as T);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, values.length) }, worker));
-  return results;
-}
-
 interface RetryState {
   entry: DirectoryEntry;
   attempts: number;
@@ -162,6 +150,9 @@ interface RetryState {
 export class Loader {
   private readonly pageSize: number;
   private readonly concurrency: number;
+  private readonly keep: (item: TimelineItem) => boolean;
+  /** Files read and dropped by `keep`, so a refresh does not treat them as new. */
+  private readonly ignored = new Set<string>();
   private head: Head | null = null;
   /** Loaded items keyed by file name, so a message moved between layouts stays one item. */
   private readonly items = new Map<string, TimelineItem>();
@@ -209,6 +200,7 @@ export class Loader {
     this.source = source instanceof TopicLayoutSource ? source : new TopicLayoutSource(source);
     this.pageSize = options.pageSize ?? 50;
     this.concurrency = options.concurrency ?? 6;
+    this.keep = options.keep ?? (() => true);
     this.attachments = new AttachmentReader(this.source, () => this.head?.revision ?? null);
   }
 
@@ -386,6 +378,15 @@ export class Loader {
   }
 
   private async readAll(entries: readonly DirectoryEntry[]): Promise<TimelineItem[]> {
+    const all = await this.readEntries(entries);
+    return all.filter((item) => {
+      if (this.keep(item)) return true;
+      this.ignored.add(itemName(item));
+      return false;
+    });
+  }
+
+  private async readEntries(entries: readonly DirectoryEntry[]): Promise<TimelineItem[]> {
     return mapLimit(entries, this.concurrency, async (entry): Promise<TimelineItem> => {
       try {
         const item = parseMessageFile(entry.path, await this.source.readFile(entry));
@@ -446,7 +447,11 @@ export class Loader {
   }
 
   private isKnown(name: string): boolean {
-    return this.items.has(name) || this.pending.some((entry) => entry.name === name);
+    return (
+      this.items.has(name) ||
+      this.ignored.has(name) ||
+      this.pending.some((entry) => entry.name === name)
+    );
   }
 
   private publish(added: readonly TimelineItem[]): void {

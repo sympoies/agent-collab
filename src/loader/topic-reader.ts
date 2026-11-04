@@ -90,12 +90,19 @@ async function listOrEmpty(source: MessageSource, revision: string, path: string
 
 /**
  * A loader for one topic: its folder `topics/<topic>/inbox/YYYY-MM`, paged newest first like any
- * other, plus the legacy messages that name the topic. Nothing else of the repository is read.
+ * other, plus the legacy messages that name the topic. Nothing else of the repository is listed.
+ * Legacy files are matched by name first (a hint) and kept only if the message says this topic, so
+ * a page can hold a few fewer messages than its size when the hint matched a different topic.
  */
 export function topicLoader(
   source: MessageSource,
   topic: string,
   options: LoaderOptions = {},
 ): Loader {
-  return new Loader(new TopicLayoutSource(source, { topic }), options);
+  return new Loader(new TopicLayoutSource(source, { topic }), {
+    ...options,
+    // A legacy file name cannot say exactly which topic a message has (an id ending in -api may
+    // be topic api or x-api), so the view keeps only messages whose parsed topic is this one.
+    keep: (item) => item.kind !== "message" || item.message.topic === topic,
+  });
 }

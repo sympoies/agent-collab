@@ -5,6 +5,7 @@
 // repository that is not in the topic layout, passes through untouched.
 
 import { isTopicFolderName, markerLayout } from "../message/topic-layout";
+import { mapLimit } from "./map-limit";
 import {
   SourceError,
   type DirectoryEntry,
@@ -15,6 +16,14 @@ import {
 
 const MARKER = ".agent-collab";
 const MONTH_RE = /^\d{4}-\d{2}$/;
+/**
+ * Most topic folders the merged view reads. Each one costs a listing of its own, so a repository
+ * with more is refused with the usual "too large" error rather than flooding the provider; a
+ * topic is then opened on its own (`topicLoader`).
+ */
+export const MAX_MERGED_TOPICS = 200;
+/** Topic listings in flight at once, like the loader's reads. */
+const LISTING_CONCURRENCY = 6;
 
 function hash(text: string): string {
   // FNV-1a: a stable identity for a listing assembled from several real directories.
@@ -38,6 +47,9 @@ export class TopicLayoutSource implements MessageSource {
   /** The marker entry of the latest root listing, and its text once read. */
   private marker: DirectoryEntry | null = null;
   private readonly markerTexts = new Map<string, string>();
+  /** The topic inbox listings of the latest revision asked about, shared by the inbox and months. */
+  private cached: { readonly revision: string; readonly listings: Promise<TopicInboxes> } | null =
+    null;
 
   constructor(
     private readonly inner: MessageSource,
@@ -116,9 +128,37 @@ export class TopicLayoutSource implements MessageSource {
     const wanted = this.options.topic;
     if (wanted !== undefined) return isTopicFolderName(wanted) ? [wanted] : [];
     const entries = await this.optional(revision, "topics");
-    return entries
+    const folders = entries
       .filter((entry) => entry.kind === "directory" && isTopicFolderName(entry.name))
       .map((entry) => entry.name);
+    if (folders.length > MAX_MERGED_TOPICS) {
+      throw new SourceError(
+        "too-large",
+        "topics",
+        null,
+        null,
+        `more than ${String(MAX_MERGED_TOPICS)} topic folders; open one topic at a time`,
+      );
+    }
+    return folders;
+  }
+
+  /** `topics/<topic>/inbox` of every topic, listed at most a few at a time, once per revision. */
+  private inboxes(revision: string): Promise<TopicInboxes> {
+    if (this.cached?.revision !== revision) {
+      const listings = (async (): Promise<TopicInboxes> => {
+        const topics = await this.topicFolders(revision);
+        const lists = await mapLimit(topics, LISTING_CONCURRENCY, (topic) =>
+          this.optional(revision, `topics/${topic}/inbox`),
+        );
+        return new Map(topics.map((topic, index) => [topic, lists[index] ?? []]));
+      })();
+      this.cached = { revision, listings };
+      listings.catch(() => {
+        if (this.cached?.listings === listings) this.cached = null;
+      });
+    }
+    return this.cached.listings;
   }
 
   private keepLegacy(entry: DirectoryEntry): boolean {
@@ -127,10 +167,9 @@ export class TopicLayoutSource implements MessageSource {
   }
 
   private async listInbox(revision: string): Promise<readonly DirectoryEntry[]> {
-    const topics = await this.topicFolders(revision);
-    const [legacy, ...folders] = await Promise.all([
+    const [legacy, inboxes] = await Promise.all([
       this.optional(revision, "inbox"),
-      ...topics.map((topic) => this.optional(revision, `topics/${topic}/inbox`)),
+      this.inboxes(revision),
     ]);
     const files = legacy.filter(
       (entry) => entry.kind === "file" && entry.name.endsWith(".md") && this.keepLegacy(entry),
@@ -144,7 +183,7 @@ export class TopicLayoutSource implements MessageSource {
       ]);
     };
     for (const entry of legacy) add(entry);
-    for (const entries of folders) for (const entry of entries) add(entry);
+    for (const entries of inboxes.values()) for (const entry of entries) add(entry);
     const directories: DirectoryEntry[] = [...months].map(([name, parts]) => ({
       name,
       path: `inbox/${name}`,
@@ -156,17 +195,25 @@ export class TopicLayoutSource implements MessageSource {
 
   private async listMonth(revision: string, month: string): Promise<readonly DirectoryEntry[]> {
     if (!MONTH_RE.test(month)) throw new SourceError("not-found", `inbox/${month}`, 404);
-    const topics = await this.topicFolders(revision);
-    const lists = await Promise.all([
+    const [legacy, inboxes] = await Promise.all([
       this.optional(revision, `inbox/${month}`),
-      ...topics.map((topic) => this.optional(revision, `topics/${topic}/inbox/${month}`)),
+      this.inboxes(revision),
     ]);
-    const [legacy, ...inTopics] = lists;
-    const entries = [
-      ...legacy.filter((entry) => this.keepLegacy(entry)),
-      ...inTopics.flat(),
-    ].filter((entry) => entry.kind === "file");
+    // Only the topics that have this month are listed.
+    const withMonth = [...inboxes]
+      .filter(([, entries]) =>
+        entries.some((entry) => entry.kind === "directory" && entry.name === month),
+      )
+      .map(([topic]) => topic);
+    const lists = await mapLimit(withMonth, LISTING_CONCURRENCY, (topic) =>
+      this.optional(revision, `topics/${topic}/inbox/${month}`),
+    );
+    const entries = [...legacy.filter((entry) => this.keepLegacy(entry)), ...lists.flat()].filter(
+      (entry) => entry.kind === "file",
+    );
     if (entries.length === 0) throw new SourceError("not-found", `inbox/${month}`, 404);
     return entries;
   }
 }
+
+type TopicInboxes = ReadonlyMap<string, readonly DirectoryEntry[]>;

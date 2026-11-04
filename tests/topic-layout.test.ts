@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { Secret } from "../src/credentials/secret";
 import { Loader, SetupError } from "../src/loader/loader";
+import { MAX_MERGED_TOPICS } from "../src/source/topic-layout";
 import { readTopicList, topicLoader } from "../src/loader/topic-reader";
 import {
   isKnownLayout,
@@ -461,6 +462,57 @@ describe("loading one topic", () => {
   });
 });
 
+describe("topic scoping and layout edge cases", () => {
+  it("keeps only messages whose parsed topic is the topic, however the file name reads", async () => {
+    const source = new FixtureSource(
+      repoOf([
+        inTopic("api", 3, 1),
+        legacy("api", 1, 1),
+        // File names that end like topic api but belong to other topics or senders.
+        legacy("x-api", 1, 2),
+        legacy("ops-api", 1, 3, true),
+        [
+          `inbox/2026-11-01T0904-team-api-info-01.md`,
+          messageText("2026-11-01T0904-team-api-info-01", "team-api", "info"),
+        ],
+        // A sender whose name ends in -api, writing on topic api: this one is topic api.
+        [
+          `inbox/2026-11-01T0905-bot-api-api-01.md`,
+          messageText("2026-11-01T0905-bot-api-api-01", "bot-api", "api"),
+        ],
+      ]),
+    );
+    const loader = topicLoader(source, "api");
+    await loader.open();
+    expect(names(loader)).toEqual([
+      id(1, 1, "api"),
+      "2026-11-01T0905-bot-api-api-01",
+      id(3, 1, "api"),
+    ]);
+    // The dropped files were read once and are not read again, and are never "new".
+    const reads = source.reads.length;
+    expect(await loader.refresh()).toBe(0);
+    expect(await loader.refresh()).toBe(0);
+    expect(source.reads).toHaveLength(reads);
+    expect(loader.getSnapshot().fresh.size).toBe(0);
+  });
+
+  it("opens a topic that has a TOPIC.md and no inbox next to a normal topic", async () => {
+    const files = repoOf([
+      inTopic("api", 3, 1),
+      ["topics/general/TOPIC.md", "---\ntitle: General\n---\nTeam-wide messages.\n"],
+    ]);
+    const merged = new Loader(new FixtureSource(files));
+    await merged.open();
+    expect(names(merged)).toEqual([id(3, 1, "api")]);
+    const general = topicLoader(new FixtureSource(files), "general");
+    await general.open();
+    expect(general.getSnapshot().items).toEqual([]);
+    const list = await readTopicList(new FixtureSource(files));
+    expect(list.topics.map((topic) => topic.name)).toEqual(["api", "general"]);
+  });
+});
+
 describe("a large repository", () => {
   it("opens a 5,000-message topic repository by reading one page, and pages on demand", async () => {
     const topics = Array.from({ length: 12 }, (_, i) => `topic-${String(i)}`);
@@ -581,5 +633,118 @@ describe("requests before any message", () => {
     expect((await readTopicList(large.source)).topics).toHaveLength(300);
     expect(small.calls).toHaveLength(7);
     expect(large.calls).toHaveLength(7);
+  });
+});
+
+describe("many topic folders through the provider", () => {
+  const API = "https://api.example.test";
+  const REPO = `${API}/repos/alice-org/collab`;
+
+  /** `count` topics t0.., each with one message in its own month; tracks requests in flight. */
+  function many(count: number) {
+    const requests: string[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    const monthOf = (i: number) =>
+      `${String(2000 + Math.floor(i / 12))}-${String((i % 12) + 1).padStart(2, "0")}`;
+    const idOf = (i: number) => `${monthOf(i)}-01T0900-alice-agent-t${String(i)}-01`;
+    const json = (body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    const entry = (path: string, type: "blob" | "tree", sha: string) => ({
+      path,
+      type,
+      sha,
+      mode: type === "tree" ? "040000" : "100644",
+      size: 100,
+    });
+    const answer = (route: string): Response => {
+      if (route.startsWith("/git/ref/heads/")) return json({ object: { sha: "c1" } });
+      if (route === "/git/commits/c1") return json({ tree: { sha: "root" } });
+      if (route === "/git/trees/root") {
+        return json({
+          truncated: false,
+          tree: [entry(".agent-collab", "blob", "marker"), entry("topics", "tree", "topics")],
+        });
+      }
+      if (route === "/git/trees/topics") {
+        return json({
+          truncated: false,
+          tree: Array.from({ length: count }, (_, i) =>
+            entry(`t${String(i)}`, "tree", `topic:${String(i)}`),
+          ),
+        });
+      }
+      const [, kind, key] = /^\/git\/trees\/(topic|inbox|month):(\d+)$/.exec(route) ?? [];
+      if (kind === "topic") {
+        return json({ truncated: false, tree: [entry("inbox", "tree", `inbox:${String(key)}`)] });
+      }
+      if (kind === "inbox") {
+        return json({
+          truncated: false,
+          tree: [entry(monthOf(Number(key)), "tree", `month:${String(key)}`)],
+        });
+      }
+      if (kind === "month") {
+        return json({
+          truncated: false,
+          tree: [entry(`${idOf(Number(key))}.md`, "blob", `msg:${String(key)}`)],
+        });
+      }
+      if (route === "/git/blobs/marker") return new Response(MARKER);
+      const message = /^\/git\/blobs\/msg:(\d+)$/.exec(route)?.[1];
+      if (message !== undefined) {
+        const i = Number(message);
+        return new Response(messageText(idOf(i), "alice-agent", `t${String(i)}`));
+      }
+      throw new Error(`unexpected request: ${route}`);
+    };
+    const fetch = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input instanceof Request ? input.url : input.toString();
+      const route = url.slice(REPO.length);
+      requests.push(route);
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight -= 1;
+      return answer(route);
+    };
+    const source = new GitHubSource({
+      apiBase: API,
+      owner: "alice-org",
+      repo: "collab",
+      branch: "main",
+      token: new Secret("test-token-not-real"),
+      fetch,
+    });
+    return { source, requests, peak: () => peak };
+  }
+
+  it("refuses more topic folders than the cap before listing any of them", async () => {
+    const { source, requests, peak } = many(300);
+    expect(MAX_MERGED_TOPICS).toBe(200);
+    const loader = new Loader(source);
+    await expect(loader.open()).rejects.toMatchObject({
+      kind: "too-large",
+      message: expect.stringContaining("more than 200 topic folders") as string,
+    });
+    // Ref, commit, root tree, marker and the topics tree: nothing per topic.
+    expect(requests).toHaveLength(5);
+    expect(peak()).toBeLessThanOrEqual(2);
+  });
+
+  it("reads 150 topics, each with its own month, in a bounded number of requests and pace", async () => {
+    const { source, requests, peak } = many(150);
+    const loader = new Loader(source);
+    await loader.open();
+    expect(loader.getSnapshot().items).toHaveLength(50);
+    // 5 to open, 2 trees per topic, then one tree and one file for each of the 50 messages read.
+    expect(requests.length).toBeLessThanOrEqual(5 + 2 * 150 + 2 * 50);
+    // Listings and reads each run at most six at a time.
+    expect(peak()).toBeLessThanOrEqual(8);
+    // Only topics that have a month are listed for it: the other 149 cost no month request.
+    expect(requests.filter((route) => route.startsWith("/git/trees/month:"))).toHaveLength(50);
   });
 });
