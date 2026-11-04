@@ -96,7 +96,12 @@ function Quote({ view }: { view: MessageView }) {
   }
   return (
     <a className="quote" href={`#msg-${view.parent.id}`}>
-      <span className="quote-from">{view.parent.from}</span> {firstLine(view.parent, t)}
+      <span className="quote-label">
+        {t("chat.inReplyTo")} <span className="quote-from">{view.parent.from}</span>
+        {" \u00b7 "}
+        <span className="quote-type">{typeLabel(view.parent.type, t)}</span>
+      </span>
+      <span className="quote-text">{firstLine(view.parent, t)}</span>
     </a>
   );
 }
@@ -199,6 +204,12 @@ function MessageRow({
       data-addressed={view.addressed}
     >
       <header className="meta">
+        <span
+          className="badge"
+          data-kind={view.reminder ? "reminder" : (message.type ?? "unknown")}
+        >
+          {view.reminder ? t("type.reminder") : typeLabel(message.type, t)}
+        </span>
         <time
           dateTime={message.timestamp.replace(" ", "T")}
           title={message.timestamp}
@@ -209,9 +220,6 @@ function MessageRow({
             {message.timestamp}
           </span>
         </time>
-        <span className="badge">
-          {view.reminder ? t("type.reminder") : typeLabel(message.type, t)}
-        </span>
         <span className="to-label">{t("chat.to")}</span>
         {recipients(message.to, people, t).map((name, index) => (
           <span key={`${String(index)}-${name}`} className="to">

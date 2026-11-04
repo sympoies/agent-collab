@@ -69,8 +69,12 @@ describe("ChatView with the demo repository", () => {
 
   it("renders a reply with a quote of its parent", async () => {
     const html = await render();
-    expect(html).toContain(
-      '<a class="quote" href="#msg-2026-10-09T1400-bob-agent-release-01"><span class="quote-from">bob-agent</span> The beta build passed the smoke tests.</a>',
+    const quote =
+      /<a class="quote" href="#msg-2026-10-09T1400-bob-agent-release-01">(.*?)<\/a>/.exec(
+        html,
+      )?.[1];
+    expect(quote).toMatch(
+      /^<span class="quote-label">In reply to <span class="quote-from">bob-agent<\/span> · <span class="quote-type">[a-z]+<\/span><\/span><span class="quote-text">The beta build passed the smoke tests\.<\/span>$/,
     );
   });
 
@@ -119,5 +123,48 @@ describe("a reply whose parent is not loaded", () => {
       </LocaleProvider>,
     );
     expect(html).toContain(`<p class="quote missing">${expected}</p>`);
+  });
+});
+
+describe("the type of a message card", () => {
+  it("is named on the badge for every type, reminders included", () => {
+    const asked = "2026-10-01T0900-alice-agent-api-01";
+    const make = (minute: number, from: string, type: string, fields: Record<string, string>) => {
+      const id = `2026-10-01T09${String(minute).padStart(2, "0")}-${from}-api-01`;
+      return parseMessageFile(`inbox/${id}.md`, messageText(id, from, "api", { type, ...fields }));
+    };
+    const items = [
+      make(0, "alice-agent", "question", { to: "bob-agent" }),
+      make(1, "bob-agent", "answer", { reply_to: asked, to: "alice-agent" }),
+      make(2, "bob-agent", "ack", { reply_to: asked, to: "alice-agent" }),
+      make(3, "alice-agent", "info", { to: "all" }),
+      make(4, "alice-agent", "decision-needed", { to: "bob-agent" }),
+      make(5, "alice-agent", "info", { reply_to: asked, to: "bob-agent" }),
+    ];
+    const messages = items.flatMap((item) => (item.kind === "message" ? [item.message] : []));
+    const states = deriveQuestionStates(messages, ["alice-agent", "bob-agent"], []);
+    const rows = buildRows(items, {
+      viewer: null,
+      topic: null,
+      today: "2026-10-05",
+      fresh: new Set(),
+      receipts: buildReceipts(messages, ["alice-agent", "bob-agent"], [], states),
+    });
+    const html = renderToStaticMarkup(
+      <ChatView
+        rows={rows}
+        people={buildPeople(["alice-agent", "bob-agent"], EMPTY_PREFERENCES)}
+        attachments={{
+          reader: new Loader(new FixtureSource({})).attachments,
+          loadedIds: new Set(),
+          onJump: () => undefined,
+        }}
+        earlier={{ beforeId: null, disabled: false, onLoad: () => undefined }}
+      />,
+    );
+    const kinds = [...html.matchAll(/<span class="badge" data-kind="([^"]+)">/g)].map(
+      (found) => found[1],
+    );
+    expect(kinds).toEqual(["question", "answer", "ack", "info", "decision-needed", "reminder"]);
   });
 });

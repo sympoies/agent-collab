@@ -28,17 +28,12 @@ import { buildPeople } from "./people";
 import { errorText, say } from "./errorText";
 import { IconButton } from "./IconButton";
 import { RefreshIcon } from "./icons";
-import { relativeTime } from "./relativeTime";
+import { localDate, relativeTime } from "./relativeTime";
 import { Toolbar } from "./Toolbar";
 import { RangeBar } from "./RangeBar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
 import { buildRows, topicSummaries } from "./timeline";
-
-function localDate(now: Date): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
 
 /** Names a source that is not a repository, so it is always visible which data is shown. */
 export interface SourceIndicator {
@@ -152,9 +147,6 @@ export function App({
 }: AppProps) {
   const { t, formatDateTime } = useLocale();
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
-  const now = useNow(
-    source !== undefined && (source.pointInTime !== undefined || snapshot.lastChanged !== null),
-  );
   // The budget the API reported with its latest response; null until a response carried one.
   const reported = signedIn === undefined ? null : loader.rateLimit();
   // Only a plausible budget is shown: whole numbers, and no more left than the limit.
@@ -170,6 +162,10 @@ export function App({
   const pollerRef = useRef<Poller | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
   const [view, setView] = useState<"chat" | "questions" | "files">("chat");
+  const now = useNow(
+    (source !== undefined && (source.pointInTime !== undefined || snapshot.lastChanged !== null)) ||
+      view === "questions",
+  );
   const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
   const conversationHeading = useRef<HTMLHeadingElement | null>(null);
@@ -614,7 +610,12 @@ export function App({
                   : `#${topic}`}
           </h2>
           {view === "questions" && (
-            <QuestionsView groups={questionGroups} people={people} onOpen={openQuestion} />
+            <QuestionsView
+              groups={questionGroups}
+              people={people}
+              now={now}
+              onOpen={openQuestion}
+            />
           )}
           {view !== "questions" && (
             <RangeBar

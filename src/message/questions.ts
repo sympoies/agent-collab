@@ -17,6 +17,10 @@ export interface QuestionState {
   readonly conclusionText: string | null;
   /** Named info replies from the question's sender, oldest first. They never conclude it. */
   readonly reminders: readonly Message[];
+  /** Every answer reply, whoever sent it, oldest first. */
+  readonly answers: readonly Message[];
+  /** Every acknowledgement reply, oldest first. */
+  readonly acks: readonly Message[];
 }
 
 export interface QuestionDerivationContext {
@@ -81,8 +85,15 @@ export function deriveQuestionStates(
     const answerers = new Set<string>();
     let conclusion: Message | null = null;
     const reminders: Message[] = [];
+    const answers: Message[] = [];
+    const acks: Message[] = [];
 
-    for (const message of repliesByQuestion.get(question.id) ?? []) {
+    const replies = [...(repliesByQuestion.get(question.id) ?? [])].sort((a, b) =>
+      a.id < b.id ? -1 : 1,
+    );
+    for (const message of replies) {
+      if (message.type === "answer") answers.push(message);
+      if (message.type === "ack") acks.push(message);
       if (message.type === "answer" && eligible.has(message.from)) answerers.add(message.from);
       if (message.type === "info" && message.from === question.from) {
         // A named info from the sender is a reminder; only a broadcast info concludes.
@@ -105,6 +116,8 @@ export function deriveQuestionStates(
       conclusion,
       conclusionText: conclusion === null ? null : bodyText(conclusion),
       reminders,
+      answers,
+      acks,
     };
   });
 }
@@ -119,5 +132,7 @@ function unknownState(question: Message): QuestionState {
     conclusion: null,
     conclusionText: null,
     reminders: [],
+    answers: [],
+    acks: [],
   };
 }

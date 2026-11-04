@@ -181,6 +181,29 @@ describe("deriveQuestionStates", () => {
     });
   });
 
+  it("lists every answer and acknowledgement reply, oldest first, whoever sent them", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "all", to: "bob-agent" });
+    const ack = parsed(2, "bob-agent", "ack", { reply_to: question.id, to: "alice-agent" });
+    const late = parsed(5, "bob-agent", "answer", { reply_to: question.id, to: "alice-agent" });
+    const early = parsed(3, "carol-agent", "answer", { reply_to: question.id, to: "alice-agent" });
+    const other = parsed(4, "bob-agent", "answer", { reply_to: "2026-11-02T0900-x-api-01" });
+    const state = derive([question, late, ack, other, early])[0];
+    expect(state?.answers).toEqual([early, late]);
+    expect(state?.acks).toEqual([ack]);
+  });
+
+  it("collects a reply by reply_to whatever its topic", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any", to: "bob-agent" });
+    const elsewhere = {
+      ...parsed(2, "bob-agent", "answer", { reply_to: question.id }),
+      topic: "ops",
+    };
+    expect(derive([question, elsewhere])[0]).toMatchObject({
+      state: "answered",
+      answers: [elsewhere],
+    });
+  });
+
   it.each([["all"], [""]])("concludes on a broadcast info (to: %j)", (to) => {
     const question = parsed(1, "alice-agent", "question", { replies: "any" });
     const info = parsed(2, "alice-agent", "info", { reply_to: question.id, to }, "Decided.");
