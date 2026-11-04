@@ -105,7 +105,17 @@ export function App({
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
   const now = useNow(source !== undefined && snapshot.lastChanged !== null);
   // The budget the API reported with its latest response; null until a response carried one.
-  const budget = signedIn === undefined ? null : loader.rateLimit();
+  const reported = signedIn === undefined ? null : loader.rateLimit();
+  // Only a plausible budget is shown: whole numbers, and no more left than the limit.
+  const budget =
+    reported !== null &&
+    Number.isSafeInteger(reported.limit) &&
+    Number.isSafeInteger(reported.remaining) &&
+    reported.limit > 0 &&
+    reported.remaining >= 0 &&
+    reported.remaining <= reported.limit
+      ? reported
+      : null;
   const pollerRef = useRef<Poller | null>(null);
   const [topic, setTopic] = useState<string | null>(null);
   const [view, setView] = useState<"chat" | "questions" | "files">("chat");

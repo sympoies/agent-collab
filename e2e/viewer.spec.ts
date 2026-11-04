@@ -8,6 +8,8 @@ import { ja } from "../src/i18n/ja";
 import { zhTW } from "../src/i18n/zh-TW";
 import { formatDateTime } from "../src/i18n/translate";
 
+const catalogsByLocale = { en, ja, "zh-TW": zhTW } as const;
+
 const screenshotDir = resolve(process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "");
 
 interface MessageFixture {
@@ -808,7 +810,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   assertSettingsFailureRequests();
 });
 
-test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
+/** The demo's snapshot is served, and every API request is answered with a rate limit. */
+async function stubLimitedDemo(page: Page, text: string): Promise<string[]> {
   const id = "2026-11-03T0900-alice-agent-api-01";
   const snapshot = {
     schemaVersion: 1,
@@ -830,7 +833,7 @@ test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
           "needs: none",
           "due:",
           "---",
-          "Snapshot remains available after an API rate limit.",
+          text,
         ].join("\n"),
       },
     ],
@@ -860,6 +863,14 @@ test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
       body: JSON.stringify({ message: "Synthetic rate limit" }),
     });
   });
+  return requests;
+}
+
+test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
+  const requests = await stubLimitedDemo(
+    page,
+    "Snapshot remains available after an API rate limit.",
+  );
   await page.goto("/");
   await page.getByRole("button", { name: "Open live demo" }).click();
   await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
@@ -905,6 +916,65 @@ test("a live-demo rate limit keeps the snapshot visible", async ({ page }) => {
   await expect(page.getByText("Snapshot remains available after an API rate limit.")).toBeVisible();
   expect(requests).toHaveLength(requestsAfterLimit);
 });
+
+for (const code of LOCALES) {
+  const messages = catalogsByLocale[code];
+  for (const view of [
+    { label: "desktop", size: { width: 1280, height: 800 } },
+    { label: "phone", size: { width: 390, height: 844 } },
+  ] as const) {
+    test(`the token action, token section and signed-in banner read well in ${LOCALE_NAMES[code]} on ${view.label}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(view.size);
+      await page.addInitScript((locale) => {
+        localStorage.setItem("agent-collab-viewer.locale", locale);
+      }, code);
+      await stubLimitedDemo(page, "Snapshot remains available after an API rate limit.");
+      await page.goto("/");
+      await expect(
+        page.getByRole("heading", { name: messages["welcome.demoHeading"] }),
+      ).toBeVisible();
+      await expect(page.getByText(messages["welcome.limits"])).toBeVisible();
+      await expectNoClipping(page, ".settings h2, .settings .note, .settings button");
+      await page.getByRole("button", { name: messages["welcome.openLiveDemo"] }).click();
+      await page.getByRole("button", { name: messages["bar.checkLive"], exact: true }).click();
+      const action = page.getByRole("button", { name: messages["notice.useToken"] });
+      await expect(action).toBeVisible();
+      await expectNoClipping(page, ".notice, .notice-action, .notice-action button");
+      await saveScreenshot(page, `token-action-${code}-${view.label}.png`);
+      await action.click();
+      await expect(page.locator("#token-section")).toBeVisible();
+      await expect(page.locator('input[type="password"]')).toBeFocused();
+      await expect(page.getByText(messages["settings.tokenWhy"])).toBeVisible();
+      await expectNoClipping(page, ".token-help, .token-help p, .token-help a");
+      await saveScreenshot(page, `token-section-${code}-${view.label}.png`);
+      // The prefilled link's name and description follow the language; the owner is the demo's.
+      const link = page.getByRole("link", { name: messages["settings.tokenCreate"] });
+      const target = new URL((await link.getAttribute("href")) ?? "");
+      expect(target.searchParams.get("name")).toBe(messages["settings.tokenName"]);
+      expect(target.searchParams.get("description")).toBe(messages["settings.tokenDescription"]);
+
+      // Sign in with a token for a fixture repository and read the banner in this language.
+      await installApiStub(page, "attachments");
+      await page
+        .getByRole("textbox", { name: messages["settings.repository"], exact: true })
+        .fill("alice-agent/fixture-repo");
+      await page.getByLabel(messages["settings.branch"]).fill("main");
+      await page.getByLabel(messages["settings.myNames"]).fill("alice-agent");
+      await page.locator('input[type="password"]').fill("fake-token");
+      await page.getByRole("button", { name: messages["settings.saveOpen"] }).click();
+      const banner = page.locator(".signed-in");
+      await expect(banner).toContainText(messages["signedIn.banner"]);
+      await expect(banner.getByRole("button", { name: messages["signedIn.remove"] })).toBeVisible();
+      await expectNoClipping(page, ".signed-in, .signed-in button");
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `signed-in-${code}-${view.label}.png`);
+    });
+  }
+}
 
 const identityCases = [
   {
@@ -1742,8 +1812,6 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
   await expect(revoked.getByRole("alert")).toHaveCount(0);
   await expect(revoked.getByText("The first message from the local clone.")).toBeVisible();
 });
-
-const catalogsByLocale = { en, ja, "zh-TW": zhTW } as const;
 
 /**
  * Nothing may be clipped or pushed outside the viewport. Every comma-separated selector must match

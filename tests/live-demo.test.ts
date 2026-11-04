@@ -144,6 +144,40 @@ describe("openLiveDemo without a snapshot", () => {
     expect(opened.loader.getSnapshot().items).toHaveLength(1);
   });
 
+  it("reports the rate limit as the reason when the open falls back to the bundled sample", async () => {
+    const limited = await openLiveDemo(
+      () => rateLimitedSource(new Date(Date.now() + 30 * MINUTE)),
+      repo([flat("2026-11", 3, 1)]),
+      new LiveCheckGate(),
+      presenterEn,
+      () => Promise.resolve(null),
+    );
+    expect(limited.view).toEqual({ kind: "bundled" });
+    expect(limited.rateLimited).toBe(true);
+
+    // Another failure is not a rate limit, and a blocked gate that is only spacing is not either.
+    const broken = new FixtureSource({});
+    vi.spyOn(broken, "head").mockRejectedValue(new SourceError("unreachable", ""));
+    const other = await openLiveDemo(
+      () => broken,
+      repo([flat("2026-11", 3, 1)]),
+      new LiveCheckGate(),
+      presenterEn,
+      () => Promise.resolve(null),
+    );
+    expect(other.rateLimited).toBe(false);
+    const spacing = new LiveCheckGate();
+    spacing.record(null);
+    const spaced = await openLiveDemo(
+      () => broken,
+      repo([flat("2026-11", 3, 1)]),
+      spacing,
+      presenterEn,
+      () => Promise.resolve(null),
+    );
+    expect(spaced.rateLimited).toBe(false);
+  });
+
   it("shows the live repository when the API answers and the snapshot is missing", async () => {
     const opened = await openLiveDemo(
       () => new FixtureSource(repo([flat("2026-11", 3, 1)])),

@@ -25,10 +25,9 @@ export function tokenCreationUrl(options: {
     description: options.description,
     expires_in: "30",
   });
-  const [owner = ""] = options.repository.split("/");
-  if (/^[A-Za-z0-9-]+$/.test(owner) && options.repository.includes("/")) {
-    params.set("target_name", owner);
-  }
+  // Only a plain owner/name is trusted to name the owner; anything else leaves the field to the user.
+  const named = /^([A-Za-z0-9-]+)\/[A-Za-z0-9_.-]+$/.exec(options.repository);
+  if (named?.[1] !== undefined) params.set("target_name", named[1]);
   if (options.privateAccess) params.set("contents", "read");
   return `${PLAIN_TOKEN_URL}?${params.toString()}`;
 }

@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root as ReactRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { formatDateTime } from "../src/i18n/translate";
 import { MemoryStore } from "../src/credentials/store";
 import { Secret } from "../src/credentials/secret";
 import { Loader } from "../src/loader/loader";
@@ -51,6 +52,34 @@ describe("the token link", () => {
     expect(new URL(url({ repository: "not a repo" }) ?? "").searchParams.has("target_name")).toBe(
       false,
     );
+  });
+
+  it("names the owner only for a plain owner/name, and asks for contents only off the demo", () => {
+    for (const odd of [
+      "a/b/c",
+      "al ice/x",
+      "alice;drop/x",
+      "alice/",
+      "/x",
+      "alice",
+      "é/x",
+      "a&b/x",
+    ]) {
+      expect(new URL(url({ repository: odd }) ?? "").searchParams.has("target_name"), odd).toBe(
+        false,
+      );
+    }
+    const withOwner = new URL(url({ repository: "Alice-Org/some_repo.v2" }) ?? "").searchParams;
+    expect(withOwner.get("target_name")).toBe("Alice-Org");
+    // The demo repository is public: Root passes privateAccess false for it.
+    expect(new URL(url({ repository: DEMO_REPOSITORY }) ?? "").searchParams.has("contents")).toBe(
+      false,
+    );
+    expect(
+      new URL(url({ repository: "alice-org/collab", privateAccess: true }) ?? "").searchParams.get(
+        "contents",
+      ),
+    ).toBe("read");
   });
 
   it("has no link for an endpoint that is not GitHub's public API", () => {
@@ -201,6 +230,76 @@ describe("rate-limit steering in the viewer", () => {
     expect(onRemove).toHaveBeenCalledOnce();
   });
 
+  it.each([
+    ["none left", { limit: 5000, remaining: 0 }, "0 of 5000 requests left this hour."],
+    ["more left than the limit", { limit: 5000, remaining: 9000 }, null],
+    ["a huge number", { limit: 5000, remaining: 1e21 }, null],
+    ["not a number", { limit: Number.NaN, remaining: 4 }, null],
+    ["a fraction", { limit: 5000, remaining: 4.5 }, null],
+    ["a negative number", { limit: 5000, remaining: -1 }, null],
+    ["a zero limit", { limit: 0, remaining: 0 }, null],
+  ])("shows a reported budget only when it is plausible: %s", async (_name, numbers, expected) => {
+    const inner = new FixtureSource(files);
+    const source: MessageSource = {
+      head: (previous) => inner.head(previous),
+      listDirectory: (revision, path) => inner.listDirectory(revision, path),
+      readFile: (entry) => inner.readFile(entry),
+      rateLimit: () => ({ ...numbers, resetAt: new Date("2026-11-04T10:00:00Z") }),
+    };
+    const host = await app({ signedIn: { onRemove: () => undefined } }, source);
+    const banner = host.querySelector(".signed-in")?.textContent ?? "";
+    expect(banner).toContain("Signed in with a token: higher limit.");
+    if (expected === null) expect(banner).not.toContain("requests left");
+    else expect(banner).toContain(expected);
+  });
+
+  async function refreshWith(error: SourceError, extra: Partial<Parameters<typeof App>[0]>) {
+    const loader = new Loader(new FixtureSource(files));
+    await loader.open();
+    vi.spyOn(loader, "refresh").mockRejectedValue(error);
+    const host = await mount(
+      <App
+        loader={loader}
+        title="Repo"
+        selfNames={new Set()}
+        identity={{ storage: null, key: "t" }}
+        notice={null}
+        onOpenSettings={() => undefined}
+        {...extra}
+      />,
+    );
+    await act(async () => {
+      host
+        .querySelector('[aria-label="Refresh"]')
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    return host;
+  }
+  const limit = () => new SourceError("rate-limited", "", 403, new Date(Date.now() + 3_600_000));
+
+  it("does not offer a token for an error that a token would not fix", async () => {
+    const host = await refreshWith(new SourceError("unauthorized", "", 401), {
+      onUseToken: () => undefined,
+    });
+    expect(button(host, "Use a token for a higher limit")).toBeUndefined();
+  });
+
+  it("does not offer it in a viewer that is not the demo (no handler)", async () => {
+    const host = await refreshWith(limit(), {});
+    expect(button(host, "Use a token for a higher limit")).toBeUndefined();
+  });
+
+  it("does not offer it when already signed in, even with a rate-limit error alert", async () => {
+    const host = await refreshWith(limit(), {
+      onUseToken: () => undefined,
+      signedIn: { onRemove: () => undefined },
+    });
+    expect(button(host, "Use a token for a higher limit")).toBeUndefined();
+    expect(host.querySelector(".signed-in")).not.toBeNull();
+  });
+
   it("omits the budget until a response carried one", async () => {
     const host = await app({ signedIn: { onRemove: () => undefined } });
     expect(host.querySelector(".signed-in")?.textContent).not.toContain("requests left");
@@ -340,7 +439,10 @@ describe("the demo, the token and Settings through Root", () => {
     expect(await memory.get("access-token")).toBeNull();
     // The live copy read with the token is gone too: the demo opens from the snapshot again.
     await press("Open live demo");
-    expect(host.textContent).toContain("snapshot");
+    expect(host.textContent).toContain(
+      `Showing the snapshot generated at ${formatDateTime("en", new Date(snapshot.generatedAt))}.`,
+    );
+    expect(host.querySelector(".signed-in")).toBeNull();
     expect(createLiveDemoSource).toHaveBeenCalledTimes(2);
 
     act(() => {

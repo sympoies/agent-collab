@@ -158,12 +158,32 @@ export function Root(props: RootProps) {
    * a slow or locked store never delays the demo.
    */
   const sessionToken = useRef<Secret | null>(null);
+  /** Counts changes of the demo token, so a request that started under another token is dropped. */
+  const tokenGeneration = useRef(0);
+  /**
+   * Sets the demo token (null for none). Whenever it changes, including to null, the cached live
+   * copy goes with it: that copy was read with the old token and must not outlive it.
+   */
+  const changeToken = (next: Secret | null) => {
+    const current = sessionToken.current;
+    if (
+      current === next ||
+      (current !== null && next !== null && current.reveal() === next.reveal())
+    ) {
+      return;
+    }
+    sessionToken.current = next;
+    tokenGeneration.current += 1;
+    liveLoader.current = null;
+    liveSignedIn.current = false;
+    if (next !== null) liveGate.reset();
+  };
   const rememberToken = ({ settings, token }: OpenSettings) => {
-    sessionToken.current =
+    changeToken(
       settings.credentialStorage === "memory" && settings.endpoint === DEFAULT_DRAFT.endpoint
         ? token
-        : null;
-    if (sessionToken.current !== null) liveGate.reset();
+        : null,
+    );
   };
   const demoToken = () => sessionToken.current;
 
@@ -229,10 +249,13 @@ export function Root(props: RootProps) {
       return;
     }
     const token = demoToken();
+    const generation = tokenGeneration.current;
     const result = await openLiveDemo(() => createLiveDemoSource(token), demoFiles, liveGate, {
       t,
       formatDateTime,
     });
+    // The token may have been removed or replaced while this ran; its result is then dropped.
+    if (generation !== tokenGeneration.current) return;
     if (result.view.kind === "live") {
       liveLoader.current = result.loader;
       liveSignedIn.current = token !== null;
@@ -258,10 +281,12 @@ export function Root(props: RootProps) {
   const checkLiveNow = async (current: ViewerScreen): Promise<void> => {
     if (current.liveDemo === null) return;
     const token = demoToken();
+    const generation = tokenGeneration.current;
     const result = await checkLive(() => createLiveDemoSource(token), current.liveDemo, liveGate, {
       t,
       formatDateTime,
     });
+    if (generation !== tokenGeneration.current) return;
     if (result.loader !== null) {
       liveLoader.current = result.loader;
       liveSignedIn.current = token !== null;
@@ -277,9 +302,7 @@ export function Root(props: RootProps) {
   };
 
   const forgetToken = () => {
-    sessionToken.current = null;
-    liveLoader.current = null;
-    liveSignedIn.current = false;
+    changeToken(null);
   };
 
   /** Forgets the token everywhere and returns to the welcome screen, anonymous again. */
