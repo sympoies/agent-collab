@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { Loader } from "../src/loader/loader";
-import { FileListFolderSource } from "../src/source/file-list-folder";
+import { FileListFolderSource, filesFromFolderDrop } from "../src/source/file-list-folder";
 import { SourceError } from "../src/source/types";
 import { messageText } from "./support";
 
@@ -19,6 +19,61 @@ function folderFile(path: string, content: string, reads = { count: 0 }, root = 
     },
   });
   return file;
+}
+
+interface DropEntry {
+  readonly name: string;
+  readonly isFile: boolean;
+  readonly isDirectory: boolean;
+  file?(success: (file: File) => void, failure?: (error: DOMException) => void): void;
+  createReader?(): {
+    readEntries(
+      success: (entries: DropEntry[]) => void,
+      failure?: (error: DOMException) => void,
+    ): void;
+  };
+}
+
+function droppedFile(name: string, content: string, onRead?: () => void): DropEntry {
+  return {
+    name,
+    isFile: true,
+    isDirectory: false,
+    file(success) {
+      onRead?.();
+      success(new File([content], name));
+    },
+  };
+}
+
+function droppedDirectory(
+  name: string,
+  children: readonly DropEntry[],
+  onOpen?: () => void,
+): DropEntry {
+  return {
+    name,
+    isFile: false,
+    isDirectory: true,
+    createReader() {
+      onOpen?.();
+      let index = 0;
+      return {
+        readEntries(success) {
+          const batch = children.slice(index, index + 2);
+          index += batch.length;
+          success([...batch]);
+        },
+      };
+    },
+  };
+}
+
+function dataTransfer(entry: DropEntry): DataTransfer {
+  return {
+    items: [{ webkitGetAsEntry: () => entry }],
+    files: [],
+  } as unknown as DataTransfer;
 }
 
 describe("FileListFolderSource", () => {
@@ -129,5 +184,69 @@ describe("FileListFolderSource", () => {
           folderFile("inbox/same.md", "second"),
         ]),
     ).toThrow(SourceError);
+  });
+
+  it("skips dropped .git directories before opening them and loads the remaining files", async () => {
+    let gitReaders = 0;
+    const id = "2026-10-01T0901-alice-agent-api-01";
+    const files = await filesFromFolderDrop(
+      dataTransfer(
+        droppedDirectory("clone", [
+          droppedFile(".agent-collab", "collab-protocol: 1\ninbox-layout: flat\n"),
+          droppedDirectory(".git", [droppedFile("history.pack", "history")], () => {
+            gitReaders += 1;
+            throw new Error("ignored directory was opened");
+          }),
+          droppedDirectory("node_modules", [droppedFile("package.js", "dependency")], () => {
+            gitReaders += 1;
+            throw new Error("ignored directory was opened");
+          }),
+          droppedDirectory("inbox", [
+            droppedFile(`${id}.md`, messageText(id, "alice-agent", "api")),
+          ]),
+        ]),
+      ),
+    );
+
+    const loader = new Loader(new FileListFolderSource(files));
+    await loader.open();
+
+    expect(gitReaders).toBe(0);
+    expect(loader.getSnapshot().items).toMatchObject([
+      { kind: "message", message: { path: `inbox/${id}.md` } },
+    ]);
+  });
+
+  it("stops walking a dropped folder as soon as its size cap is exceeded", async () => {
+    let laterFiles = 0;
+    const transfer = dataTransfer(
+      droppedDirectory("clone", [
+        droppedDirectory("inbox", [
+          droppedFile("large.md", "larger than the test cap"),
+          droppedFile("later.md", "not reached", () => {
+            laterFiles += 1;
+          }),
+        ]),
+      ]),
+    );
+
+    await expect(filesFromFolderDrop(transfer, { maxBytes: 1 })).rejects.toMatchObject({
+      kind: "too-large",
+    });
+    expect(laterFiles).toBe(0);
+  });
+
+  it("stops dropped-folder traversal at the shared entry cap", async () => {
+    let fileReads = 0;
+    const transfer = dataTransfer(
+      droppedDirectory("clone", [
+        droppedDirectory("inbox", [droppedFile("message.md", "message", () => (fileReads += 1))]),
+      ]),
+    );
+
+    await expect(filesFromFolderDrop(transfer, { maxEntries: 2 })).rejects.toMatchObject({
+      kind: "too-large",
+    });
+    expect(fileReads).toBe(0);
   });
 });

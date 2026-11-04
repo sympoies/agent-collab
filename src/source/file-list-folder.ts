@@ -7,7 +7,7 @@ import {
 } from "./local-folder";
 import { SourceError, type DirectoryEntry, type Head, type MessageSource } from "./types";
 
-const MAX_FOLDER_BYTES = 50 * 1024 * 1024;
+export const MAX_FOLDER_BYTES = 50 * 1024 * 1024;
 const IGNORED_DIRECTORIES = new Set([
   ".git",
   ".hg",
@@ -20,6 +20,112 @@ const IGNORED_DIRECTORIES = new Set([
   ".next",
   ".turbo",
 ]);
+
+interface FolderDropEntry {
+  readonly name: string;
+  readonly isFile: boolean;
+  readonly isDirectory: boolean;
+  file?(success: (file: File) => void, failure?: (error: DOMException) => void): void;
+  createReader?(): {
+    readEntries(
+      success: (entries: FolderDropEntry[]) => void,
+      failure?: (error: DOMException) => void,
+    ): void;
+  };
+}
+
+/** Reads a dropped folder with the same exclusions and bounds as a directory input snapshot. */
+export async function filesFromFolderDrop(
+  dataTransfer: DataTransfer,
+  options: { readonly maxEntries?: number; readonly maxBytes?: number } = {},
+): Promise<readonly File[]> {
+  const maxEntries = options.maxEntries ?? MAX_SCAN_ENTRIES;
+  const maxBytes = options.maxBytes ?? MAX_FOLDER_BYTES;
+  const roots: FolderDropEntry[] = [];
+  for (const item of Array.from(dataTransfer.items)) {
+    const dropItem = item as DataTransferItem & {
+      webkitGetAsEntry?: () => FolderDropEntry | null;
+    };
+    if (typeof dropItem.webkitGetAsEntry !== "function") continue;
+    const entry = dropItem.webkitGetAsEntry.call(dropItem);
+    if (entry !== null) roots.push(entry);
+  }
+  if (roots.length === 0) return copyDropFileList(dataTransfer.files, maxEntries, maxBytes);
+
+  let entries = 0;
+  let bytes = 0;
+  const files: File[] = [];
+
+  const readEntry = (entry: FolderDropEntry): Promise<File | null> =>
+    new Promise((resolve, reject) => {
+      entry.file?.(resolve, reject);
+    });
+
+  const readBatch = (
+    reader: ReturnType<NonNullable<FolderDropEntry["createReader"]>>,
+  ): Promise<FolderDropEntry[]> =>
+    new Promise((resolve, reject) => {
+      reader.readEntries(resolve, reject);
+    });
+
+  const walk = async (entry: FolderDropEntry, parent: string): Promise<void> => {
+    if (!safeSegment(entry.name)) throw new SourceError("forbidden", "");
+    // Ignore these directories before opening a reader or requesting any file objects.
+    if (entry.isDirectory && IGNORED_DIRECTORIES.has(entry.name)) return;
+
+    const path = parent === "" ? entry.name : `${parent}/${entry.name}`;
+    if (!safeRelativePath(path)) throw new SourceError("forbidden", "");
+    entries += 1;
+    if (entries > maxEntries) throw new SourceError("too-large", "", null, null, TOO_LARGE);
+
+    if (entry.isFile) {
+      if (entry.file === undefined) return;
+      const file = await readEntry(entry);
+      if (file === null) return;
+      const rootSlash = path.indexOf("/");
+      const repoPath = rootSlash === -1 ? "" : path.slice(rootSlash + 1);
+      if (validRepoPath(repoPath) && file.size > MAX_FILE_BYTES) {
+        throw new SourceError("too-large", path);
+      }
+      bytes += file.size;
+      if (bytes > maxBytes) throw new SourceError("too-large", "", null, null, TOO_LARGE);
+      Object.defineProperty(file, "webkitRelativePath", { value: path });
+      files.push(file);
+      return;
+    }
+
+    if (!entry.isDirectory || entry.createReader === undefined) return;
+    const reader = entry.createReader();
+    for (;;) {
+      const batch = await readBatch(reader);
+      if (batch.length === 0) return;
+      for (const child of batch) await walk(child, path);
+    }
+  };
+
+  for (const root of roots) await walk(root, "");
+  return files;
+}
+
+function copyDropFileList(files: FileList, maxEntries: number, maxBytes: number): File[] {
+  const selected: File[] = [];
+  let bytes = 0;
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    if (file === undefined) continue;
+    const relative = file.webkitRelativePath;
+    if (relative !== "" && !safeRelativePath(relative)) throw new SourceError("forbidden", "");
+    const segments = pathSegments(relative);
+    if (segments.slice(1, -1).some((segment) => IGNORED_DIRECTORIES.has(segment))) continue;
+    selected.push(file);
+    if (selected.length > maxEntries) {
+      throw new SourceError("too-large", "", null, null, TOO_LARGE);
+    }
+    bytes += file.size;
+    if (bytes > maxBytes) throw new SourceError("too-large", "", null, null, TOO_LARGE);
+  }
+  return selected;
+}
 
 interface SnapshotFile {
   readonly file: File;
@@ -79,14 +185,15 @@ export class FileListFolderSource implements MessageSource {
   ) {
     const maxFiles = options.maxFiles ?? MAX_SCAN_ENTRIES;
     const maxBytes = options.maxBytes ?? MAX_FOLDER_BYTES;
-    const list = Array.from(files);
     const seen = new Set<string>();
     const firstSegments = new Set<string>();
     const selected: Array<{ file: File; path: string }> = [];
     let fileCount = 0;
     let bytes = 0;
 
-    for (const file of list) {
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      if (file === undefined) continue;
       const relative = (file as File & { readonly webkitRelativePath?: string }).webkitRelativePath;
       if (typeof relative !== "string" || !safeRelativePath(relative)) {
         throw new SourceError("forbidden", "");

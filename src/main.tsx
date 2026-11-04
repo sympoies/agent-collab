@@ -6,14 +6,14 @@ import { BrowserEncryptedStore, indexedDbRecords, MemoryStore } from "./credenti
 import { demoFiles } from "./demo/fixtures";
 import type { ViewerSettings } from "./settings/model";
 import { FixtureSource } from "./source/fixture";
-import { FileListFolderSource } from "./source/file-list-folder";
+import { FileListFolderSource, filesFromFolderDrop } from "./source/file-list-folder";
 import { LocalFolderSource, type LocalDirectoryHandle } from "./source/local-folder";
 import { GitHubSource } from "./source/github";
 import { CachedDemoSource } from "./source/cached-demo";
 import { HostedSnapshotSource } from "./source/hosted-snapshot";
 import { readHostedSnapshot } from "./settings/demo-snapshot";
 import type { MessageSource } from "./source/types";
-import { Root, type LocalFolderOpen } from "./ui/Root";
+import { Root, type LocalFolderOpen, type LocalFolderSelection } from "./ui/Root";
 import { LocaleProvider } from "./i18n/LocaleProvider";
 import { ThemeProvider } from "./ui/ThemeProvider";
 import "./ui/styles.css";
@@ -106,10 +106,15 @@ function folderPicker(): (() => Promise<{ source: MessageSource; name: string }>
 }
 
 function fileListFolder(
-  files: readonly File[] | FileList,
+  selection: LocalFolderSelection,
 ): Promise<LocalFolderOpen> {
-  const name = files[0]?.webkitRelativePath.split("/")[0] ?? "";
-  return Promise.resolve({ source: new FileListFolderSource(files), name, snapshot: true });
+  const open = (selected: readonly File[] | FileList) => {
+    const name = selected[0]?.webkitRelativePath.split("/")[0] ?? "";
+    return { source: new FileListFolderSource(selected), name, snapshot: true as const };
+  };
+  return selection.kind === "files"
+    ? Promise.resolve(open(selection.files))
+    : filesFromFolderDrop(selection.dataTransfer).then(open);
 }
 
 const root = document.getElementById("root");

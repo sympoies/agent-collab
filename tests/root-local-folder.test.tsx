@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryStore } from "../src/credentials/store";
 import { FixtureSource } from "../src/source/fixture";
 import { SourceError } from "../src/source/types";
-import { Root, type LocalFolderOpen } from "../src/ui/Root";
+import { Root, type LocalFolderOpen, type LocalFolderSelection } from "../src/ui/Root";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { flat, MARKER, messageText } from "./support";
 
@@ -46,7 +46,7 @@ describe("Root with a local folder", () => {
   async function render(
     openLocalFolder: (() => Promise<LocalFolderOpen>) | null,
     storage = { getItem: () => null, setItem: () => undefined },
-    openLocalFileList?: (files: readonly File[]) => Promise<LocalFolderOpen>,
+    openLocalFileList?: (selection: LocalFolderSelection) => Promise<LocalFolderOpen>,
   ): Promise<HTMLElement> {
     const host = document.createElement("div");
     document.body.append(host);
@@ -88,13 +88,16 @@ describe("Root with a local folder", () => {
   }
 
   it("offers the file-list fallback and points the unsupported browser hint to it", async () => {
-    const host = await render(null, undefined, (files) =>
+    const host = await render(null, undefined, (selection) =>
       Promise.resolve({
         source: new FixtureSource({
           ".agent-collab": MARKER,
           [flat("2026-10", 1, 1)]: messageText(ID, "alice-agent", "api"),
         }),
-        name: files[0]?.webkitRelativePath.split("/")[0] ?? "clone",
+        name:
+          selection.kind === "files"
+            ? (selection.files[0]?.webkitRelativePath.split("/")[0] ?? "clone")
+            : "clone",
       }),
     );
     expect(button(host, "Open local folder")).toBeUndefined();
