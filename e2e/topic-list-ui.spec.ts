@@ -345,7 +345,7 @@ test.describe("the topic list holds still for the reader", () => {
 
   test("the order waits while the pointer is in the list", async ({ page }) => {
     const state: RepositoryState = { bumped: false };
-    const { list, requests } = await openExpanded(page, state);
+    const { list } = await openExpanded(page, state);
     const before = await order(list);
 
     const row = list.getByRole("button", { name: "topic-03", exact: true });
@@ -357,9 +357,23 @@ test.describe("the topic list holds still for the reader", () => {
     state.bumped = true;
     const refresh = page.getByRole("button", { name: "Refresh", exact: true });
     await refresh.focus();
+    const received = page.waitForResponse((response) =>
+      response.url().endsWith("/git/trees/month:new"),
+    );
     await page.keyboard.press("Enter");
-    await expect.poll(() => requests.includes("/git/trees/month:new")).toBe(true);
+    await received;
     await expect(refresh).toHaveAttribute("aria-busy", "false");
+    // The new activity has reached the page: let the page render it before looking at the list.
+    await page.evaluate(
+      () =>
+        new Promise<void>((done) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              done();
+            });
+          });
+        }),
+    );
     expect(await order(list)).toEqual(before);
 
     await page.mouse.move(1260, 300);
@@ -372,11 +386,13 @@ test.describe("the topic list holds still for the reader", () => {
     const selected = list.getByRole("button", { name: "topic-02", exact: true });
     await selected.click();
     await expect(selected).toHaveAttribute("aria-pressed", "true");
+    // A middle offset: the rows at the top of the view are ones that shift down when topic-05
+    // moves up, which is what scroll anchoring would follow.
     await list.evaluate((pane) => {
-      pane.scrollTop = pane.scrollHeight;
+      pane.scrollTop = 280;
     });
     const scrolled = await list.evaluate((pane) => pane.scrollTop);
-    expect(scrolled).toBeGreaterThan(0);
+    expect(scrolled).toBe(280);
     await saveScreenshot(page, "topic-list-resort-before.png");
 
     // Pointer and focus leave the list, then a refresh brings a newer message to topic-05.
