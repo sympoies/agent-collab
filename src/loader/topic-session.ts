@@ -55,6 +55,11 @@ export class TopicSession {
     return [...this.states.values()].map((state) => state.summary);
   }
 
+  /** The head used by the most recent successful open or refresh. */
+  get currentHead(): Head | null {
+    return this.head;
+  }
+
   /** Reads the marker, `topics/` and the root index (the handful of requests of section 6.1). */
   async open(): Promise<void> {
     const head = await this.source.head(null);

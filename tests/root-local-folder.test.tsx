@@ -265,6 +265,7 @@ describe("Root with a local folder", () => {
       const host = await render(() => Promise.resolve({ source, name: "clone" }));
       await click(button(host, "Open local folder"));
       const opened = calls.head;
+      expect(opened).toBe(1);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(61_000);
       });
