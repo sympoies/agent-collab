@@ -25,6 +25,8 @@ export interface LoaderSnapshot {
   readonly items: readonly TimelineItem[];
   /** True while older history has not been loaded. */
   readonly hasOlder: boolean;
+  /** True after a jump to a past day: messages newer than the loaded range exist and are not loaded. */
+  readonly hasNewer: boolean;
   /** Paths of items that arrived through refresh after open. */
   readonly fresh: ReadonlySet<string>;
   /** Participant roster from the repository marker. */
@@ -158,6 +160,10 @@ export class Loader {
   private readonly items = new Map<string, TimelineItem>();
   /** Listed but not yet loaded message files, newest first. */
   private pending: DirectoryEntry[] = [];
+  /** The latest listing of `inbox`, kept so a jump needs no request of its own. */
+  private inbox: readonly DirectoryEntry[] = [];
+  /** After a jump, the last day (YYYY-MM-DD) of the loaded range; null while the newest page leads. */
+  private cutoff: string | null = null;
   /** Month folders not listed yet, newest first. */
   private unlistedMonths: DirectoryEntry[] = [];
   /** Listed month folders and their object ids. */
@@ -181,6 +187,7 @@ export class Loader {
   private snapshot: LoaderSnapshot = {
     items: [],
     hasOlder: false,
+    hasNewer: false,
     fresh: new Set(),
     participants: [],
     formerParticipants: [],
@@ -259,6 +266,8 @@ export class Loader {
         // The topic layout has no root inbox of its own; a missing one is an empty listing.
         const inbox = await this.listOrEmpty(head.revision, "inbox");
         this.head = head;
+        this.inbox = inbox;
+        this.cutoff = null;
         this.pending = inbox.filter(isMessageFile).sort(newestFirst);
         this.unlistedMonths = inbox.filter(isMonth).sort(newestFirst);
         await this.loadPage();
@@ -285,6 +294,44 @@ export class Loader {
   }
 
   /**
+   * Show the page of messages that ends on `date` (YYYY-MM-DD) instead of the newest page, or the
+   * newest page again for null. The month folders and files listed at open give the position, so
+   * this lists the one month folder the page starts in and reads one page: the messages between
+   * the chosen day and the newest page are never loaded. Older pages continue with loadOlder.
+   */
+  jumpTo(date: string | null): Promise<void> {
+    return this.serialize(async () => {
+      if (this.head === null) return;
+      const month = date?.slice(0, 7) ?? "";
+      // A month folder of the chosen day's month may hold newer days; it is not listed to find out.
+      const newer =
+        date !== null &&
+        this.inbox.some((entry) =>
+          isMessageFile(entry)
+            ? entry.name.slice(0, 10) > date
+            : isMonth(entry) && entry.name >= month,
+        );
+      this.cutoff = newer ? date : null;
+      this.items.clear();
+      this.loadedIds.clear();
+      this.fresh.clear();
+      this.unavailable.clear();
+      this.listedMonths.clear();
+      this.pending = this.inbox.filter((entry) => isMessageFile(entry) && this.inRange(entry.name));
+      this.pending.sort(newestFirst);
+      this.unlistedMonths = this.inbox
+        .filter((entry) => isMonth(entry) && (this.cutoff === null || entry.name <= month))
+        .sort(newestFirst);
+      await this.loadPage();
+    });
+  }
+
+  /** Whether a message file name lies in the loaded range (not after the jump's last day). */
+  private inRange(name: string): boolean {
+    return this.cutoff === null || name.slice(0, 10) <= this.cutoff;
+  }
+
+  /**
    * Poll for changes and download unavailable files again; resolves to the
    * number of new items. Opens first if open has not succeeded.
    */
@@ -302,22 +349,30 @@ export class Loader {
         const root = await this.source.listDirectory(head.revision, "");
         const participantData = await this.readMarker(root);
         const inbox = await this.listOrEmpty(head.revision, "inbox");
+        this.inbox = inbox;
         this.updateRetries(inbox);
         this.updatePending(inbox);
         const found: DirectoryEntry[] = inbox.filter(
-          (entry) => isMessageFile(entry) && (!this.isKnown(entry.name) || this.isEdited(entry)),
+          (entry) =>
+            isMessageFile(entry) &&
+            this.inRange(entry.name) &&
+            (!this.isKnown(entry.name) || this.isEdited(entry)),
         );
         const monthUpdates = new Map<string, string>();
         for (const month of inbox.filter(isMonth)) {
           const listedId = this.listedMonths.get(month.name);
           const unlisted = this.unlistedMonths.some((entry) => entry.name === month.name);
-          if (unlisted || listedId === month.objectId) continue;
+          const afterRange = this.cutoff !== null && month.name > this.cutoff.slice(0, 7);
+          if (unlisted || afterRange || listedId === month.objectId) continue;
           const entries = await this.source.listDirectory(head.revision, month.path);
           this.updateRetries(entries);
           this.updatePending(entries);
           found.push(
             ...entries.filter(
-              (e) => isMessageFile(e) && (!this.isKnown(e.name) || this.isEdited(e)),
+              (e) =>
+                isMessageFile(e) &&
+                this.inRange(e.name) &&
+                (!this.isKnown(e.name) || this.isEdited(e)),
             ),
           );
           monthUpdates.set(month.name, month.objectId);
@@ -365,7 +420,10 @@ export class Loader {
           const entries = await this.source.listDirectory(this.head.revision, nextMonth.path);
           this.unlistedMonths.shift();
           this.listedMonths.set(nextMonth.name, nextMonth.objectId);
-          this.pending = [...this.pending, ...entries.filter(isMessageFile)].sort(newestFirst);
+          const inRange = entries.filter(
+            (entry) => isMessageFile(entry) && this.inRange(entry.name),
+          );
+          this.pending = [...this.pending, ...inRange].sort(newestFirst);
         } else {
           break;
         }
@@ -462,6 +520,7 @@ export class Loader {
     this.snapshot = {
       items,
       hasOlder: this.pending.length > 0 || this.unlistedMonths.length > 0,
+      hasNewer: this.cutoff !== null,
       fresh: new Set(this.fresh),
       participants: this.participants,
       formerParticipants: this.formerParticipants,
@@ -473,7 +532,7 @@ export class Loader {
   }
 
   private incompleteTopics(): readonly string[] | null {
-    if (!this.rosterKnown || this.unlistedMonths.length > 0) return null;
+    if (!this.rosterKnown || this.unlistedMonths.length > 0 || this.cutoff !== null) return null;
     const senders = [...this.participants, ...this.formerParticipants];
     const incompletePaths = [
       ...this.pending.map((entry) => entry.path),

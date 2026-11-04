@@ -6,7 +6,7 @@ import { expect, test, type Locator, type Page, type Route } from "@playwright/t
 import { en, LOCALE_NAMES, LOCALES } from "../src/i18n/catalog";
 import { ja } from "../src/i18n/ja";
 import { zhTW } from "../src/i18n/zh-TW";
-import { formatDateTime } from "../src/i18n/translate";
+import { formatDateTime, translate } from "../src/i18n/translate";
 
 const catalogsByLocale = { en, ja, "zh-TW": zhTW } as const;
 
@@ -271,6 +271,34 @@ function longTopicThread(): MessageFixture[] {
   ];
 }
 
+/**
+ * 60 messages in 20 days (3 a day, flat inbox), more than one page of 50. The last one replies to
+ * the very first, which lies outside the newest page.
+ */
+function historyThread(): MessageFixture[] {
+  const first = makeMessage("2026-09-01", "0900", "alice-agent", "api", 1, "question", "Opening.");
+  const result = [first];
+  for (let index = 1; index < 60; index += 1) {
+    const day = `2026-09-${String(1 + Math.floor(index / 3)).padStart(2, "0")}`;
+    const time = `09${String(index % 3).padStart(2, "0")}`;
+    const reply = index === 59;
+    result.push(
+      makeMessage(
+        day,
+        time,
+        "bob-agent",
+        "api",
+        index + 1,
+        reply ? "answer" : "info",
+        reply ? "Late answer to the opening question." : `History message ${String(index)}.`,
+        "alice-agent",
+        reply ? first.id : "",
+      ),
+    );
+  }
+  return result;
+}
+
 function attachmentThread(): MessageFixture[] {
   const first = makeMessage(
     "2026-10-08",
@@ -325,7 +353,7 @@ function json(route: Route, value: unknown, status = 200, headers: Record<string
 
 async function installApiStub(
   page: Page,
-  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic",
+  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic" | "history",
 ) {
   const messages =
     mode === "long"
@@ -336,7 +364,9 @@ async function installApiStub(
           ? attachmentThread()
           : mode === "long-topic"
             ? longTopicThread()
-            : [];
+            : mode === "history"
+              ? historyThread()
+              : [];
   const arrivalOne = makeMessage(
     "2026-10-09",
     "1030",
@@ -481,7 +511,7 @@ async function installApiStub(
 
 async function openViewer(
   page: Page,
-  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic",
+  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic" | "history",
 ) {
   const assertRequests = await installApiStub(page, mode);
   await page.goto("/");
@@ -2456,5 +2486,73 @@ for (const code of LOCALES) {
         }
       });
     }
+  }
+}
+
+for (const code of LOCALES) {
+  const messages = catalogsByLocale[code];
+  for (const view of [
+    { label: "desktop", size: { width: 1280, height: 800 } },
+    { label: "phone", size: { width: 390, height: 844 } },
+  ] as const) {
+    test(`the loaded range, the jump to a date and an earlier original work in ${LOCALE_NAMES[code]} on ${view.label}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(view.size);
+      const assertRequests = await openViewer(page, "history");
+      if (code !== "en" && view.size.width < 721) {
+        await page.getByRole("button", { name: /^(More|その他|更多)$/ }).click();
+        await page.getByRole("menuitemradio", { name: LOCALE_NAMES[code], exact: true }).click();
+      } else if (code !== "en") {
+        await page.getByLabel(en["language.label"]).selectOption(code);
+      }
+      await expect(page.locator("html")).toHaveAttribute("lang", code);
+      await page.getByRole("button", { name: messages["nav.all"], exact: true }).click();
+      const line = page.locator(".range-line");
+      // The newest page: 50 messages, back to the day the 11th message was sent.
+      await expect(line).toHaveText(
+        translate(code, "range.loaded", { count: 50, date: "2026-09-04" }),
+      );
+      await expect(page.locator("h1")).toHaveCount(1);
+
+      // The reply to the opening message says its original is earlier and offers to load it.
+      const quote = page.locator(".quote.missing");
+      await expect(quote).toContainText(
+        translate(code, "chat.replyEarlier", { id: "\uE000" }).split("\uE000")[0] ?? "",
+      );
+      await expect(quote.getByRole("button", { name: messages["nav.loadOlder"] })).toBeVisible();
+
+      // Jump with the keyboard: the date field, then Enter.
+      const date = page.getByLabel(messages["range.jumpLabel"]);
+      await date.fill("2026-09-02");
+      await date.press("Enter");
+      await expect(line).toHaveText(
+        translate(code, "range.loadedPast", { count: 6, from: "2026-09-01", to: "2026-09-02" }),
+      );
+      await expect(page.locator(".message")).toHaveCount(6);
+      // The jumped range holds the opening message; no reply points outside it.
+      await expect(page.locator(".quote.missing")).toHaveCount(0);
+
+      const bar = await page.locator(".range-bar").boundingBox();
+      expect((bar?.x ?? 0) + (bar?.width ?? 0)).toBeLessThanOrEqual(view.size.width);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `range-jump-${code}-${view.label}.png`);
+
+      await page.getByRole("button", { name: messages["range.showNewest"] }).click();
+      await expect(line).toHaveText(
+        translate(code, "range.loaded", { count: 50, date: "2026-09-04" }),
+      );
+      await page
+        .locator(".quote.missing")
+        .getByRole("button", { name: messages["nav.loadOlder"] })
+        .click();
+      await expect(line).toHaveText(
+        translate(code, "range.loaded", { count: 60, date: "2026-09-01" }),
+      );
+      await expect(page.locator(".quote.missing")).toHaveCount(0);
+      assertRequests();
+    });
   }
 }

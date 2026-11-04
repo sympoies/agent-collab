@@ -38,6 +38,7 @@ async function render(): Promise<string> {
       rows={rows}
       people={people}
       attachments={{ reader: loader.attachments, loadedIds: new Set(), onJump: () => undefined }}
+      earlier={{ beforeId: null, disabled: false, onLoad: () => undefined }}
     />,
   );
 }
@@ -113,6 +114,7 @@ describe("a reply whose parent is not loaded", () => {
             loadedIds: new Set(),
             onJump: () => undefined,
           }}
+          earlier={{ beforeId: null, disabled: false, onLoad: () => undefined }}
         />
       </LocaleProvider>,
     );
