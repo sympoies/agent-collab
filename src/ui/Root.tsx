@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 
 import type { Secret } from "../credentials/secret";
 import { Loader, SetupError } from "../loader/loader";
+import { readTopicList, type TopicList } from "../loader/topic-reader";
 import {
   DEFAULT_DRAFT,
   draftFromSettings,
@@ -59,6 +60,8 @@ interface ViewerScreen {
   /** Distinct per opened viewer, so reopening the same repository starts fresh. */
   readonly id: number;
   readonly loader: Loader;
+  readonly topicSource: MessageSource | null;
+  readonly initialTopicList: TopicList | null;
   readonly title: AppProps["title"];
   readonly selfNames: ReadonlySet<string>;
   readonly identity: AppProps["identity"];
@@ -117,12 +120,16 @@ export function Root(props: RootProps) {
     liveDemo: StaticDemoView | null = null,
     source: SourceIndicator | null = null,
     extras: Partial<Pick<ViewerScreen, "demo" | "limitHit" | "signedIn">> = {},
+    topicSource: MessageSource | null = null,
+    initialTopicList: TopicList | null = null,
   ): ViewerScreen => {
     viewers.current += 1;
     return {
       kind: "viewer",
       id: viewers.current,
       loader,
+      topicSource,
+      initialTopicList,
       title,
       selfNames: new Set(selfNames),
       identity,
@@ -136,9 +143,10 @@ export function Root(props: RootProps) {
     };
   };
 
-  const open = ({ settings, token }: OpenSettings, notice: string | MessageRef | null = null) =>
-    viewer(
-      new Loader(createSource(settings, token)),
+  const open = ({ settings, token }: OpenSettings, notice: string | MessageRef | null = null) => {
+    const source = createSource(settings, token);
+    return viewer(
+      new Loader(source),
       settings.repository,
       settings.selfNames,
       {
@@ -150,7 +158,9 @@ export function Root(props: RootProps) {
       null,
       null,
       { signedIn: true },
+      source,
     );
+  };
 
   /**
    * The token the user saved this page session for the public API, kept in memory only so the demo
@@ -363,8 +373,10 @@ export function Root(props: RootProps) {
       return;
     }
     const loader = new Loader(opened.source);
+    let initialTopicList: TopicList;
     try {
-      await loader.open();
+      initialTopicList = await readTopicList(opened.source);
+      if (initialTopicList.layout !== "topic") await loader.openWithHead(initialTopicList.head);
     } catch (error) {
       refuse(
         error instanceof SetupError
@@ -390,6 +402,9 @@ export function Root(props: RootProps) {
           label: "bar.localFolder",
           experimental: true,
         },
+        {},
+        opened.source,
+        initialTopicList,
       ),
     );
   };
@@ -517,6 +532,10 @@ export function Root(props: RootProps) {
         <App
           key={screen.id}
           loader={screen.loader}
+          {...(screen.topicSource === null ? {} : { topicSource: screen.topicSource })}
+          {...(screen.initialTopicList === null
+            ? {}
+            : { initialTopicList: screen.initialTopicList })}
           title={screen.title}
           selfNames={screen.selfNames}
           identity={screen.identity}

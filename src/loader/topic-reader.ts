@@ -11,13 +11,17 @@ import {
   type TopicSummary,
 } from "../message/topic-layout";
 import { TopicLayoutSource } from "../source/topic-layout";
-import { SourceError, type MessageSource } from "../source/types";
+import { SourceError, type Head, type MessageSource } from "../source/types";
 import { Loader, SetupError, type LoaderOptions } from "./loader";
 
 const MARKER_FILE = ".agent-collab";
 const SUPPORTED_PROTOCOL = "collab-protocol: 1";
 
 export interface TopicList {
+  /** Commit revision used to read the folder and index entries. */
+  readonly revision: string;
+  /** The already-read branch head, reused if this turns out to be a flat or monthly repository. */
+  readonly head: Head;
   /** `topic` for the layout this reader serves; other layouts have no topic list. */
   readonly layout: string;
   /** Open and closed topics with a folder, then legacy-only topics; sorted by name within each. */
@@ -46,7 +50,7 @@ export async function readTopicList(source: MessageSource): Promise<TopicList> {
   if (!isKnownLayout(layout)) {
     throw new SetupError(`unsupported inbox layout: ${layout}`, "layout", layout);
   }
-  if (layout !== "topic") return { layout, topics: [] };
+  if (layout !== "topic") return { layout, revision: head.revision, head, topics: [] };
 
   const folders = await listOrEmpty(source, head.revision, "topics");
   const index = root.find((entry) => entry.kind === "file" && entry.name === "index.md");
@@ -76,7 +80,12 @@ export async function readTopicList(source: MessageSource): Promise<TopicList> {
     .map((row) => ({ name: row.name, title: row.title, status: "legacy", folder: false }));
   const byOrder = (a: TopicSummary, b: TopicSummary) =>
     a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-  return { layout, topics: [...withFolder.sort(byOrder), ...legacyOnly.sort(byOrder)] };
+  return {
+    layout,
+    revision: head.revision,
+    head,
+    topics: [...withFolder.sort(byOrder), ...legacyOnly.sort(byOrder)],
+  };
 }
 
 async function listOrEmpty(source: MessageSource, revision: string, path: string) {

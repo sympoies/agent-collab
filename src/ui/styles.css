@@ -485,6 +485,42 @@ button:hover {
   color: var(--text);
 }
 
+.closed-topics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.closed-topics summary {
+  min-height: 40px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.closed-topics summary:hover {
+  background: var(--hover-strong);
+  color: var(--text);
+}
+
+.topic-prompt {
+  color: var(--muted);
+}
+
+.topic-heading {
+  overflow-wrap: anywhere;
+}
+
+.topic-discovery {
+  margin-top: 18px;
+  padding: 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
 .count,
 .topic {
   color: var(--muted);

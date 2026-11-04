@@ -20,11 +20,10 @@ export default defineConfig({
     viewport: { width: 1280, height: 800 },
     trace: "retain-on-failure",
   },
-  // Chromium runs every test. WebKit runs only the tests tagged "@csp", because the CSP check
-  // needs an engine that reports inline styles; a browser that is not installed fails the run.
+  // Chromium runs every test. WebKit runs the CSP and topic-list acceptance tests.
   projects: [
     { name: "chromium", use: { browserName: "chromium" } },
-    { name: "webkit", use: { browserName: "webkit" }, grep: /@csp/ },
+    { name: "webkit", use: { browserName: "webkit" }, grep: /@(?:csp|topic-list)/ },
   ],
   webServer: {
     command: `pnpm preview --host 127.0.0.1 --port ${String(port)} --strictPort`,
