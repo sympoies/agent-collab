@@ -2496,6 +2496,11 @@ for (const code of LOCALES) {
         await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
       ).toBeLessThanOrEqual(0);
       await saveScreenshot(page, `i18n-profile-${code}-${view.label}.png`);
+      // The panel is an overlay (a full-screen sheet on the phone): close it to reach the content.
+      await page
+        .locator(".profile")
+        .getByRole("button", { name: messages["profile.close"] })
+        .click();
 
       // The Files view and an attachment card.
       if (view.size.width < 721) {
@@ -3035,3 +3040,152 @@ test("a topic-layout local folder shows a message added under a topic after Refr
   await expect(page.getByText("A message that arrived under a topic.")).toBeVisible();
   await expect(last).toContainText("· bob-agent");
 });
+
+// The viewer is a fixed-height chat shell: the page does not scroll, the conversation list and the
+// message pane scroll on their own, and toolbar panels open over the content. "@csp" runs these
+// in WebKit too, which resolves 100dvh and nested scrolling differently from Chromium.
+test("the page stays put while the message pane and the list scroll inside it @csp", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "long");
+  await expect(page.locator(".message")).toHaveCount(30);
+  const pane = page.getByRole("main");
+  const metrics = await page.evaluate(() => {
+    const scroller = (selector: string) => {
+      const node = document.querySelector(selector) as HTMLElement;
+      return { overflowY: getComputedStyle(node).overflowY, clientHeight: node.clientHeight };
+    };
+    return {
+      documentHeight: document.documentElement.scrollHeight,
+      viewport: window.innerHeight,
+      pane: scroller("main.conversation"),
+      list: scroller(".topics-pane"),
+    };
+  });
+  expect(metrics.documentHeight).toBeLessThanOrEqual(metrics.viewport);
+  expect(metrics.pane.overflowY).toBe("auto");
+  expect(metrics.list.overflowY).toBe("auto");
+  expect(await pane.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(500);
+  await pane.evaluate((node) => {
+    node.scrollTo({ top: 400, behavior: "instant" });
+  });
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(await pane.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+  // The pane is a keyboard-scrollable region with a name.
+  await expect(pane).toHaveAttribute("tabindex", "0");
+  await pane.evaluate((node) => {
+    node.scrollTo({ top: 0, behavior: "instant" });
+    node.focus();
+  });
+  await page.keyboard.press("PageDown");
+  await expect.poll(() => pane.evaluate((node) => node.scrollTop)).toBeGreaterThan(200);
+  await page.keyboard.press("End");
+  await expect
+    .poll(() => pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
+    .toBeLessThan(2);
+  await expect(page.locator("h1")).toHaveCount(1);
+  assertRequests();
+});
+
+test("the Profile & colors panel opens over the content and closes with Escape or a click outside @csp", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "long");
+  await expect(page.locator(".message")).toHaveCount(30);
+  const pane = page.getByRole("main");
+  await pane.evaluate((node) => {
+    node.scrollTo({ top: 300, behavior: "instant" });
+  });
+  const before = await pane.evaluate((node) => ({
+    height: node.clientHeight,
+    top: node.scrollTop,
+    box: node.getBoundingClientRect().top,
+  }));
+  const opener = page.getByRole("button", { name: "Profile & colors" });
+  await opener.click();
+  const panel = page.getByRole("region", { name: "Profile & colors" });
+  await expect(panel).toBeVisible();
+  const after = await pane.evaluate((node) => ({
+    height: node.clientHeight,
+    top: node.scrollTop,
+    box: node.getBoundingClientRect().top,
+  }));
+  expect(after).toEqual(before);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight),
+  ).toBe(true);
+  // The panel overlaps the pane instead of pushing it.
+  const panelBox = await panel.boundingBox();
+  const paneBox = await pane.boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(paneBox).not.toBeNull();
+  expect((panelBox?.y ?? 0) + (panelBox?.height ?? 0)).toBeGreaterThan(paneBox?.y ?? 0);
+  expect(
+    await panel.evaluate((node) => getComputedStyle(node.parentElement as HTMLElement).position),
+  ).toMatch(/absolute|fixed/);
+  // Focus moves into the panel; Escape closes it and returns focus to the opener.
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.querySelector(".profile")?.contains(document.activeElement)),
+    )
+    .toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  // A click outside closes it too.
+  await opener.click();
+  await expect(panel).toBeVisible();
+  await page
+    .locator(".message")
+    .nth(5)
+    .click({ position: { x: 5, y: 5 } });
+  await expect(panel).toHaveCount(0);
+  assertRequests();
+});
+
+for (const code of LOCALES) {
+  const messages = catalogsByLocale[code];
+  test(`on a phone the page does not scroll and Profile & colors is a sheet with a close button in ${LOCALE_NAMES[code]} @csp`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript((locale) => {
+      localStorage.setItem("agent-collab-viewer.locale", locale);
+    }, code);
+    const assertRequests = await installApiStub(page, "long");
+    await page.goto("/");
+    await page.getByRole("button", { name: messages["welcome.openAnother"] }).click();
+    await page
+      .getByRole("textbox", { name: messages["settings.repository"], exact: true })
+      .fill("alice-agent/fixture-repo");
+    await page.getByLabel(messages["settings.branch"]).fill("main");
+    await page.getByLabel(messages["settings.myNames"]).fill("alice-agent");
+    await page.getByLabel(messages["settings.token"]).fill("fake-token");
+    await page.getByRole("button", { name: messages["settings.saveOpen"] }).click();
+    await page.getByRole("button", { name: messages["nav.all"] }).click();
+    await expect(page.locator(".message")).toHaveCount(30);
+    const fits = () =>
+      page.evaluate(() => ({
+        document: document.documentElement.scrollHeight - window.innerHeight,
+        sideways: document.documentElement.scrollWidth - window.innerWidth,
+      }));
+    expect((await fits()).document).toBeLessThanOrEqual(0);
+    expect((await fits()).sideways).toBeLessThanOrEqual(0);
+
+    await page.getByRole("button", { name: messages["bar.more"], exact: true }).click();
+    await page.getByRole("menuitemcheckbox", { name: messages["bar.profile"] }).click();
+    const panel = page.getByRole("region", { name: messages["profile.title"] });
+    await expect(panel).toBeVisible();
+    const box = await panel.boundingBox();
+    expect(box?.x).toBe(0);
+    expect(box?.width).toBe(390);
+    expect((await fits()).document).toBeLessThanOrEqual(0);
+    expect((await fits()).sideways).toBeLessThanOrEqual(0);
+    await panel.getByRole("button", { name: messages["profile.close"], exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    assertRequests();
+  });
+}

@@ -173,6 +173,7 @@ export const en = {
   "questions.showFewer": "Show fewer replies",
   "profile.title": "Profile & colors",
   "profile.reset": "Reset colors and names",
+  "profile.close": "Close",
   "profile.note":
     "Colors and display names are saved only in this browser for this repository. Nothing is written to the collaboration repository.",
   "profile.empty": "No people to show yet.",

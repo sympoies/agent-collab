@@ -233,6 +233,38 @@ export function App({
   );
   const [profileOpen, setProfileOpen] = useState(false);
 
+  // The panel is an overlay: Escape or a click outside closes it and focus goes back to the
+  // control that opens it (the icon button, or the More button on a phone).
+  const closeProfile = () => {
+    setProfileOpen(false);
+    (
+      document.querySelector<HTMLElement>(".bar-actions [aria-controls=profile-panel]") ??
+      document.querySelector<HTMLElement>(".bar-actions [aria-haspopup=menu]")
+    )?.focus();
+  };
+  useEffect(() => {
+    if (!profileOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeProfile();
+    };
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("#profile-panel") === null &&
+        target.closest(".bar-actions") === null
+      ) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [profileOpen]);
+
   const updatePreferences = (next: IdentityPreferences) => {
     setPreferences(next);
     writePreferences(identity.storage, identity.key, next);
@@ -597,25 +629,26 @@ export function App({
           onPickLocalFolder={onPickLocalFolder}
           onOpenSettings={onOpenSettings}
         />
+        {profileOpen && (
+          <div id="profile-panel">
+            <ProfilePanel
+              order={order}
+              preferences={preferences}
+              people={people}
+              onColor={(person, slot) => {
+                updatePreferences(withColor(preferences, person, slot));
+              }}
+              onDisplayName={(person, name) => {
+                updatePreferences(withDisplayName(preferences, person, name));
+              }}
+              onReset={() => {
+                updatePreferences(resetProfile(preferences));
+              }}
+              onClose={closeProfile}
+            />
+          </div>
+        )}
       </header>
-      {profileOpen && (
-        <div id="profile-panel">
-          <ProfilePanel
-            order={order}
-            preferences={preferences}
-            people={people}
-            onColor={(person, slot) => {
-              updatePreferences(withColor(preferences, person, slot));
-            }}
-            onDisplayName={(person, name) => {
-              updatePreferences(withDisplayName(preferences, person, name));
-            }}
-            onReset={() => {
-              updatePreferences(resetProfile(preferences));
-            }}
-          />
-        </div>
-      )}
       {notice !== null && (
         <p className="notice" role="status">
           {say(notice, t)}
@@ -752,7 +785,7 @@ export function App({
               )}
             </nav>
           </aside>
-          <main className="conversation" aria-labelledby="conversation-heading">
+          <main className="conversation" aria-labelledby="conversation-heading" tabIndex={0}>
             <button
               type="button"
               className="back-to-topics"

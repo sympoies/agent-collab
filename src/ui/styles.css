@@ -213,15 +213,24 @@ button:hover {
   outline-offset: 3px;
 }
 
+/* A fixed-height shell: the page does not scroll; the topic list and the message pane do. */
 .app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
   max-width: 1360px;
   margin: 0 auto;
-  padding: 0 20px 72px;
+  padding: 0 20px;
+  overflow: hidden;
+}
+
+.app > :not(.workspace) {
+  flex: none;
 }
 
 .bar {
-  position: sticky;
-  top: 0;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -229,7 +238,7 @@ button:hover {
   padding: 14px 0;
   background: var(--toolbar);
   border-bottom: 1px solid var(--border);
-  z-index: 2;
+  z-index: 4;
 }
 
 .bar h1 {
@@ -297,8 +306,28 @@ button:hover {
   margin: 0;
 }
 
+/* Opens over the content, under the toolbar; it never changes the height of the panes. */
+#profile-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 5;
+  width: min(640px, 100%);
+  max-height: calc(100dvh - 90px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin-top: 8px;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.28);
+}
+
+.profile-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .profile {
-  margin-top: 14px;
   padding: 14px;
   background: var(--inset);
   border: 1px solid var(--border);
@@ -429,18 +458,19 @@ button:hover {
 .workspace {
   display: grid;
   grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 20px;
-  align-items: start;
-  padding-top: 18px;
+  flex: 1;
+  min-height: 0;
+  padding: 18px 0;
 }
 
 .topics-pane {
   /* A re-sorted list keeps its scroll offset; the browser would otherwise shift it to follow a row. */
   overflow-anchor: none;
-  position: sticky;
-  top: 78px;
-  max-height: calc(100vh - 96px);
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 14px;
   background: var(--inset);
   border: 1px solid var(--border);
@@ -553,10 +583,18 @@ button:hover {
 
 .conversation {
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
   padding: 16px clamp(10px, 3vw, 36px) 36px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
+}
+
+.conversation:focus-visible {
+  outline-offset: -3px;
 }
 
 .range-bar {
@@ -1451,7 +1489,7 @@ span.chip {
 
 @media (max-width: 720px) {
   .app {
-    padding: 0 10px 68px;
+    padding: 0 10px;
   }
 
   .bar {
@@ -1479,13 +1517,26 @@ span.chip {
   .workspace {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
-    padding-top: 10px;
+    padding: 10px 0;
   }
 
   .topics-pane {
-    position: static;
-    max-height: none;
     padding: 10px;
+  }
+
+  /* A full-screen sheet with its own close button. */
+  #profile-panel {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+  }
+
+  .profile {
+    min-height: 100%;
+    border-radius: 0;
   }
 
   .workspace[data-mobile-view="topics"] .conversation {
@@ -1720,4 +1771,15 @@ span.chip {
 
 .signed-in button {
   margin-left: 6px;
+}
+
+@media print {
+  .app,
+  .workspace,
+  .topics-pane,
+  .conversation {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
 }

@@ -1,7 +1,7 @@
 // "Profile & colors": local color and display-name choices per person. Nothing here is
 // written to the collaboration repository.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useT } from "../i18n/LocaleProvider";
 import { PALETTE_SIZE, type IdentityPreferences } from "../identity/preferences";
@@ -36,6 +36,7 @@ export interface ProfilePanelProps {
   readonly onColor: (person: string, slot: number | null) => void;
   readonly onDisplayName: (person: string, name: string) => void;
   readonly onReset: () => void;
+  readonly onClose: () => void;
 }
 
 export function ProfilePanel({
@@ -45,23 +46,34 @@ export function ProfilePanel({
   onColor,
   onDisplayName,
   onReset,
+  onClose,
 }: ProfilePanelProps) {
   const t = useT();
   // Display-name inputs keep their own text while typing; a reset starts them over.
   const [resets, setResets] = useState(0);
+  const section = useRef<HTMLElement | null>(null);
+  // Opening the panel moves focus into it.
+  useEffect(() => {
+    section.current?.focus({ preventScroll: true });
+  }, []);
   return (
-    <section className="profile" aria-labelledby="profile-heading">
+    <section className="profile" aria-labelledby="profile-heading" tabIndex={-1} ref={section}>
       <div className="profile-head">
         <h2 id="profile-heading">{t("profile.title")}</h2>
-        <button
-          type="button"
-          onClick={() => {
-            setResets(resets + 1);
-            onReset();
-          }}
-        >
-          {t("profile.reset")}
-        </button>
+        <div className="profile-actions">
+          <button
+            type="button"
+            onClick={() => {
+              setResets(resets + 1);
+              onReset();
+            }}
+          >
+            {t("profile.reset")}
+          </button>
+          <button type="button" onClick={onClose}>
+            {t("profile.close")}
+          </button>
+        </div>
       </div>
       <p className="note">{t("profile.note")}</p>
       {order.length === 0 ? (
