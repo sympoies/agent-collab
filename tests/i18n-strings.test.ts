@@ -37,6 +37,8 @@ const ALLOWED = new Set<string>([
   // The error class name and the protocol token the marker file must start with.
   "src/loader/loader.ts: SetupError",
   "src/loader/loader.ts: collab-protocol: 1",
+  // The same protocol token, read by the topic list before any message is loaded.
+  "src/loader/topic-reader.ts: collab-protocol: 1",
 ]);
 
 const TEXT_ATTRIBUTES = new Set([

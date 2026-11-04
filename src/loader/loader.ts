@@ -2,6 +2,9 @@
 // newest-first paging and change detection (docs/design.md, sections 4 and 7).
 
 import { parseMessageFile } from "../message/parse";
+import { isKnownLayout, markerLayout } from "../message/topic-layout";
+import { mapLimit } from "../source/map-limit";
+import { TopicLayoutSource } from "../source/topic-layout";
 import { AttachmentReader } from "./attachments";
 import type { ParsedFile } from "../message/types";
 import {
@@ -39,6 +42,11 @@ export interface LoaderSnapshot {
 export interface LoaderOptions {
   readonly pageSize?: number;
   readonly concurrency?: number;
+  /**
+   * Drops a loaded item that does not belong in this view (a topic view of the legacy inbox, whose
+   * file names cannot say exactly which topic a message has). A dropped file is not read again.
+   */
+  readonly keep?: (item: TimelineItem) => boolean;
 }
 
 /** The repository is not a readable collaboration repository. */
@@ -48,7 +56,7 @@ export class SetupError extends Error {
   /** `code` and `detail` let the UI word the problem in the user's language. */
   constructor(
     message: string,
-    readonly code: "no-marker" | "protocol",
+    readonly code: "no-marker" | "protocol" | "layout",
     readonly detail = "",
   ) {
     super(message);
@@ -132,24 +140,6 @@ function itemName(item: TimelineItem): string {
   return path.slice(path.lastIndexOf("/") + 1);
 }
 
-async function mapLimit<T, R>(
-  values: readonly T[],
-  limit: number,
-  fn: (value: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array<R>(values.length);
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < values.length) {
-      const index = next;
-      next += 1;
-      results[index] = await fn(values[index] as T);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, values.length) }, worker));
-  return results;
-}
-
 interface RetryState {
   entry: DirectoryEntry;
   attempts: number;
@@ -160,6 +150,9 @@ interface RetryState {
 export class Loader {
   private readonly pageSize: number;
   private readonly concurrency: number;
+  private readonly keep: (item: TimelineItem) => boolean;
+  /** Files read and dropped by `keep`, so a refresh does not treat them as new. */
+  private readonly ignored = new Set<string>();
   private head: Head | null = null;
   /** Loaded items keyed by file name, so a message moved between layouts stays one item. */
   private readonly items = new Map<string, TimelineItem>();
@@ -200,13 +193,15 @@ export class Loader {
   /** Files that messages reference, read on demand at the current revision. */
   readonly attachments: AttachmentReader;
 
-  constructor(
-    private readonly source: MessageSource,
-    options: LoaderOptions = {},
-  ) {
+  private readonly source: MessageSource;
+
+  constructor(source: MessageSource, options: LoaderOptions = {}) {
+    // A repository in the topic layout is read through one merged inbox; others pass through.
+    this.source = source instanceof TopicLayoutSource ? source : new TopicLayoutSource(source);
     this.pageSize = options.pageSize ?? 50;
     this.concurrency = options.concurrency ?? 6;
-    this.attachments = new AttachmentReader(source, () => this.head?.revision ?? null);
+    this.keep = options.keep ?? (() => true);
+    this.attachments = new AttachmentReader(this.source, () => this.head?.revision ?? null);
   }
 
   getSnapshot = (): LoaderSnapshot => this.snapshot;
@@ -241,6 +236,10 @@ export class Loader {
         firstLine,
       );
     }
+    const layout = markerLayout(text);
+    if (!isKnownLayout(layout)) {
+      throw new SetupError(`unsupported inbox layout: ${layout}`, "layout", layout);
+    }
     const participants = markerParticipants(text);
     this.markerCache = { objectId: entry.objectId, participants };
     return participants;
@@ -257,8 +256,8 @@ export class Loader {
         this.participants = participantData.participants;
         this.formerParticipants = participantData.formerParticipants;
         this.rosterKnown = true;
-        const hasInbox = root.some((entry) => entry.kind === "directory" && entry.name === "inbox");
-        const inbox = hasInbox ? await this.source.listDirectory(head.revision, "inbox") : [];
+        // The topic layout has no root inbox of its own; a missing one is an empty listing.
+        const inbox = await this.listOrEmpty(head.revision, "inbox");
         this.head = head;
         this.pending = inbox.filter(isMessageFile).sort(newestFirst);
         this.unlistedMonths = inbox.filter(isMonth).sort(newestFirst);
@@ -379,6 +378,15 @@ export class Loader {
   }
 
   private async readAll(entries: readonly DirectoryEntry[]): Promise<TimelineItem[]> {
+    const all = await this.readEntries(entries);
+    return all.filter((item) => {
+      if (this.keep(item)) return true;
+      this.ignored.add(itemName(item));
+      return false;
+    });
+  }
+
+  private async readEntries(entries: readonly DirectoryEntry[]): Promise<TimelineItem[]> {
     return mapLimit(entries, this.concurrency, async (entry): Promise<TimelineItem> => {
       try {
         const item = parseMessageFile(entry.path, await this.source.readFile(entry));
@@ -439,7 +447,11 @@ export class Loader {
   }
 
   private isKnown(name: string): boolean {
-    return this.items.has(name) || this.pending.some((entry) => entry.name === name);
+    return (
+      this.items.has(name) ||
+      this.ignored.has(name) ||
+      this.pending.some((entry) => entry.name === name)
+    );
   }
 
   private publish(added: readonly TimelineItem[]): void {

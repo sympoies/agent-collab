@@ -191,6 +191,9 @@ when that slice starts; they do not change the interface.
   `inbox-layout: monthly` line selects monthly folders. A missing marker or an
   unknown protocol version is a setup error ("not a collaboration repository"
   / "unsupported protocol version").
+- `inbox-layout: topic` selects the topic layout: messages live in
+  `topics/<topic>/inbox/YYYY-MM/<id>.md` (see "Topic layout" below). An `inbox-layout` value the
+  viewer does not know is a setup error ("unsupported inbox layout").
 - Messages live in `inbox/<id>.md` (flat) or `inbox/YYYY-MM/<id>.md` (monthly).
   Both locations can coexist in one repository (older flat messages stay valid
   after switching to monthly), so the loader always reads both. Long content
@@ -288,6 +291,45 @@ download produces an error card for that path; the rest of the timeline
 still renders. Refreshes download the file again with growing spacing (after
 1, 2, 4, ... refreshes, at most every 15) until it succeeds. A file that is
 still unavailable is not counted as new and not marked fresh.
+
+### Topic layout
+
+Slice V1 of `docs/design/topics-and-scale.md` (the file formats are in the protocol text). Two
+pieces, both reading only through `MessageSource`:
+
+- **The topic list** (`readTopicList`, `src/loader/topic-reader.ts`): the marker, the `topics/`
+  listing and the root `index.md`, read before any message. For a GitHub repository that is the
+  same handful of requests whatever the number of topics or messages (ref, commit, root tree,
+  marker, `topics/` tree, index: six with a configured branch, seven when the default branch must
+  be looked up; a test counts them for 3, 12 and 300 topics). **That count is the topic list
+  only; it does not cover reading messages through the merged inbox below.** The folders of `topics/` that pass the
+  topic grammar are the topics; the index only adds titles and `closed`, and lists legacy-only
+  topics (rows marked `legacy`). The index is untrusted: a size cap (2 MiB), a row cap (5,000),
+  plain-text cells, a header naming the columns (`topic`, `title`, `status`, English or Traditional
+  Chinese), and any failure costs only the titles. The exact table format of the root index is not
+  fixed by the protocol text yet; the parser accepts a markdown table with those headers.
+- **The merged inbox** (`TopicLayoutSource`, `src/source/topic-layout.ts`): when the marker says
+  `topic`, the loader reads a virtual `inbox/` whose `YYYY-MM` folders merge
+  `topics/<topic>/inbox/YYYY-MM` of every topic with the legacy `inbox/` (flat files and months).
+  Messages keep their real paths. The loader's paging, refresh, retries and change detection work
+  unchanged on it, and flat and monthly repositories pass through untouched. **Cost of the merged
+  view:** two tree requests per topic folder to list its inbox (once per revision, at most six in
+  flight, shared by the inbox and the months), then one tree per topic that has the month being
+  paged, plus the message files, which the loader reads six at a time as before. The merged view
+  reads at most 200 topic folders (`MAX_MERGED_TOPICS`); a repository with more is refused with the
+  usual "too large" error before any topic is listed, and its topics are opened one at a time
+  (`topicLoader`). `Loader` wraps its
+  source in it, so no caller changes. A message's folder and month must agree with its front matter
+  (issues are reported like the month rule); an id in two places collapses to one item, as today.
+  `topicLoader(source, topic)` is the same view for one topic: its folder plus the legacy messages
+  whose file name ends in that topic (a hint, because an id alone cannot say the topic: `x-api` and
+  `api` end alike), paged on demand, listing nothing of other topics. The loader then keeps only
+  messages whose parsed topic is that topic (`LoaderOptions.keep`); a hinted legacy file that turns
+  out to belong elsewhere is read once and dropped, never shown or read again, so such a page can
+  hold a few fewer messages than its size.
+
+Until the topic list UI (slice V2), the viewer shows the merged inbox of a topic repository: the
+newest page across all topics, with "Load older".
 
 ### Loading and paging
 
