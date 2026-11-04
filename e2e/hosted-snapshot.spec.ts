@@ -2,6 +2,9 @@
 // folder, and follows the file as it is replaced. Synthetic data only. The "@csp" tag also runs
 // these in the WebKit project (see playwright.config.ts).
 
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { en, LOCALE_NAMES, LOCALES } from "../src/i18n/catalog";
@@ -165,5 +168,53 @@ test("a hosted snapshot of topic folders shows new messages in an existing month
   );
   await page.getByRole("button", { name: en["bar.refresh"], exact: true }).click();
   await expect(page.getByText("Third by button.")).toBeVisible();
+  expect(foreign).toEqual([]);
+});
+
+// The All view is the whole conversation across topics, also straight after a reload and on a
+// phone; screenshots: PLAYWRIGHT_SCREENSHOT_DIR=<dir> pnpm exec playwright test e2e/hosted-snapshot.spec.ts -g "All view"
+test("the All view shows every topic after a reload and on a phone @csp", async ({ page }) => {
+  const ids = ["2026-11-04T0901-alice-agent-api-01", "2026-11-04T0902-alice-agent-ops-01"];
+  const topics = ["api", "ops"];
+  const body = JSON.stringify({
+    schemaVersion: 1,
+    generatedAt: "2026-11-04T09:00:00.000Z",
+    revision: "r1",
+    files: [
+      {
+        path: ".agent-collab",
+        text: "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent\n",
+      },
+      ...ids.map((id, n) => ({
+        path: `topics/${topics[n] as string}/inbox/2026-11/${id}.md`,
+        text: messageText(
+          id,
+          "alice-agent",
+          topics[n] as string,
+          {},
+          `Message in ${topics[n] as string}.`,
+        ),
+      })),
+    ],
+  });
+  const { foreign } = await deploy(page, () => body);
+  await page.goto("/");
+  await expect(page.getByText("Message in api.")).toBeVisible();
+  await expect(page.getByText("Message in ops.")).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByText("Message in api.")).toBeVisible();
+  await expect(page.getByText("Message in ops.")).toBeVisible();
+  await expect(page.getByText(en["chat.empty"])).toHaveCount(0);
+  const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
+  mkdirSync(directory, { recursive: true });
+  await page.screenshot({ path: join(directory, "all-view-after-reload.png") });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await page.getByRole("button", { name: en["nav.all"], exact: true }).click();
+  await expect(page.getByText("Message in api.")).toBeVisible();
+  await expect(page.getByText("Message in ops.")).toBeVisible();
+  await page.screenshot({ path: join(directory, "all-view-after-reload-phone.png") });
   expect(foreign).toEqual([]);
 });

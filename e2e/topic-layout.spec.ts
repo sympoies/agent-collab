@@ -1,5 +1,6 @@
-// A repository in the topic layout with 5,000 messages: the page opens by reading one page of
-// messages, not the repository (docs/design/topics-and-scale.md, section 6.1). Synthetic data only.
+// A repository in the topic layout with 5,000 messages: the page opens on All, which reads the
+// newest page of every topic, never the whole repository (docs/design/topics-and-scale.md,
+// section 6.1). Synthetic data only.
 
 import { expect, test, type Route } from "@playwright/test";
 
@@ -69,7 +70,7 @@ function json(route: Route, value: unknown, headers: Record<string, string> = {}
   });
 }
 
-test("a 5,000-message topic repository lists first and loads the selected topic on demand", async ({
+test("a 5,000-message topic repository opens on All with every topic's newest page and pages one topic on demand", async ({
   page,
 }) => {
   const requests: string[] = [];
@@ -141,35 +142,31 @@ test("a 5,000-message topic repository lists first and loads the selected topic 
   await page.getByLabel("Access token").fill("fake-token");
   await page.getByRole("button", { name: "Save and open" }).click();
 
-  const said = (message: Fixture) => `Synthetic message number ${String(message.n)} for`;
   const selectedTopic = "topic-7";
   await expect(page.getByRole("button", { name: selectedTopic, exact: true })).toBeVisible();
   const messageBlobs = () => requests.filter((path) => path.startsWith("/git/blobs/message:"));
   const numbers = (paths: string[]) =>
     paths.map((path) => Number(path.slice("/git/blobs/message:".length))).sort((x, y) => x - y);
-  expect(messageBlobs()).toEqual([]);
-  await page.getByRole("button", { name: selectedTopic, exact: true }).click();
-  const topicMessages = NEWEST_FIRST.filter((message) => message.topic === selectedTopic);
-  const wanted = (count: number) =>
-    topicMessages
+  const newestOf = (topic: string, count: number) =>
+    NEWEST_FIRST.filter((message) => message.topic === topic)
       .slice(0, count)
-      .map((m) => m.n)
-      .sort((x, y) => x - y);
-  const newest = topicMessages[0] as Fixture;
-  await expect(page.getByText(said(newest))).toBeVisible();
-  // Exactly the selected topic's newest page; other topics' message files are not fetched.
-  expect(numbers(messageBlobs())).toEqual(wanted(50));
-  expect(requests.length).toBeLessThan(150);
-  // The background activity reads list each topic's newest month, and the selected topic its
-  // first pages; no topic's whole history is listed.
-  expect(
-    requests.filter((path) => path.startsWith("/git/trees/month:")).length,
-  ).toBeLessThanOrEqual(24);
-  await expect(page.locator(".message")).toHaveCount(50);
+      .map((m) => m.n);
+  const wanted = (counts: Record<string, number>) =>
+    TOPICS.flatMap((topic) => newestOf(topic, counts[topic] ?? 50)).sort((x, y) => x - y);
 
+  // All is what opens: every topic's newest page, read in the background while the view says how
+  // many topics are done; "No messages yet." never shows meanwhile.
+  await expect(page.locator(".message")).toHaveCount(TOPICS.length * 50);
+  await expect(page.locator(".all-status")).toHaveCount(0);
+  await expect(page.locator("p.empty")).toHaveCount(0);
+  expect(numbers(messageBlobs())).toEqual(wanted({}));
+
+  // Choosing a topic reads nothing more; its older pages come one page at a time.
+  await page.getByRole("button", { name: selectedTopic, exact: true }).click();
+  await expect(page.locator(".message")).toHaveCount(50);
+  expect(numbers(messageBlobs())).toEqual(wanted({}));
   await page.getByRole("button", { name: "Load older messages" }).click();
   await expect(page.locator(".message")).toHaveCount(100);
-  // The second page is exactly the next 50 messages in the selected topic.
-  expect(numbers(messageBlobs())).toEqual(wanted(100));
+  expect(numbers(messageBlobs())).toEqual(wanted({ [selectedTopic]: 100 }));
   expect(unhandled).toEqual([]);
 });

@@ -276,10 +276,18 @@ and UI reading more of the repository, never writing.
    fetched lazily for the topics on screen, never message files. (V2 note: the cut at the visible
    limit of 12 needs the activity of every open topic, so the viewer reads it in the background after
    the list is shown, with bounded concurrency; closed topics are read once their group is opened.)
-3. **A topic's messages are loaded on demand**, with the loader's existing paging over that topic's
-   `inbox/YYYY-MM` folders, newest first. Opening a repository reads no message file until a topic
-   is chosen, except for the Attention view (6.3).
-4. The "All" view merges the topics already loaded; it does not load every topic.
+3. **A topic's messages are loaded with the loader's existing paging** over that topic's
+   `inbox/YYYY-MM` folders, newest first: a topic's first page when the topic is chosen or when
+   the All view needs it (item 4), older pages on request.
+4. **The "All" view is the union of every topic that is not closed, plus any closed topic the viewer
+   opened.** While it is shown, the viewer reads the newest page of each such topic in the
+   background, four topics at a time (the queue of 6.1 item 2), so All is complete right after a
+   reload and after switching topics. Until every topic is read the view says "Loading topics: n of
+   m" and shows "Loading messages..." instead of "No messages yet."; the empty text means no topic has
+   a message. A topic that failed to read keeps the count short (and the error visible) and is tried
+   again at the next refresh. Closed topics are not read for All; a note says they appear once
+   opened. On a phone the queue starts only when All is chosen, so the topic list itself reads no
+   message. Leaving All stops the queue; reads in flight finish and returning resumes.
 5. Legacy `inbox/` messages are read with the existing loader code and merged into their topics.
    The flat and monthly layouts keep working exactly as today.
 
@@ -287,7 +295,13 @@ Request budget for a cold anonymous open of a repository with 12 topics, counted
 repository metadata (1), ref (1), commit (1), root tree (1), `topics/` tree (1), root `index.md` (1):
 **about 6 requests** before any message, against about 24 today for a small repository (and about 55
 for one with a full first page of 50 messages: today's open reads that page at once). Opening one
-topic adds its `inbox` tree, the month trees and the files of its first page.
+topic adds its `inbox` tree, the month trees and the files of its first page. The All view does
+this for every topic that is not closed: with T such topics about T x (2 + months in the first page +
+up to 50 files) requests, so up to about 55 x T (12 topics: about 650; 200 topics: about 11,000),
+bounded to four topics at a time, never repeated for an unchanged topic (6.2). That is free for a
+local folder and a hosted snapshot; against the GitHub API it is the cost of opening All, so a
+repository with many topics needs a smaller page per topic or an explicit "load all" action
+(like Attention and search); neither is built yet.
 
 ### 6.2 Caching
 

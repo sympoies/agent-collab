@@ -389,7 +389,8 @@ Slice V3, part 1 (design 6.3 and 6.4), without UI:
   Rows are untrusted (6.5): opening one loads the message, which decides.
 
 **The topic list UI (slice V2).** A repository in the topic layout opens as a conversation list and
-reads no message until a topic is chosen (`TopicList`, `src/ui/TopicList.tsx`):
+lists its topics from a few requests and reads messages only for the view that needs them
+(`TopicList`, `src/ui/TopicList.tsx`):
 
 - The fixed entries come first, in this order: All, Questions, Files; then the open topics, most
   recently active first and by name for equal or unknown activity (`sortTopicSummaries`), then a
@@ -405,10 +406,13 @@ reads no message until a topic is chosen (`TopicList`, `src/ui/TopicList.tsx`):
   every open topic with bounded concurrency, because the cut at 12 needs it; closed topics are read
   only once their group is opened. A refresh re-reads the topics whose tree id changed, and retries
   the ones that failed.
-- A topic's messages load when it is opened, through the topic's own loader (paging and date jumps
-  are that loader's). All, Questions and Files work on the topics loaded so far; the page says so
-  until one is open. On a phone the list is the first screen and a topic is a drill-down with a back
-  control.
+- A topic's messages load through the topic's own loader (paging and date jumps are that loader's).
+  All is the union of every topic that is not closed and any closed topic the viewer opened: it reads
+  their newest pages in the background, four topics at a time, and says "Loading topics: n of m" (and
+  "Loading messages..." in place of "No messages yet.") until all are read; closed topics are noted
+  as appearing once opened (topics-and-scale.md 6.1). Questions and Files work on the topics loaded
+  so far. On a phone the list is the first screen, a topic is a drill-down with a back control, and
+  All reads nothing until it is chosen.
 
 A repository in any other layout, and the demos, keep the single conversation list built from the
 loaded messages.

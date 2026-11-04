@@ -361,14 +361,19 @@ export function ChatView({
   people,
   attachments,
   earlier,
+  loading = false,
 }: {
+  /** Topics are still being read, so no rows is not yet "no messages". */
+  loading?: boolean;
   rows: readonly Row[];
   people: People;
   attachments: AttachmentContext;
   earlier: Earlier;
 }) {
   const t = useT();
-  if (rows.length === 0) return <p className="empty">{t("chat.empty")}</p>;
+  if (rows.length === 0) {
+    return <p className="empty">{t(loading ? "chat.loading" : "chat.empty")}</p>;
+  }
   const newMarkerIndex = rows.findIndex(
     (row) => row.kind === "group" && row.messages.some((view) => view.fresh),
   );

@@ -564,6 +564,10 @@ button:hover {
   color: var(--muted);
 }
 
+.all-status {
+  color: var(--muted);
+}
+
 .topic-heading {
   overflow-wrap: anywhere;
 }

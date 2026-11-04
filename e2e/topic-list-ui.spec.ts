@@ -242,7 +242,11 @@ test.describe("topic list navigation", () => {
           } else {
             await expect(page.locator(".conversation")).toBeVisible();
           }
-          expect(requests.some((path) => path.startsWith("/git/blobs/message:"))).toBe(false);
+          // All is on screen at 1280 px and reads the topics; the phone's list reads no message.
+          const readsMessage = () =>
+            requests.some((path) => path.startsWith("/git/blobs/message:"));
+          if (width === 390) expect(readsMessage()).toBe(false);
+          else await expect.poll(readsMessage).toBe(true);
           // A closed topic is read only once its group is opened.
           expect(requests).not.toContain("/git/trees/topic:archive");
 

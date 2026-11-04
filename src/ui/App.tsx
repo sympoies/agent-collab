@@ -39,8 +39,12 @@ import { QuestionsView } from "./QuestionsView";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
 import { useMergedSnapshot } from "./merged-snapshot";
+import { mapLimit } from "../source/map-limit";
 import { useTopicDigests } from "./useTopicDigests";
 import { buildRows, topicSummaries } from "./timeline";
+
+/** Topics the All view reads at once, like the topic activity reads. */
+const ALL_CONCURRENCY = 4;
 
 /** Names a source that is not a repository, so it is always visible which data is shown. */
 export interface SourceIndicator {
@@ -176,12 +180,22 @@ export function App({
   const [openedTopics, setOpenedTopics] = useState<readonly string[]>([]);
   const [closedOpen, setClosedOpen] = useState(false);
   // What is loaded: the topics opened so far in the topic layout, the one loader otherwise.
+  // Once All has asked for the topics, they stay part of what is loaded, for every view.
+  const [allQueued, setAllQueued] = useState(false);
+  const allNames = useMemo(
+    () => topicList.filter((summary) => summary.status !== "closed").map((summary) => summary.name),
+    [topicList],
+  );
+  const loadedTopics = useMemo(
+    () => [...new Set([...openedTopics, ...(allQueued ? allNames : [])])],
+    [allNames, allQueued, openedTopics],
+  );
   const openedLoaders = useMemo(
     () =>
       topicLayout && topicSession !== null
-        ? openedTopics.map((name) => topicSession.loader(name))
+        ? loadedTopics.map((name) => topicSession.loader(name))
         : [loader],
-    [loader, openedTopics, topicLayout, topicSession],
+    [loadedTopics, loader, topicLayout, topicSession],
   );
   const snapshot = useMergedSnapshot(openedLoaders);
   // The budget the API reported with its latest response; null until a response carried one.
@@ -404,6 +418,47 @@ export function App({
   if (!listHeld.pointer && !listHeld.focus && listedTopics !== sortedTopics) {
     setListedTopics(sortedTopics);
   }
+  // All is every topic that is not closed, read in the background (at most four at a time) while
+  // it is shown, plus any closed topic the viewer opened. Until every one is read the view says
+  // how many are, so a partial list is never taken for the whole. On a phone it waits for the
+  // conversation pane, so the topic list stays free of reads.
+  const showingAll = view === "chat" && topic === null && topicLayout;
+  const allSession = showingAll && (!narrow || mobileConversation) ? topicSession : null;
+  const allKey = allNames.join("\n");
+  if (allSession !== null && !allQueued) setAllQueued(true);
+  const [allRead, setAllRead] = useState<ReadonlySet<string>>(() => new Set());
+  const allReadNow = useRef(allRead);
+  useEffect(() => {
+    if (allSession === null) return;
+    const stopped = new AbortController();
+    // A call, so the check after an await is not narrowed by the one before it.
+    const isStopped = () => stopped.signal.aborted;
+    const names = allKey === "" ? [] : allKey.split("\n");
+    void mapLimit(
+      names.filter((name) => !allReadNow.current.has(name)),
+      ALL_CONCURRENCY,
+      async (name) => {
+        if (isStopped()) return;
+        try {
+          await allSession.loader(name).openWithHead(allSession.currentHead);
+          allReadNow.current = new Set(allReadNow.current).add(name);
+          setAllRead(allReadNow.current);
+        } catch (reason) {
+          // Left unread: the count keeps saying so, and the next sync of the topic list tries again.
+          if (!isStopped()) setError(reason);
+        }
+      },
+    );
+    return () => {
+      stopped.abort();
+    };
+  }, [allKey, allSession, topicSyncs]);
+  const allTotal = allNames.length;
+  const allDone = allNames.filter((name) => allRead.has(name)).length;
+  const allLoading = showingAll && allDone < allTotal;
+  const closedHidden = topicList.some(
+    (summary) => summary.status === "closed" && !loadedTopics.includes(summary.name),
+  );
   const openTopic = (summary: TopicSummary, button: HTMLButtonElement) => {
     if (topicSession === null) return;
     setOpenedTopics((previous) =>
@@ -854,8 +909,15 @@ export function App({
                       ? (topicList.find((summary) => summary.name === topic)?.title ?? topic)
                       : `#${topic}`}
             </h2>
-            {topicLayout && openedTopics.length === 0 && (
+            {topicLayout && loadedTopics.length === 0 && (
               <p className="topic-prompt">{t("topic.selectPrompt")}</p>
+            )}
+            {showingAll && (allLoading || closedHidden) && (
+              <p className="all-status" role="status">
+                {allLoading
+                  ? t("all.loading", { done: allDone, total: allTotal })
+                  : t("all.closedNote")}
+              </p>
             )}
             {view === "questions" && (
               <QuestionsView
@@ -907,6 +969,7 @@ export function App({
             {view === "chat" && (
               <ChatView
                 rows={rows}
+                loading={allLoading}
                 people={people}
                 attachments={attachments}
                 earlier={{
