@@ -513,6 +513,29 @@ describe("topic scoping and layout edge cases", () => {
   });
 });
 
+describe("listings kept across revisions", () => {
+  it("lists only the topics and months whose folder id changed", async () => {
+    const base = (): Record<string, string> =>
+      repoOf([...["api", "ops", "release"].flatMap((t) => [inTopic(t, 3, 1), inTopic(t, 5, 2)])]);
+    const source = new FixtureSource(base());
+    const loader = new Loader(source);
+    await loader.open();
+    const count = (topic: string) =>
+      source.listings.filter((p) => p.startsWith(`topics/${topic}/`)).length;
+    const before = ["api", "ops", "release"].map(count);
+    source.commit({ ...base(), ...Object.fromEntries([inTopic("ops", 7, 3)]) });
+    expect(await loader.refresh()).toBe(1);
+    // The topics directory is listed again; api and release are not, ops is.
+    expect(count("api")).toBe(before[0]);
+    expect(count("release")).toBe(before[2]);
+    expect(count("ops")).toBeGreaterThan(before[1] as number);
+    // And nothing is listed when nothing changed.
+    const listings = source.listings.length;
+    expect(await loader.refresh()).toBe(0);
+    expect(source.listings.length).toBe(listings);
+  });
+});
+
 describe("a large repository", () => {
   it("opens a 5,000-message topic repository by reading one page, and pages on demand", async () => {
     const topics = Array.from({ length: 12 }, (_, i) => `topic-${String(i)}`);

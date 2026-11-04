@@ -328,6 +328,34 @@ pieces, both reading only through `MessageSource`:
   out to belong elsewhere is read once and dropped, never shown or read again, so such a page can
   hold a few fewer messages than its size.
 
+### Topic session, caching and generated files
+
+Slice V4 (design 6.2 and 6.5), in the source and loader layers; the topic list UI uses it.
+
+- **`TopicSession`** (`src/loader/topic-session.ts`) holds the topic list, one loader per opened
+  topic and the digests, all in memory for the session and keyed by object id. `refresh()` is one
+  conditional request when nothing moved. When the head moved it reads the `topics/` listing again
+  and refreshes only the opened topics whose tree id changed; an unchanged topic, **closed or just
+  idle**, makes no request (closing is not needed for this; it only guarantees the id will not
+  change). The root `index.md` is read again only when its object id changed. A refresh of a
+  changed topic costs that topic's loader refresh (a head check, its changed trees and new files).
+- **Merged inbox memo** (`TopicLayoutSource`): the listings of `topics/<t>/inbox` and of month
+  folders are kept across revisions, keyed by the folder's object id, so a refresh lists only the
+  topics and months that changed, and only what the current revision uses is kept.
+- **Private repositories stay in memory.** Nothing in the session or the memo touches browser
+  storage (a test spies on it); the public demo keeps only its existing guarded blob cache.
+- **Per-topic digest** (`session.digest(topic)`): the message count and newest id from the topic's
+  `index.md` when it can be trusted, cached while the topic's tree id is unchanged; otherwise the
+  newest listed file name with the count unknown (never guessed).
+- **Generated files are untrusted** (`src/message/generated-index.ts`, `plain-text.ts`): a file
+  over 2 MiB is not read or parsed, lines over 4,000 characters are skipped, at most 5,000 rows and
+  24 cells per row are read (more marks the file truncated), every cell is plain text (control,
+  bidirectional and zero-width characters dropped, a markdown link reduced to its label), an id must
+  follow the id grammar and agree with the sender and topic of its own row, and a file with any bad
+  row is not believed about the count. A row becomes a request only through `topicMessagePathFor`,
+  which builds `topics/<topic>/inbox/<month>/<id>.md` from validated parts and refuses anything
+  else. `rowAgrees` compares a row with the message it names: the message wins.
+
 Until the topic list UI (slice V2), the viewer shows the merged inbox of a topic repository: the
 newest page across all topics, with "Load older".
 

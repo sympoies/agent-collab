@@ -11,7 +11,7 @@ import {
   type TopicSummary,
 } from "../message/topic-layout";
 import { TopicLayoutSource } from "../source/topic-layout";
-import { SourceError, type MessageSource } from "../source/types";
+import { SourceError, type DirectoryEntry, type MessageSource } from "../source/types";
 import { Loader, SetupError, type LoaderOptions } from "./loader";
 
 const MARKER_FILE = ".agent-collab";
@@ -33,19 +33,7 @@ export async function readTopicList(source: MessageSource): Promise<TopicList> {
   const head = await source.head(null);
   if (head === "not-modified") throw new SourceError("unexpected", "");
   const root = await source.listDirectory(head.revision, "");
-  const marker = root.find((entry) => entry.kind === "file" && entry.name === MARKER_FILE);
-  if (marker === undefined) {
-    throw new SetupError(`not a collaboration repository (no ${MARKER_FILE} marker)`, "no-marker");
-  }
-  const text = await source.readFile(marker);
-  const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
-  if (firstLine !== SUPPORTED_PROTOCOL) {
-    throw new SetupError(`unsupported collaboration protocol: ${firstLine}`, "protocol", firstLine);
-  }
-  const layout = markerLayout(text);
-  if (!isKnownLayout(layout)) {
-    throw new SetupError(`unsupported inbox layout: ${layout}`, "layout", layout);
-  }
+  const layout = await readLayout(source, root);
   if (layout !== "topic") return { layout, topics: [] };
 
   const folders = await listOrEmpty(source, head.revision, "topics");
@@ -77,6 +65,27 @@ export async function readTopicList(source: MessageSource): Promise<TopicList> {
   const byOrder = (a: TopicSummary, b: TopicSummary) =>
     a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
   return { layout, topics: [...withFolder.sort(byOrder), ...legacyOnly.sort(byOrder)] };
+}
+
+/** Reads the marker of a listed root and returns its layout; throws the setup errors. */
+export async function readLayout(
+  source: MessageSource,
+  root: readonly DirectoryEntry[],
+): Promise<string> {
+  const marker = root.find((entry) => entry.kind === "file" && entry.name === MARKER_FILE);
+  if (marker === undefined) {
+    throw new SetupError(`not a collaboration repository (no ${MARKER_FILE} marker)`, "no-marker");
+  }
+  const text = await source.readFile(marker);
+  const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
+  if (firstLine !== SUPPORTED_PROTOCOL) {
+    throw new SetupError(`unsupported collaboration protocol: ${firstLine}`, "protocol", firstLine);
+  }
+  const layout = markerLayout(text);
+  if (!isKnownLayout(layout)) {
+    throw new SetupError(`unsupported inbox layout: ${layout}`, "layout", layout);
+  }
+  return layout;
 }
 
 async function listOrEmpty(source: MessageSource, revision: string, path: string) {
