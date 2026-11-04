@@ -4,7 +4,13 @@
 // a topic whose tree id changed is read again; an unchanged topic, closed or idle, costs nothing.
 // Nothing here touches browser storage: a private repository stays in memory.
 
-import { MAX_GENERATED_BYTES, parseTopicIndex, type TopicIndex } from "../message/generated-index";
+import {
+  MAX_GENERATED_BYTES,
+  parseTopicIndex,
+  parseTopicOpen,
+  type OpenItem,
+  type TopicIndex,
+} from "../message/generated-index";
 import { isTopicFolderName, parseRootIndex, type TopicSummary } from "../message/topic-layout";
 import { SourceError, type DirectoryEntry, type Head, type MessageSource } from "../source/types";
 import type { Loader, LoaderOptions } from "./loader";
@@ -17,6 +23,8 @@ export interface TopicDigest {
   /** The newest message id, from the index or, failing that, the newest listed file name. */
   readonly newestId: string | null;
   readonly fromIndex: boolean;
+  /** Every message id of the topic, sorted, when the index could be trusted (for unread counts). */
+  readonly ids?: readonly string[] | null;
 }
 
 interface TopicState {
@@ -30,6 +38,10 @@ export class TopicSession {
   private states = new Map<string, TopicState>();
   private readonly loaders = new Map<string, { loader: Loader; treeId: string | null }>();
   private readonly digests = new Map<string, { treeId: string | null; digest: TopicDigest }>();
+  private readonly openCache = new Map<
+    string,
+    { treeId: string | null; items: readonly OpenItem[] | null }
+  >();
   private indexCache: { objectId: string; rows: ReturnType<typeof parseRootIndex> } | null = null;
   private layout = "";
 
@@ -131,6 +143,36 @@ export class TopicSession {
     return digest;
   }
 
+  /**
+   * The rows of the topic's `open.md` (untrusted, 6.5), or null when the topic has none, it is too
+   * large or unreadable. Kept while the topic's tree id is unchanged.
+   */
+  async openItems(topic: string): Promise<readonly OpenItem[] | null> {
+    const state = this.states.get(topic);
+    const head = this.head;
+    if (state?.treeId == null || head === null || !isTopicFolderName(topic)) return null;
+    const known = this.openCache.get(topic);
+    if (known?.treeId === state.treeId) return known.items;
+    const entries = await this.optional(head.revision, `topics/${topic}`);
+    const file = entries.find((entry) => entry.kind === "file" && entry.name === "open.md");
+    let items: readonly OpenItem[] | null = null;
+    if (file !== undefined && (file.size ?? 0) <= MAX_GENERATED_BYTES) {
+      const text = await this.source.readFile(file).catch(() => null);
+      items = text === null ? null : parseTopicOpen(text, topic);
+    }
+    this.openCache.set(topic, { treeId: state.treeId, items });
+    return items;
+  }
+
+  /** The digest of a topic if it is already known for the current tree id; never fetches. */
+  cachedDigest(topic: string): TopicDigest | null {
+    const known = this.digests.get(topic);
+    const state = this.states.get(topic);
+    return known !== undefined && state !== undefined && known.treeId === state.treeId
+      ? known.digest
+      : null;
+  }
+
   private async readDigest(revision: string, topic: string): Promise<TopicDigest> {
     const entries = await this.optional(revision, `topics/${topic}`);
     const index = entries.find((entry) => entry.kind === "file" && entry.name === "index.md");
@@ -139,7 +181,12 @@ export class TopicSession {
       parsed = parseTopicIndex(await this.source.readFile(index).catch(() => ""), topic);
     }
     if (parsed !== null && parsed.count !== null) {
-      return { count: parsed.count, newestId: parsed.newestId, fromIndex: true };
+      return {
+        count: parsed.count,
+        newestId: parsed.newestId,
+        fromIndex: true,
+        ids: parsed.rows.map((row) => row.id),
+      };
     }
     return { count: null, newestId: await this.newestListed(revision, topic), fromIndex: false };
   }

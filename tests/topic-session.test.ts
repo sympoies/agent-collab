@@ -201,6 +201,7 @@ describe("the digest of a topic", () => {
       count: 2,
       newestId: id("topic-1", 2),
       fromIndex: true,
+      ids: [id("topic-1", 1), id("topic-1", 2)],
     });
     const indexReads = () => source.reads.filter((p) => p === "topics/topic-1/index.md").length;
     expect(indexReads()).toBe(1);
@@ -223,7 +224,7 @@ describe("the digest of a topic", () => {
       }),
     );
     await session.refresh();
-    expect(await session.digest("topic-1")).toEqual({
+    expect(await session.digest("topic-1")).toMatchObject({
       count: 3,
       newestId: id("topic-1", 3),
       fromIndex: true,

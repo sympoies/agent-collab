@@ -356,6 +356,36 @@ Slice V4 (design 6.2 and 6.5), in the source and loader layers; the topic list U
   which builds `topics/<topic>/inbox/<month>/<id>.md` from validated parts and refuses anything
   else. `rowAgrees` compares a row with the message it names: the message wins.
 
+### Topic state and the Attention data layer
+
+Slice V3, part 1 (design 6.3 and 6.4), without UI:
+
+- **Topic preferences** (`src/identity/topic-preferences.ts`): follow, mute, pin, hide and the
+  last-seen message id of each topic, per repository, in the same guarded storage as the identity
+  preferences (missing or throwing storage, quota errors and corrupt data leave the view working
+  from memory). They hold topic names and message ids only, never message text; every stored value
+  is validated on read (name grammar, id grammar, 500 entries per list), so a foreign or hostile
+  value is ignored. Following unmutes, muting unfollows, hiding unpins and pinning unhides. The
+  marker only moves forward. A topic that disappeared is ignored (`forExistingTopics`), not
+  forgotten. Two repositories with the same topic names keep separate records.
+- **Unread** (`unreadOf`): the topic digest's newest id against the last-seen marker. With the ids
+  from a trusted index it gives a count; otherwise only "something is new". A topic never seen
+  counts everything as unread.
+- **Attention** (`loadAttention`, `src/loader/attention.ts`): nothing is followed by default. For
+  the open, unmuted topics (closed and legacy-only ones are left out) it reads `open.md` through
+  the session and lists the rows addressed to the viewer; an Observer has none. Each topic read costs
+  its tree and its `open.md` (two requests, kept by tree id, so a second call costs nothing and a
+  changed topic costs only itself). At most 30 of the most recently active open topics are read
+  (`ATTENTION_TOPIC_LIMIT`, a chosen default, not measured) unless the caller passes `all`; the rest
+  are reported as `skipped`. Recency is only needed when there are more topics than the limit, and
+  it is **best effort above it**: topics whose digest is already known (the topic list shows them)
+  are ranked for free, then at most `limit` more digests are fetched, in name order, so a cold open
+  of thousands of topics costs a bounded number of requests (the same for 40 topics as for 200,
+  tested); topics never ranked are `skipped` and "load all" picks them up explicitly, and a later
+  call ranks the ones that were left over. A followed topic also loads its newest page, and its messages addressed to
+  the viewer are listed. A topic without a usable `open.md` is reported in `withoutOpenFile`.
+  Rows are untrusted (6.5): opening one loads the message, which decides.
+
 Until the topic list UI (slice V2), the viewer shows the merged inbox of a topic repository: the
 newest page across all topics, with "Load older".
 
