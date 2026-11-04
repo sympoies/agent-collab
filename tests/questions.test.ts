@@ -223,6 +223,18 @@ describe("deriveQuestionStates", () => {
     });
   });
 
+  it("does not count a named info without reply_to as a reminder", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any" });
+    const loose = parsed(2, "alice-agent", "info", { to: "bob-agent" });
+    expect(derive([question, loose])[0]).toMatchObject({ state: "open", reminders: [] });
+  });
+
+  it("follows the parser: a recipient list containing all is a broadcast and concludes", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any" });
+    const info = parsed(2, "alice-agent", "info", { reply_to: question.id, to: "all, bob-agent" });
+    expect(derive([question, info])[0]).toMatchObject({ state: "concluded", reminders: [] });
+  });
+
   it("returns one state per question and ignores unrelated replies", () => {
     const first = parsed(1, "alice-agent", "question", { replies: "2" });
     const second = parsed(2, "bob-agent", "question", { to: "carol-agent" });

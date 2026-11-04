@@ -1271,7 +1271,9 @@ test("identity choices still work when browser storage rejects reads and writes"
 });
 
 for (const code of ["ja", "zh-TW"] as const) {
-  test(`reminders are labeled and fit on a phone in ${LOCALE_NAMES[code]}`, async ({ page }) => {
+  test(`reminders are labeled and fit on a phone in ${LOCALE_NAMES[code]} @csp`, async ({
+    page,
+  }) => {
     const messages = catalogsByLocale[code];
     await page.setViewportSize({ width: 390, height: 844 });
     const assertRequests = await openViewer(page, "questions");
