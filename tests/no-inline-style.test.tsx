@@ -136,7 +136,7 @@ describe("no inline style attributes", () => {
 
   const press = async (host: HTMLElement, label: string) => {
     const target = [...host.querySelectorAll("button")].find((candidate) =>
-      candidate.textContent.startsWith(label),
+      (candidate.getAttribute("aria-label") ?? candidate.textContent).startsWith(label),
     );
     expect(target, label).toBeDefined();
     await act(async () => {

@@ -1347,6 +1347,7 @@ span.chip {
   padding: 6px 10px 0;
   color: var(--muted);
   font-size: 0.75rem;
+}
 
 /* A person's palette slot, set as data-slot by the components (no inline styles). */
 [data-slot="0"] {

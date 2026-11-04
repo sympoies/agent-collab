@@ -1540,6 +1540,14 @@ test("no inline style attribute and no CSP violation of ours @csp", async ({
   await page.getByRole("button", { name: "Files" }).click();
   await expect(page.locator("#conversation-heading")).toContainText("Files");
   await expectClean("files");
+  // The overflow menu of the phone toolbar, open.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expectClean("overflow menu");
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(page.getByRole("button", { name: "Profile & colors" })).toBeVisible();
   await page.getByRole("button", { name: "Profile & colors" }).click();
   await expect(page.locator(".profile .swatch").first()).toBeVisible();
   await expectClean("profile");
@@ -1552,6 +1560,7 @@ test("no inline style attribute and no CSP violation of ours @csp", async ({
     "chat with previews",
     "questions with receipts",
     "files",
+    "overflow menu",
     "profile",
     "settings again",
   ]);
