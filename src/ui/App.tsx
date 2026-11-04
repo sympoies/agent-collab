@@ -32,11 +32,11 @@ import { errorText, say } from "./errorText";
 import { IconButton } from "./IconButton";
 import { RefreshIcon } from "./icons";
 import { localDate, relativeTime } from "./relativeTime";
-import { Toolbar } from "./Toolbar";
+import { Toolbar, useNarrow } from "./Toolbar";
 import { RangeBar } from "./RangeBar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
-import { useFollowLatest } from "./follow-latest";
+import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
 import { useMergedSnapshot } from "./merged-snapshot";
 import { useTopicDigests } from "./useTopicDigests";
@@ -206,6 +206,7 @@ export function App({
   const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
   const messagePane = useRef<HTMLElement | null>(null);
+  const [dateLanding, setDateLanding] = useState<DateLanding | null>(null);
   const conversationHeading = useRef<HTMLHeadingElement | null>(null);
   const lastTopicButton = useRef<HTMLButtonElement | null>(null);
   const announcedMessages = useRef<Set<string>>(new Set());
@@ -237,13 +238,36 @@ export function App({
 
   // The panel is an overlay: Escape or a click outside closes it and focus goes back to the
   // control that opens it (the icon button, or the More button on a phone).
+  const restoreProfileFocus = useRef(false);
   const closeProfile = () => {
+    restoreProfileFocus.current = true;
     setProfileOpen(false);
+  };
+  // Focus goes back after the panel is gone: while a phone sheet is open the rest of the page is
+  // inert, which cannot take focus.
+  useEffect(() => {
+    if (profileOpen || !restoreProfileFocus.current) return;
+    restoreProfileFocus.current = false;
     (
       document.querySelector<HTMLElement>(".bar-actions [aria-controls=profile-panel]") ??
       document.querySelector<HTMLElement>(".bar-actions [aria-haspopup=menu]")
     )?.focus();
-  };
+  }, [profileOpen]);
+  const narrow = useNarrow();
+  const sheetOpen = profileOpen && narrow;
+  // The phone sheet covers the whole screen: nothing behind it may take focus.
+  useEffect(() => {
+    if (!sheetOpen) return;
+    const behind = [
+      ...document.querySelectorAll<HTMLElement>(
+        ".app-shell > :not(header), .app-shell > header > :not(#profile-panel)",
+      ),
+    ];
+    for (const element of behind) element.inert = true;
+    return () => {
+      for (const element of behind) element.inert = false;
+    };
+  }, [sheetOpen]);
   useEffect(() => {
     if (!profileOpen) return;
     const onKey = (event: KeyboardEvent) => {
@@ -462,6 +486,7 @@ export function App({
     mobileConversation,
     rows,
     pendingJump,
+    dateLanding,
   );
   const showMessage = (id: string) => {
     // The hash scrolls to the message and styles it through :target.
@@ -543,7 +568,7 @@ export function App({
   const retryingAfterLimit = retryAt !== null && readyRetryAt?.getTime() !== retryAt.getTime();
 
   return (
-    <div className="app">
+    <div className="app app-shell">
       <header className="bar">
         <h1>{typeof title === "string" ? title : t(title.key, title.params)}</h1>
         {source !== undefined && (
@@ -845,7 +870,14 @@ export function App({
                 jumpedTo={paging.jumpedTo}
                 disabled={busy || retryingAfterLimit}
                 onJump={(date) => {
-                  run(() => selectedLoader.jumpTo(date), 0, "jump");
+                  run(
+                    async () => {
+                      await selectedLoader.jumpTo(date);
+                      setDateLanding({ date });
+                    },
+                    0,
+                    "jump",
+                  );
                 }}
               />
             )}

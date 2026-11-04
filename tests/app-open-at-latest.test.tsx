@@ -20,6 +20,10 @@ function messagePath(month: string, day: number, topic: string, from = "alice-ag
   return `inbox/${month}/${id}.md`;
 }
 
+function messageId(day: string, topic: string): string {
+  return `${day}T0900-alice-agent-${topic}-01`;
+}
+
 function repository(entries: readonly (readonly [string, number, string])[]) {
   const files: Record<string, string> = { ".agent-collab": MARKER };
   for (const [month, day, topic] of entries) {
@@ -78,6 +82,15 @@ describe("a conversation opens at its latest message", () => {
       pane().dispatchEvent(new Event("scroll"));
     });
     define("scrollTo", { value: scrollTo, writable: true });
+    // Messages stack LINE apart in the pane; the pane starts at the top of the viewport.
+    define("getBoundingClientRect", {
+      value(this: HTMLElement) {
+        const index = isPane(this) ? -1 : [...document.querySelectorAll(".message")].indexOf(this);
+        const top = index < 0 ? 0 : index * LINE - scrollY;
+        return { top, bottom: top + LINE, left: 0, right: 0, width: 0, height: LINE, x: 0, y: top };
+      },
+      writable: true,
+    });
     window.location.hash = "";
   });
 
@@ -214,5 +227,46 @@ describe("a conversation opens at its latest message", () => {
     expect(window.location.hash).toBe("#msg-2026-09-01T0900-alice-agent-api-01");
     expect(scrollTo).not.toHaveBeenCalled();
     expect(scrollY).toBe(0);
+  });
+
+  it("keeps a message that the address already names", async () => {
+    window.location.hash = `#msg-${messageId("2026-09-01", "api")}`;
+    await render(new FixtureSource(repository(BASE)));
+    expect(document.getElementById(`msg-${messageId("2026-09-01", "api")}`)).not.toBeNull();
+    expect(scrollTo).not.toHaveBeenCalled();
+    expect(scrollY).toBe(0);
+  });
+
+  async function jumpToDate(host: HTMLElement, date: string) {
+    const input = host.querySelector<HTMLInputElement>('input[type="date"]') as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, date);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      input.form?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  it("lands at the start of the requested day after Jump to date, even from the bottom", async () => {
+    const source = new FixtureSource(repository(BASE));
+    const { host, loader } = await render(source);
+    expect(scrollY).toBe(bottom());
+    await jumpToDate(host, "2026-10-02");
+    // The page ends on that day: 09-01, 09-02, 10-01 and the two messages of 10-02 are loaded
+    // in order, and the day starts at the fourth message, above the bottom.
+    const ids = [...document.querySelectorAll(".message")].map((node) => node.id);
+    const day = ids.findIndex((id) => id.startsWith("msg-2026-10-02T"));
+    expect(day).toBeGreaterThan(0);
+    expect(scrollY).toBe(day * LINE);
+    expect(scrollY).toBeLessThan(bottom());
+    // Following is off: a new message does not pull the reader down.
+    source.commit(repository([...BASE, ["2026-10", 5, "api"]]));
+    await act(async () => {
+      await loader.refresh();
+    });
+    expect(scrollY).toBe(day * LINE);
   });
 });

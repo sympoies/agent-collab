@@ -213,19 +213,26 @@ button:hover {
   outline-offset: 3px;
 }
 
-/* A fixed-height shell: the page does not scroll; the topic list and the message pane do. */
 .app {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 0 20px 72px;
+}
+
+/*
+ * The viewer is a fixed-height shell: the page does not scroll; the topic list and the message
+ * pane do. The welcome and settings screens are plain pages and keep scrolling.
+ */
+.app-shell {
   display: flex;
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
-  max-width: 1360px;
-  margin: 0 auto;
-  padding: 0 20px;
+  padding-bottom: 0;
   overflow: hidden;
 }
 
-.app > :not(.workspace) {
+.app-shell > :not(.workspace) {
   flex: none;
 }
 
@@ -589,7 +596,7 @@ button:hover {
   scroll-behavior: smooth;
   /* The pane keeps the reader in place itself when older messages are added (follow-latest.ts). */
   overflow-anchor: none;
-  padding: 16px clamp(10px, 3vw, 36px) 36px;
+  padding: 16px clamp(10px, 3vw, 36px) 72px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -1491,7 +1498,11 @@ span.chip {
 
 @media (max-width: 720px) {
   .app {
-    padding: 0 10px;
+    padding: 0 10px 68px;
+  }
+
+  .app-shell {
+    padding-bottom: 0;
   }
 
   .bar {
@@ -1578,7 +1589,7 @@ span.chip {
   }
 
   .conversation {
-    padding: 12px 10px 24px;
+    padding: 12px 10px 72px;
     border-radius: 12px;
   }
 
@@ -1776,7 +1787,7 @@ span.chip {
 }
 
 @media print {
-  .app,
+  .app-shell,
   .workspace,
   .topics-pane,
   .conversation {

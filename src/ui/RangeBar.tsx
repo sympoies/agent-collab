@@ -29,7 +29,7 @@ export function RangeBar({ messages, jumpedTo, disabled, onJump }: RangeBarProps
   useEffect(() => {
     if (disabled || !awaitingJump.current) return;
     awaitingJump.current = false;
-    input.current?.focus();
+    input.current?.focus({ preventScroll: true });
   }, [disabled]);
   const jump = (target: string | null) => {
     awaitingJump.current = true;
