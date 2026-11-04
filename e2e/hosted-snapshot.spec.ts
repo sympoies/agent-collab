@@ -119,3 +119,49 @@ for (const code of LOCALES) {
     ).toBeLessThanOrEqual(0);
   });
 }
+
+// A snapshot in the topic layout: a message added to a month folder that is already listed must
+// appear without a reload, by the timer and by the refresh button.
+test("a hosted snapshot of topic folders shows new messages in an existing month @csp", async ({
+  page,
+}) => {
+  const topicId = (n: number) => `2026-11-04T090${String(n)}-alice-agent-general-01`;
+  const topicSnapshot = (revision: string, bodies: readonly string[], generatedAt: string) =>
+    JSON.stringify({
+      schemaVersion: 1,
+      generatedAt,
+      revision,
+      files: [
+        {
+          path: ".agent-collab",
+          text: "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent\n",
+        },
+        ...bodies.map((body, n) => ({
+          path: `topics/general/inbox/2026-11/${topicId(n + 1)}.md`,
+          text: messageText(topicId(n + 1), "alice-agent", "general", {}, body),
+        })),
+      ],
+    });
+  let body = topicSnapshot("r1", ["First topic message."], "2026-11-04T09:00:00.000Z");
+  const { foreign } = await deploy(page, () => body);
+  await page.clock.install();
+  await page.goto("/");
+  await expect(page.getByText("First topic message.")).toBeVisible();
+
+  body = topicSnapshot(
+    "r2",
+    ["First topic message.", "Second by timer."],
+    "2026-11-04T09:01:00.000Z",
+  );
+  await page.clock.fastForward(60_000);
+  await expect(page.getByText("Second by timer.")).toBeVisible();
+
+  body = topicSnapshot(
+    "r3",
+    ["First topic message.", "Second by timer.", "Third by button."],
+    "2026-11-04T09:02:00.000Z",
+  );
+  await page.getByRole("button", { name: en["bar.refresh"], exact: true }).click();
+  await expect(page.getByText("Third by button.")).toBeVisible();
+  expect(foreign).toEqual([]);
+});
