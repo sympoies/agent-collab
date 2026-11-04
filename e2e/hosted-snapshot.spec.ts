@@ -53,7 +53,7 @@ test("a hosted snapshot opens by itself and follows the file @csp", async ({ pag
   await page.goto("/");
   await expect(page.getByText("First hosted message.")).toBeVisible();
   await expect(page.getByText(en["bar.hostedSnapshot"])).toBeVisible();
-  await expect(page.locator(".last-changed")).toContainText("Snapshot generated");
+  await expect(page.locator(".last-changed")).toContainText("Snapshot updated");
   await expect(page.locator("h1")).toHaveCount(1);
 
   // The refresh interval picks up a replaced file.
@@ -88,6 +88,31 @@ for (const code of LOCALES) {
     await deploy(page, () => snapshot("r1", ["Hosted message."], "2026-11-04T09:00:00.000Z"));
     await page.goto("/");
     await expect(page.getByText(messages["bar.hostedSnapshot"])).toBeVisible();
+    await expect(page.locator("h1")).toHaveCount(1);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+  });
+}
+
+for (const code of LOCALES) {
+  test(`the welcome screen of an unreadable snapshot fits 390px in ${LOCALE_NAMES[code]} @csp`, async ({
+    page,
+  }) => {
+    const messages = catalogsByLocale[code];
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript((locale) => {
+      localStorage.setItem("agent-collab-viewer.locale", locale);
+    }, code);
+    // The page's probe finds the file; every later fetch (the one that opens it) does not.
+    let served = 0;
+    await deploy(page, () => {
+      served += 1;
+      return served === 1 ? snapshot("r1", ["Hosted message."], "2026-11-04T09:00:00.000Z") : null;
+    });
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: messages["welcome.openHosted"] })).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText(messages["hosted.unreadable"]);
     await expect(page.locator("h1")).toHaveCount(1);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),

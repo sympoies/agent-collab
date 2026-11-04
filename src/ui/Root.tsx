@@ -401,7 +401,8 @@ export function Root(props: RootProps) {
   const showHosted = async (): Promise<void> => {
     if (createHostedSource === null) return;
     const operation = ++navigation.current;
-    const loader = new Loader(createHostedSource());
+    const source = createHostedSource();
+    const loader = new Loader(source);
     try {
       await loader.open();
     } catch {
@@ -414,7 +415,10 @@ export function Root(props: RootProps) {
       viewer(loader, { key: "app.hostedTitle" }, [], MEMORY_ONLY, null, undefined, null, {
         label: "bar.hostedSnapshot",
         experimental: false,
-        pointInTime: true,
+        pointInTime: {
+          generatedAt: () => source.snapshotTime?.() ?? null,
+          checkedAt: () => source.checkedAt?.() ?? null,
+        },
       }),
     );
   };

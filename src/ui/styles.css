@@ -287,6 +287,11 @@ button:hover {
   color: var(--secondary);
 }
 
+.snapshot-warning {
+  color: var(--warm-note);
+  font-weight: 650;
+}
+
 .local-unsupported {
   max-width: 560px;
   margin: 0;

@@ -74,17 +74,21 @@ function omitted(path, size) {
  * Builds the snapshot of a repository tree. `readBytes(entry)` returns the bytes of a blob; it is
  * not called for a file whose listed size is over the limit. Throws, with the reason, when the
  * marker is missing or a limit is exceeded, so the page is never deployed with a broken demo.
+ * `limits` replaces the demo's file and size limits and names the snapshot in error texts.
  */
-export async function assembleSnapshot({ entries, readBytes, revision, generatedAt }) {
+export async function assembleSnapshot({ entries, readBytes, revision, generatedAt, limits = {} }) {
+  const maxFiles = limits.maxFiles ?? MAX_SNAPSHOT_FILES;
+  const maxBytes = limits.maxBytes ?? MAX_SNAPSHOT_BYTES;
+  const subject = limits.subject ?? "live-demo";
   const selected = entries
     .filter(isSnapshotEntry)
     .sort((left, right) => left.path.localeCompare(right.path));
   if (!selected.some((entry) => entry.path === MARKER)) {
-    throw new Error("The live-demo collaboration marker is missing.");
+    throw new Error(`The ${subject} collaboration marker is missing.`);
   }
-  if (selected.length > MAX_SNAPSHOT_FILES) {
+  if (selected.length > maxFiles) {
     throw new Error(
-      `The live-demo repository has ${String(selected.length)} snapshot files; the limit is ${String(MAX_SNAPSHOT_FILES)}.`,
+      `The ${subject} repository has ${String(selected.length)} snapshot files; the limit is ${String(maxFiles)}.`,
     );
   }
   const files = [];
@@ -103,9 +107,9 @@ export async function assembleSnapshot({ entries, readBytes, revision, generated
   const snapshot = { schemaVersion: 1, generatedAt, revision, files };
   const json = JSON.stringify(snapshot);
   const bytes = new TextEncoder().encode(json).length;
-  if (bytes > MAX_SNAPSHOT_BYTES) {
+  if (bytes > maxBytes) {
     throw new Error(
-      `The live-demo snapshot is ${String(bytes)} bytes; the limit is ${String(MAX_SNAPSHOT_BYTES)}. Reduce the demo repository or raise the limit in scripts/demo-snapshot-rules.mjs.`,
+      `The ${subject} snapshot is ${String(bytes)} bytes; the limit is ${String(maxBytes)}.${limits.subject === undefined ? " Reduce the demo repository or raise the limit in scripts/demo-snapshot-rules.mjs." : ""}`,
     );
   }
   return { snapshot, json };

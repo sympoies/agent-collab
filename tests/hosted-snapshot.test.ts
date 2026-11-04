@@ -50,18 +50,19 @@ describe("HostedSnapshotSource", () => {
     await loader.open();
     const text = () => JSON.stringify(loader.getSnapshot().items);
     expect(text()).toContain("First.");
-    expect(source.lastChanged()?.toISOString()).toBe("2026-11-04T09:00:00.000Z");
+    expect(source.snapshotTime()?.toISOString()).toBe("2026-11-04T09:00:00.000Z");
 
     // Same revision, newer generatedAt: nothing is republished.
     current = snapshot("r1", "First.", "2026-11-04T09:01:00.000Z");
     const before = loader.getSnapshot();
     await loader.refresh();
     expect(loader.getSnapshot()).toBe(before);
+    expect(source.snapshotTime()?.toISOString()).toBe("2026-11-04T09:01:00.000Z");
 
     current = snapshot("r2", "Second.", "2026-11-04T09:02:00.000Z");
     await loader.refresh();
     expect(text()).toContain("Second.");
-    expect(source.lastChanged()?.toISOString()).toBe("2026-11-04T09:02:00.000Z");
+    expect(source.snapshotTime()?.toISOString()).toBe("2026-11-04T09:02:00.000Z");
   });
 
   it("fails a refresh when the file is gone and recovers when it returns", async () => {
@@ -72,8 +73,14 @@ describe("HostedSnapshotSource", () => {
     );
     const loader = new Loader(source);
     await loader.open();
+    const checked = source.checkedAt();
+    expect(checked).not.toBeNull();
     current = null;
     await expect(loader.refresh()).rejects.toBeInstanceOf(SourceError);
+    // The data and the time of the last successful check stay.
+    expect(JSON.stringify(loader.getSnapshot().items)).toContain("First.");
+    expect(source.checkedAt()).toBe(checked);
+    expect(source.snapshotTime()?.toISOString()).toBe("2026-11-04T09:00:00.000Z");
     current = snapshot("r2", "Back.");
     await loader.refresh();
     expect(JSON.stringify(loader.getSnapshot().items)).toContain("Back.");

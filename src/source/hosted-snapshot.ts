@@ -13,6 +13,9 @@ export class HostedSnapshotSource implements MessageSource {
   private current: { readonly snapshot: DemoSnapshot; readonly source: DemoSnapshotSource } | null =
     null;
 
+  private generated: Date | null = null;
+  private checked: Date | null = null;
+
   constructor(
     private readonly fetcher: typeof fetch = fetch,
     private readonly documentUrl: string = document.baseURI,
@@ -23,14 +26,21 @@ export class HostedSnapshotSource implements MessageSource {
     if (snapshot === null) {
       throw new SourceError("unreachable", "", null, null, "The hosted snapshot is unavailable.");
     }
+    // Every successful fetch counts, also one that finds nothing new: it proves the file is still
+    // being refreshed, which is what tells the reader whether the data is current.
+    this.generated = new Date(snapshot.generatedAt);
+    this.checked = new Date();
     if (previous?.validator === snapshot.revision && this.current !== null) return "not-modified";
     this.current = { snapshot, source: new DemoSnapshotSource(snapshot) };
     return this.current.source.head(null);
   }
 
-  /** When the copy on screen was generated. */
-  lastChanged(): Date | null {
-    return this.current === null ? null : new Date(this.current.snapshot.generatedAt);
+  snapshotTime(): Date | null {
+    return this.generated;
+  }
+
+  checkedAt(): Date | null {
+    return this.checked;
   }
 
   listDirectory(revision: string, path: string): Promise<readonly DirectoryEntry[]> {

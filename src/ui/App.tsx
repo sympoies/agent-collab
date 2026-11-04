@@ -45,9 +45,18 @@ export interface SourceIndicator {
   readonly label: MessageKey;
   /** Shown as experimental until the source is released. */
   readonly experimental: boolean;
-  /** The data is a copy made at the time shown, not the source's current state. */
-  readonly pointInTime?: true;
+  /**
+   * The data is a copy made at a time, not the source's current state: when it was generated, and
+   * when it was last fetched successfully. Both can change without the data changing.
+   */
+  readonly pointInTime?: {
+    readonly generatedAt: () => Date | null;
+    readonly checkedAt: () => Date | null;
+  };
 }
+
+/** A snapshot generated longer ago than this probably stopped being refreshed. */
+export const SNAPSHOT_STALE_MS = 10 * 60_000;
 
 /** The current time, refreshed every half minute while `active`, for relative texts. */
 function useNow(active: boolean): Date {
@@ -62,6 +71,43 @@ function useNow(active: boolean): Date {
     };
   }, [active]);
   return now;
+}
+
+/**
+ * When a served snapshot was generated, with a warning when that is long ago (the script that
+ * refreshes it may have stopped) and, while a fetch is failing, when the last one succeeded.
+ */
+function SnapshotTimes({
+  generatedAt,
+  checkedAt,
+  failing,
+  now,
+}: {
+  readonly generatedAt: Date | null;
+  readonly checkedAt: Date | null;
+  readonly failing: boolean;
+  readonly now: Date;
+}) {
+  const { t, formatDateTime } = useLocale();
+  if (generatedAt === null) return null;
+  return (
+    <>
+      <span
+        className="last-changed"
+        title={t("source.generatedTitle", { date: formatDateTime(generatedAt) })}
+      >
+        {t("source.generated", { time: relativeTime(generatedAt, now, t) })}
+      </span>
+      {now.getTime() - generatedAt.getTime() > SNAPSHOT_STALE_MS && (
+        <span className="snapshot-warning">{t("source.stale")}</span>
+      )}
+      {failing && checkedAt !== null && (
+        <span className="snapshot-warning">
+          {t("source.lastCheck", { time: relativeTime(checkedAt, now, t) })}
+        </span>
+      )}
+    </>
+  );
 }
 
 export interface AppProps {
@@ -106,7 +152,9 @@ export function App({
 }: AppProps) {
   const { t, formatDateTime } = useLocale();
   const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
-  const now = useNow(source !== undefined && snapshot.lastChanged !== null);
+  const now = useNow(
+    source !== undefined && (source.pointInTime !== undefined || snapshot.lastChanged !== null),
+  );
   // The budget the API reported with its latest response; null until a response carried one.
   const reported = signedIn === undefined ? null : loader.rateLimit();
   // Only a plausible budget is shown: whole numbers, and no more left than the limit.
@@ -343,15 +391,15 @@ export function App({
               {t(source.label)}
               {source.experimental && ` · ${t("source.experimental")}`}
             </span>
-            {snapshot.lastChanged === null ? (
+            {source.pointInTime !== undefined ? (
+              <SnapshotTimes
+                generatedAt={source.pointInTime.generatedAt()}
+                checkedAt={source.pointInTime.checkedAt()}
+                failing={error !== null}
+                now={now}
+              />
+            ) : snapshot.lastChanged === null ? (
               <span className="last-changed">{t("source.noChange")}</span>
-            ) : source.pointInTime === true ? (
-              <span
-                className="last-changed"
-                title={t("source.generatedTitle", { date: formatDateTime(snapshot.lastChanged) })}
-              >
-                {t("source.generated", { time: relativeTime(snapshot.lastChanged, now, t) })}
-              </span>
             ) : (
               <span
                 className="last-changed"

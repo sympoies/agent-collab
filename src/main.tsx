@@ -108,7 +108,7 @@ const root = document.getElementById("root");
 if (root === null) throw new Error("missing #root element");
 const storage = safeBrowserStorage();
 
-// A deployment that serves a snapshot next to the app (docs/hosted-snapshot.md) opens it directly.
+// A deployment that serves a snapshot next to the app (docs/getting-started.md) opens it directly.
 const hosted = (await readHostedSnapshot()) === null ? null : () => new HostedSnapshotSource();
 
 createRoot(root).render(

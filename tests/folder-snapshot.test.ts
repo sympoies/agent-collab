@@ -1,9 +1,18 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MAX_FILE_BYTES } from "../scripts/demo-snapshot-rules.mjs";
+import { MAX_FILE_BYTES, MAX_SNAPSHOT_BYTES } from "../scripts/demo-snapshot-rules.mjs";
 import { buildFolderSnapshot, writeFileAtomic } from "../scripts/folder-snapshot.mjs";
 import { parseDemoSnapshot } from "../src/settings/demo-snapshot";
 import { flat, MARKER, messageText, monthly, pngBytes } from "./support";
@@ -105,6 +114,70 @@ describe("folder snapshot builder", () => {
     await writeFile(join(dir, flat("2026-10", 1, 1)), message().replace("From", "Edited from"));
     const changed = await buildFolderSnapshot(dir, NOW);
     expect(changed.snapshot.revision).not.toBe(first.snapshot.revision);
+  });
+});
+
+describe("folder snapshot safety and limits", () => {
+  const OUTSIDE = "SECRET outside the clone";
+
+  it("never reads through a file that became a symbolic link after the scan", async () => {
+    const dir = await clone({ ".agent-collab": MARKER, [flat("2026-10", 1, 1)]: message() });
+    const outside = await clone({ "secret.md": OUTSIDE });
+    const target = flat("2026-10", 1, 1);
+    await expect(
+      buildFolderSnapshot(dir, NOW, {
+        beforeRead: async (path) => {
+          if (path !== target) return;
+          await rm(join(dir, path));
+          await symlink(join(outside, "secret.md"), join(dir, path));
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("never reads under a directory that became a symbolic link after the scan", async () => {
+    const dir = await clone({ ".agent-collab": MARKER, "topics/api/notes.md": "inside" });
+    const outside = await clone({ "notes.md": OUTSIDE });
+    let json = "";
+    await buildFolderSnapshot(dir, NOW, {
+      beforeRead: async (path) => {
+        if (path !== "topics/api/notes.md") return;
+        await rename(join(dir, "topics", "api"), join(dir, "topics", "moved"));
+        await symlink(outside, join(dir, "topics", "api"));
+      },
+    })
+      .then((built) => {
+        json = built.json;
+      })
+      .catch(() => undefined);
+    expect(json).not.toContain(OUTSIDE);
+  });
+
+  it("builds a clone over the demo's 4 MiB limit", async () => {
+    const files: Record<string, string> = { ".agent-collab": MARKER };
+    const chunk = "x".repeat(MAX_FILE_BYTES - 1024);
+    for (let n = 0; n < Math.ceil(MAX_SNAPSHOT_BYTES / chunk.length) + 1; n += 1) {
+      files[`topics/api/notes-${String(n)}.md`] = chunk;
+    }
+    const { json } = await buildFolderSnapshot(await clone(files), NOW);
+    expect(json.length).toBeGreaterThan(MAX_SNAPSHOT_BYTES);
+    expect(parseDemoSnapshot(json)).not.toBeNull();
+  });
+
+  it("fails without naming the demo", async () => {
+    const dir = await clone({ [flat("2026-10", 1, 1)]: message() });
+    await expect(buildFolderSnapshot(dir, NOW)).rejects.not.toThrow(/demo/);
+  });
+
+  it("leaves out names the local-folder source would refuse", async () => {
+    const dir = await clone({
+      ".agent-collab": MARKER,
+      "topics/api/ok.md": "fine",
+      "topics/api/a\\b.md": "backslash",
+      "topics/api/ctl\u0001.md": "control character",
+    });
+    const { snapshot } = await buildFolderSnapshot(dir, NOW);
+    expect(paths(snapshot.files)).toEqual([".agent-collab", "topics/api/ok.md"].sort());
   });
 });
 

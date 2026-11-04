@@ -1,5 +1,5 @@
 // Usage: node scripts/create-folder-snapshot.mjs <clone-dir> <out-file>
-// Writes the snapshot of a local clone for a hosted deployment (docs/hosted-snapshot.md).
+// Writes the snapshot of a local clone for a hosted deployment (docs/getting-started.md).
 
 import { resolve } from "node:path";
 
