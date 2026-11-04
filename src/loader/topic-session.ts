@@ -164,6 +164,15 @@ export class TopicSession {
     return items;
   }
 
+  /** The digest of a topic if it is already known for the current tree id; never fetches. */
+  cachedDigest(topic: string): TopicDigest | null {
+    const known = this.digests.get(topic);
+    const state = this.states.get(topic);
+    return known !== undefined && state !== undefined && known.treeId === state.treeId
+      ? known.digest
+      : null;
+  }
+
   private async readDigest(revision: string, topic: string): Promise<TopicDigest> {
     const entries = await this.optional(revision, `topics/${topic}`);
     const index = entries.find((entry) => entry.kind === "file" && entry.name === "index.md");

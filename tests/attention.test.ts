@@ -193,6 +193,85 @@ describe("the Attention data layer", () => {
   });
 });
 
+describe("who a row or a message is addressed to", () => {
+  it("lists only the named viewer's followed-topic messages, not others' or broadcasts", async () => {
+    const files = repository([{ name: "api", days: [1, 2, 3, 4], open: [] }]);
+    const to = ["alice-agent", "", "bob-agent", "alice-agent, bob-agent"];
+    to.forEach((value, i) => {
+      files[messagePath("api", i + 1)] = messageText(id("api", i + 1), "alice-agent", "api", {
+        to: value,
+      });
+    });
+    const { session } = await sessionOf(files);
+    const preferences = toggleTopic(EMPTY_TOPIC_PREFERENCES, "follow", "api", true);
+    const attention = await loadAttention(session, { viewer: "bob-agent", preferences });
+    expect(attention.messages.map((m) => m.message.id)).toEqual([id("api", 3), id("api", 4)]);
+  });
+
+  it("matches the whole name only, and a broadcast row does not address a person", async () => {
+    const files = repository([{ name: "api", open: [] }]);
+    files["topics/api/open.md"] = [
+      "## Unanswered questions",
+      "",
+      "| id | from | to | needs | due | 摘要 |",
+      "|---|---|---|---|---|---|",
+      `| ${id("api", 1)} | alice-agent | bob-agent | a | | s |`,
+      `| ${id("api", 2)} | alice-agent | Bob | a | | s |`,
+      `| ${id("api", 3)} | alice-agent | all | a | | s |`,
+      `| ${id("api", 4)} | alice-agent |  | a | | s |`,
+      "",
+    ].join("\n");
+    const { session } = await sessionOf(files);
+    const rows = async (viewer: string) =>
+      (await loadAttention(session, { viewer, preferences: EMPTY_TOPIC_PREFERENCES })).rows.map(
+        (r) => r.item.id,
+      );
+    // `bob` is not `bob-agent`, and `Bob` is not a name at all.
+    expect(await rows("bob")).toEqual([]);
+    expect(await rows("bob-agent")).toEqual([id("api", 1)]);
+    // A broadcast (blank, or "all") is for everyone, so it is not "addressed to" anyone here: the
+    // design lists rows that name the viewer; waiting-for-anyone items stay in the topic.
+    expect(await rows("all")).toEqual([id("api", 3)]);
+    expect(await rows("alice-agent")).toEqual([]);
+  });
+
+  it("ignores a topic the index lists as open when it has no folder", async () => {
+    const files = repository([{ name: "api", open: [[1, "bob-agent"]] }]);
+    files["index.md"] = `${files["index.md"] ?? ""}\n| ghost | | open |`;
+    const { session } = await sessionOf(files);
+    expect(session.topics().map((t) => t.name)).toEqual(["api"]);
+    const preferences = toggleTopic(EMPTY_TOPIC_PREFERENCES, "follow", "ghost", true);
+    const attention = await loadAttention(session, { viewer: "bob-agent", preferences });
+    expect(attention.covered).toEqual(["api"]);
+    expect(attention.followed).toEqual([]);
+  });
+});
+
+describe("the open.md cache by tree id", () => {
+  it("a second call reads no open.md and lists no topic folder again", async () => {
+    const { source, session } = await sessionOf(
+      repository([
+        { name: "api", open: [[1, "bob-agent"]] },
+        { name: "ops", open: [[1, "bob-agent"]] },
+      ]),
+    );
+    const first = await loadAttention(session, {
+      viewer: "bob-agent",
+      preferences: EMPTY_TOPIC_PREFERENCES,
+    });
+    const reads = source.reads.filter((p) => p.endsWith("/open.md")).length;
+    const listings = source.listings.filter((p) => p.startsWith("topics/")).length;
+    expect(reads).toBe(2);
+    const second = await loadAttention(session, {
+      viewer: "bob-agent",
+      preferences: EMPTY_TOPIC_PREFERENCES,
+    });
+    expect(second.rows).toEqual(first.rows);
+    expect(source.reads.filter((p) => p.endsWith("/open.md"))).toHaveLength(reads);
+    expect(source.listings.filter((p) => p.startsWith("topics/"))).toHaveLength(listings);
+  });
+});
+
 describe("the limit on topics read", () => {
   const specs = (count: number): Spec[] =>
     Array.from({ length: count }, (_, i) => ({
@@ -202,10 +281,12 @@ describe("the limit on topics read", () => {
       open: [[1 + (i % 28), "bob-agent"]],
     }));
 
-  it("reads at most the most recently active open topics and reports the rest as skipped", async () => {
+  it("ranks by recency exactly when the digests are already known, and reports the rest as skipped", async () => {
     expect(ATTENTION_TOPIC_LIMIT).toBe(30);
     const all = specs(40);
     const { source, session } = await sessionOf(repository(all));
+    // The topic list already knows every digest (it showed them).
+    for (const spec of all) await session.digest(spec.name);
     const attention = await loadAttention(session, {
       viewer: "bob-agent",
       preferences: EMPTY_TOPIC_PREFERENCES,
@@ -213,10 +294,31 @@ describe("the limit on topics read", () => {
     expect(attention.covered).toHaveLength(30);
     expect(attention.skipped).toHaveLength(10);
     const newestDay = (t: string) => Number(t.slice("topic-".length)) % 28;
-    const readMin = Math.min(...attention.covered.map(newestDay));
-    const skippedMax = Math.max(...attention.skipped.map(newestDay));
-    expect(readMin).toBeGreaterThanOrEqual(skippedMax);
+    expect(Math.min(...attention.covered.map(newestDay))).toBeGreaterThanOrEqual(
+      Math.max(...attention.skipped.map(newestDay)),
+    );
     expect(source.reads.filter((p) => p.endsWith("/open.md"))).toHaveLength(30);
+  });
+
+  it("above the limit, recency is best effort: at most the limit of fresh digests, then it converges", async () => {
+    const { source, session } = await sessionOf(repository(specs(40)));
+    const digestReads = () =>
+      source.reads.filter((p) => p.endsWith("/index.md") && p !== "index.md").length;
+    const first = await loadAttention(session, {
+      viewer: "bob-agent",
+      preferences: EMPTY_TOPIC_PREFERENCES,
+    });
+    // Only 30 topics (the first 30 by name) were ranked; the other 10 are skipped, not guessed.
+    expect(digestReads()).toBe(30);
+    expect(first.covered).toHaveLength(30);
+    expect(first.skipped).toHaveLength(10);
+    // The next call ranks the 10 left over too, now from the cache plus 10 fresh digests.
+    const second = await loadAttention(session, {
+      viewer: "bob-agent",
+      preferences: EMPTY_TOPIC_PREFERENCES,
+    });
+    expect(digestReads()).toBe(40);
+    expect(second.covered).toHaveLength(30);
   });
 
   it("reads them all when asked, and honors another limit", async () => {
@@ -254,6 +356,33 @@ describe("requests through the provider", () => {
       token: new Secret("test-token-not-real"),
       fetch: server.fetch,
     });
+  const without = (count: number): Spec[] =>
+    Array.from({ length: count }, (_, i) => ({
+      name: `t-${String(i).padStart(4, "0")}`,
+      index: false,
+    }));
+
+  it("costs a bounded number of requests above the limit, whatever the number of topics", async () => {
+    const counts: number[] = [];
+    for (const topics of [40, 200]) {
+      const server = git(repository(without(topics)));
+      const session = new TopicSession(github(server));
+      await session.open();
+      server.requests.length = 0;
+      const attention = await loadAttention(session, {
+        viewer: "bob-agent",
+        preferences: EMPTY_TOPIC_PREFERENCES,
+      });
+      counts.push(server.requests.length);
+      // Only the ranked topics were read; every other open topic is reported as skipped.
+      expect(attention.covered.length + attention.withoutOpenFile.length).toBe(30);
+      expect(attention.skipped).toHaveLength(topics - 30);
+    }
+    // 30 fresh digests, each the topic's tree, its inbox and its newest month (no index.md), and
+    // nothing for the rest: the same count for 40 topics and for 200.
+    expect(counts).toEqual([90, 90]);
+  });
+
   const twelve = (): Spec[] =>
     Array.from({ length: 12 }, (_, i) => ({
       name: `topic-${String(i)}`,

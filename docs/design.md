@@ -377,8 +377,12 @@ Slice V3, part 1 (design 6.3 and 6.4), without UI:
   its tree and its `open.md` (two requests, kept by tree id, so a second call costs nothing and a
   changed topic costs only itself). At most 30 of the most recently active open topics are read
   (`ATTENTION_TOPIC_LIMIT`, a chosen default, not measured) unless the caller passes `all`; the rest
-  are reported as `skipped`. Recency is only computed (one digest per topic) when there are more
-  topics than the limit. A followed topic also loads its newest page, and its messages addressed to
+  are reported as `skipped`. Recency is only needed when there are more topics than the limit, and
+  it is **best effort above it**: topics whose digest is already known (the topic list shows them)
+  are ranked for free, then at most `limit` more digests are fetched, in name order, so a cold open
+  of thousands of topics costs a bounded number of requests (the same for 40 topics as for 200,
+  tested); topics never ranked are `skipped` and "load all" picks them up explicitly, and a later
+  call ranks the ones that were left over. A followed topic also loads its newest page, and its messages addressed to
   the viewer are listed. A topic without a usable `open.md` is reported in `withoutOpenFile`.
   Rows are untrusted (6.5): opening one loads the message, which decides.
 

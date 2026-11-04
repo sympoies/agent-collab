@@ -45,15 +45,23 @@ function names(value: unknown): readonly string[] {
   return [...new Set(valid)].slice(0, MAX_TOPICS).sort();
 }
 
+/** The last-seen id of a topic; own properties only, so a topic named `constructor` is a topic. */
+export function seenOf(preferences: TopicPreferences, topic: string): string | undefined {
+  return Object.hasOwn(preferences.seen, topic) ? preferences.seen[topic] : undefined;
+}
+
 /** Keeps only well-formed entries, so a damaged or foreign value never breaks the view. */
 function sanitize(value: unknown): TopicPreferences {
   if (!isRecord(value)) return EMPTY_TOPIC_PREFERENCES;
-  const seen: Record<string, string> = {};
+  const seenEntries: [string, string][] = [];
   if (isRecord(value.seen)) {
     for (const [topic, id] of Object.entries(value.seen).slice(0, MAX_TOPICS)) {
-      if (TOPIC_RE.test(topic) && typeof id === "string" && parseId(id) !== null) seen[topic] = id;
+      if (TOPIC_RE.test(topic) && typeof id === "string" && parseId(id) !== null) {
+        seenEntries.push([topic, id]);
+      }
     }
   }
+  const seen = Object.fromEntries(seenEntries);
   const follow = names(value.follow);
   const mute = names(value.mute).filter((topic) => !follow.includes(topic));
   const hide = names(value.hide);
@@ -128,9 +136,10 @@ export function markSeen(
   id: string,
 ): TopicPreferences {
   if (!TOPIC_RE.test(topic) || parseId(id) === null) return preferences;
-  const known = preferences.seen[topic];
+  const known = seenOf(preferences, topic);
   if (known !== undefined && known >= id) return preferences;
-  return { ...preferences, seen: { ...preferences.seen, [topic]: id } };
+  const others = Object.entries(preferences.seen).filter(([name]) => name !== topic);
+  return { ...preferences, seen: Object.fromEntries([...others, [topic, id]]) };
 }
 
 /**
@@ -170,7 +179,7 @@ export function unreadOf(
   topic: string,
   digest: { readonly newestId: string | null; readonly ids?: readonly string[] | null },
 ): Unread {
-  const seen = preferences.seen[topic];
+  const seen = seenOf(preferences, topic);
   if (digest.newestId === null || (seen !== undefined && digest.newestId <= seen)) {
     return { unread: false, count: 0 };
   }

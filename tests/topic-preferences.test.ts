@@ -177,6 +177,45 @@ describe("changing topic preferences", () => {
   });
 });
 
+describe("topic names that are also object property names", () => {
+  it("keeps the last-seen marker of a topic named constructor", () => {
+    expect(
+      unreadOf(EMPTY_TOPIC_PREFERENCES, "constructor", { newestId: ID(3), ids: [ID(3)] }),
+    ).toEqual({
+      unread: true,
+      count: 1,
+    });
+    const seen = markSeen(EMPTY_TOPIC_PREFERENCES, "constructor", ID(3));
+    expect(seen.seen).toEqual({ constructor: ID(3) });
+    expect(unreadOf(seen, "constructor", { newestId: ID(3), ids: [ID(3)] })).toEqual({
+      unread: false,
+      count: 0,
+    });
+  });
+
+  it.each(["constructor", "__proto__", "toString", "hasOwnProperty", "valueOf"])(
+    "%s never reads a marker it was not given",
+    (name) => {
+      expect(unreadOf(EMPTY_TOPIC_PREFERENCES, name, { newestId: ID(3) })).toEqual({
+        unread: true,
+        count: null,
+      });
+      // Through storage too: a stored record never hands out an inherited value.
+      const storage = memory();
+      writeTopicPreferences(storage, "k", markSeen(EMPTY_TOPIC_PREFERENCES, "api", ID(1)));
+      expect(unreadOf(readTopicPreferences(storage, "k"), name, { newestId: ID(3) }).unread).toBe(
+        true,
+      );
+    },
+  );
+
+  it("stores and restores a topic named constructor", () => {
+    const storage = memory();
+    writeTopicPreferences(storage, "k", markSeen(EMPTY_TOPIC_PREFERENCES, "constructor", ID(2)));
+    expect(readTopicPreferences(storage, "k").seen).toEqual({ constructor: ID(2) });
+  });
+});
+
 describe("unread counters", () => {
   const ids = [ID(1), ID(2), ID(3)];
 
@@ -197,6 +236,40 @@ describe("unread counters", () => {
       count: 3,
     });
     expect(unreadOf(EMPTY_TOPIC_PREFERENCES, "api", { newestId: null, ids: [] })).toEqual({
+      unread: false,
+      count: 0,
+    });
+  });
+
+  it("is not unread when the marker is newer than the digest, and orders ids across months and senders", () => {
+    expect(
+      unreadOf(prefs({ seen: { api: ID(5) } }), "api", { newestId: ID(3), ids: [ID(3)] }),
+    ).toEqual({
+      unread: false,
+      count: 0,
+    });
+    const october = "2026-10-31T2359-alice-agent-api-01";
+    expect(
+      unreadOf(prefs({ seen: { api: october } }), "api", {
+        newestId: ID(1),
+        ids: [october, ID(1)],
+      }),
+    ).toEqual({
+      unread: true,
+      count: 1,
+    });
+    // The same timestamp from two senders: the id is the order, so a later one is unread.
+    const first = "2026-11-02T0900-alice-agent-api-01";
+    const second = "2026-11-02T0900-bob-agent-api-01";
+    expect(
+      unreadOf(prefs({ seen: { api: first } }), "api", { newestId: second, ids: [first, second] }),
+    ).toEqual({
+      unread: true,
+      count: 1,
+    });
+    expect(
+      unreadOf(prefs({ seen: { api: second } }), "api", { newestId: second, ids: [first, second] }),
+    ).toEqual({
       unread: false,
       count: 0,
     });

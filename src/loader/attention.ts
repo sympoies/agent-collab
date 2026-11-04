@@ -30,7 +30,10 @@ export interface Attention {
   readonly messages: readonly AttentionMessage[];
   /** Topics whose `open.md` was read. */
   readonly covered: readonly string[];
-  /** Open topics left out by the limit; the caller can ask again with `all`. */
+  /**
+   * Open topics left out by the limit, or never ranked above it (recency is best effort there);
+   * the caller can ask again with `all`.
+   */
   readonly skipped: readonly string[];
   /** Topics with no usable `open.md` (an older tool): only their followed pages can be covered. */
   readonly withoutOpenFile: readonly string[];
@@ -58,12 +61,23 @@ export async function loadAttention(
     .map((topic) => topic.name);
   const limit = options.limit ?? ATTENTION_TOPIC_LIMIT;
 
-  // Recency is only needed to choose among more topics than the limit.
+  // Recency is only needed to choose among more topics than the limit, and it is best effort:
+  // topics whose digest is already known are ranked for free, then at most `limit` more digests are
+  // fetched, in name order, so a repository with thousands of topics costs a bounded number of
+  // requests. A topic that was not ranked is reported as skipped for an explicit "load all".
   let chosen = open;
   if (options.all !== true && open.length > limit) {
     const newest = new Map<string, string>();
-    for (const topic of open) newest.set(topic, (await session.digest(topic)).newestId ?? "");
-    chosen = [...open]
+    const unknown: string[] = [];
+    for (const topic of open) {
+      const known = session.cachedDigest(topic);
+      if (known === null) unknown.push(topic);
+      else newest.set(topic, known.newestId ?? "");
+    }
+    for (const topic of unknown.sort().slice(0, limit)) {
+      newest.set(topic, (await session.digest(topic)).newestId ?? "");
+    }
+    chosen = [...newest.keys()]
       .sort((a, b) => {
         const x = newest.get(a) ?? "";
         const y = newest.get(b) ?? "";
