@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { Secret } from "../credentials/secret";
 import { Loader, SetupError } from "../loader/loader";
+import { TopicSession } from "../loader/topic-session";
 import {
   DEFAULT_DRAFT,
   draftFromSettings,
@@ -76,6 +77,25 @@ interface ViewerScreen {
   readonly limitHit: boolean;
   /** The viewer reads with a token. */
   readonly signedIn: boolean;
+  /** The source to check for the topic layout first; null for the demos, which are flat. */
+  readonly topicSource: MessageSource | null;
+  /** A topic session already opened on `topicSource`, when the root checked the layout. */
+  readonly initialTopicSession: TopicSession | null;
+}
+
+/**
+ * Reads a source's layout before showing it: a repository in the topic layout opens as a topic
+ * list and loads no message yet, any other loads its newest page at once, so the error of an
+ * unreadable repository reaches the caller before a viewer is shown.
+ */
+async function openRepository(
+  source: MessageSource,
+): Promise<{ readonly loader: Loader; readonly session: TopicSession }> {
+  const loader = new Loader(source);
+  const session = new TopicSession(source);
+  await session.open();
+  if (session.inboxLayout !== "topic") await loader.openWithHead(session.currentHead);
+  return { loader, session };
 }
 
 /** The demos neither read nor write browser storage, so identity choices last for the view. */
@@ -119,7 +139,9 @@ export function Root(props: RootProps) {
     pollIntervalMs?: number,
     liveDemo: StaticDemoView | null = null,
     source: SourceIndicator | null = null,
-    extras: Partial<Pick<ViewerScreen, "demo" | "limitHit" | "signedIn">> = {},
+    extras: Partial<
+      Pick<ViewerScreen, "demo" | "limitHit" | "signedIn" | "topicSource" | "initialTopicSession">
+    > = {},
   ): ViewerScreen => {
     viewers.current += 1;
     return {
@@ -136,12 +158,15 @@ export function Root(props: RootProps) {
       demo: extras.demo ?? false,
       limitHit: extras.limitHit ?? false,
       signedIn: extras.signedIn ?? false,
+      topicSource: extras.topicSource ?? null,
+      initialTopicSession: extras.initialTopicSession ?? null,
     };
   };
 
-  const open = ({ settings, token }: OpenSettings, notice: string | MessageRef | null = null) =>
-    viewer(
-      new Loader(createSource(settings, token)),
+  const open = ({ settings, token }: OpenSettings, notice: string | MessageRef | null = null) => {
+    const source = createSource(settings, token);
+    return viewer(
+      new Loader(source),
       settings.repository,
       settings.selfNames,
       {
@@ -152,8 +177,9 @@ export function Root(props: RootProps) {
       undefined,
       null,
       null,
-      { signedIn: true },
+      { signedIn: true, topicSource: source },
     );
+  };
 
   /**
    * The token the user saved this page session for the public API, kept in memory only so the demo
@@ -365,9 +391,10 @@ export function Root(props: RootProps) {
       );
       return;
     }
-    const loader = new Loader(opened.source);
+    let loader: Loader;
+    let session: TopicSession;
     try {
-      await loader.open();
+      ({ loader, session } = await openRepository(opened.source));
     } catch (error) {
       refuse(
         error instanceof SetupError
@@ -393,6 +420,7 @@ export function Root(props: RootProps) {
           label: "bar.localFolder",
           experimental: true,
         },
+        { topicSource: opened.source, initialTopicSession: session },
       ),
     );
   };
@@ -402,9 +430,10 @@ export function Root(props: RootProps) {
     if (createHostedSource === null) return;
     const operation = ++navigation.current;
     const source = createHostedSource();
-    const loader = new Loader(source);
+    let loader: Loader;
+    let session: TopicSession;
     try {
-      await loader.open();
+      ({ loader, session } = await openRepository(source));
     } catch {
       if (operation === navigation.current) setLocalMessage({ key: "hosted.unreadable" });
       return;
@@ -412,14 +441,24 @@ export function Root(props: RootProps) {
     if (operation !== navigation.current) return;
     setLocalMessage(null);
     setScreen(
-      viewer(loader, { key: "app.hostedTitle" }, [], MEMORY_ONLY, null, undefined, null, {
-        label: "bar.hostedSnapshot",
-        experimental: false,
-        pointInTime: {
-          generatedAt: () => source.snapshotTime?.() ?? null,
-          checkedAt: () => source.checkedAt?.() ?? null,
+      viewer(
+        loader,
+        { key: "app.hostedTitle" },
+        [],
+        MEMORY_ONLY,
+        null,
+        undefined,
+        null,
+        {
+          label: "bar.hostedSnapshot",
+          experimental: false,
+          pointInTime: {
+            generatedAt: () => source.snapshotTime?.() ?? null,
+            checkedAt: () => source.checkedAt?.() ?? null,
+          },
         },
-      }),
+        { topicSource: source, initialTopicSession: session },
+      ),
     );
   };
 
@@ -567,6 +606,10 @@ export function Root(props: RootProps) {
         <App
           key={screen.id}
           loader={screen.loader}
+          {...(screen.topicSource === null ? {} : { topicSource: screen.topicSource })}
+          {...(screen.initialTopicSession === null
+            ? {}
+            : { initialTopicSession: screen.initialTopicSession })}
           title={screen.title}
           selfNames={screen.selfNames}
           identity={screen.identity}

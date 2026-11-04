@@ -273,7 +273,9 @@ and UI reading more of the repository, never writing.
 2. **Open topics are listed first, closed topics in a collapsed group** ("Closed (n)"). Sorting is
    by recent activity, then name. Recent activity comes from the newest `YYYY-MM` folder and the
    newest file name inside it (ids start with a timestamp): two or three tree requests per topic,
-   fetched lazily for the topics on screen, never message files.
+   fetched lazily for the topics on screen, never message files. (V2 note: the cut at the visible
+   limit of 12 needs the activity of every open topic, so the viewer reads it in the background after
+   the list is shown, with bounded concurrency; closed topics are read once their group is opened.)
 3. **A topic's messages are loaded on demand**, with the loader's existing paging over that topic's
    `inbox/YYYY-MM` folders, newest first. Opening a repository reads no message file until a topic
    is chosen, except for the Attention view (6.3).

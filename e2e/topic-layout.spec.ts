@@ -69,7 +69,7 @@ function json(route: Route, value: unknown, headers: Record<string, string> = {}
   });
 }
 
-test("a 5,000-message topic repository opens by reading one page and pages on demand", async ({
+test("a 5,000-message topic repository lists first and loads the selected topic on demand", async ({
   page,
 }) => {
   const requests: string[] = [];
@@ -142,19 +142,25 @@ test("a 5,000-message topic repository opens by reading one page and pages on de
   await page.getByRole("button", { name: "Save and open" }).click();
 
   const said = (message: Fixture) => `Synthetic message number ${String(message.n)} for`;
-  const newest = NEWEST_FIRST[0] as Fixture;
-  await expect(page.getByText(said(newest))).toBeVisible();
+  const selectedTopic = "topic-7";
+  await expect(page.getByRole("button", { name: selectedTopic, exact: true })).toBeVisible();
   const messageBlobs = () => requests.filter((path) => path.startsWith("/git/blobs/message:"));
   const numbers = (paths: string[]) =>
     paths.map((path) => Number(path.slice("/git/blobs/message:".length))).sort((x, y) => x - y);
+  expect(messageBlobs()).toEqual([]);
+  await page.getByRole("button", { name: selectedTopic, exact: true }).click();
+  const topicMessages = NEWEST_FIRST.filter((message) => message.topic === selectedTopic);
   const wanted = (count: number) =>
-    NEWEST_FIRST.slice(0, count)
+    topicMessages
+      .slice(0, count)
       .map((m) => m.n)
       .sort((x, y) => x - y);
-  // Exactly the newest page, and the repository's other 4,950 messages are never fetched.
+  const newest = topicMessages[0] as Fixture;
+  await expect(page.getByText(said(newest))).toBeVisible();
+  // Exactly the selected topic's newest page; other topics' message files are not fetched.
   expect(numbers(messageBlobs())).toEqual(wanted(50));
   expect(requests.length).toBeLessThan(150);
-  // The newest months of the 12 topics are listed, not the whole history.
+  // Only the selected topic's newest months are listed, not every topic's history.
   expect(
     requests.filter((path) => path.startsWith("/git/trees/month:")).length,
   ).toBeLessThanOrEqual(24);
@@ -162,7 +168,7 @@ test("a 5,000-message topic repository opens by reading one page and pages on de
 
   await page.getByRole("button", { name: "Load older messages" }).click();
   await expect(page.locator(".message")).toHaveCount(100);
-  // The second page is exactly the next 50 in order, nothing skipped or repeated.
+  // The second page is exactly the next 50 messages in the selected topic.
   expect(numbers(messageBlobs())).toEqual(wanted(100));
   expect(unhandled).toEqual([]);
 });

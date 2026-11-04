@@ -388,8 +388,27 @@ Slice V3, part 1 (design 6.3 and 6.4), without UI:
   the viewer are listed. A topic without a usable `open.md` is reported in `withoutOpenFile`.
   Rows are untrusted (6.5): opening one loads the message, which decides.
 
-Until the topic list UI (slice V2), the viewer shows the merged inbox of a topic repository: the
-newest page across all topics, with "Load older".
+**The topic list UI (slice V2).** A repository in the topic layout opens as a conversation list and
+reads no message until a topic is chosen (`TopicList`, `src/ui/TopicList.tsx`):
+
+- The fixed entries come first, in this order: All, Questions, Files; then the open topics, most
+  recently active first and by name for equal or unknown activity (`sortTopicSummaries`), then a
+  collapsed "Closed (n)" group. A row shows the topic's title, or its name.
+- Only the 12 most recently active open topics are listed; a "Show all N topics" button (aria-expanded,
+  the same button keeps focus, "Show fewer" collapses) lists the rest. The open topic is always
+  listed. A long list scrolls inside the conversation list, not the page. Pinned topics (a later
+  slice) go at the head of the sorted list; unread and question counters will come with them.
+- Recent activity (`TopicSession.digest`) is read in the background after the list is shown, for
+  every open topic with bounded concurrency, because the cut at 12 needs it; closed topics are read
+  only once their group is opened. A refresh re-reads the topics whose tree id changed, and retries
+  the ones that failed.
+- A topic's messages load when it is opened, through the topic's own loader (paging and date jumps
+  are that loader's). All, Questions and Files work on the topics loaded so far; the page says so
+  until one is open. On a phone the list is the first screen and a topic is a drill-down with a back
+  control.
+
+A repository in any other layout, and the demos, keep the single conversation list built from the
+loaded messages.
 
 ### Loading and paging
 

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Loader } from "../loader/loader";
 import { Poller } from "../loader/poller";
+import { sortTopicSummaries } from "../loader/topic-activity";
+import { TopicSession } from "../loader/topic-session";
 import {
   colorOrder,
   EMPTY_PREFERENCES,
@@ -18,7 +20,8 @@ import {
 import { deriveQuestionStates } from "../message/questions";
 import { buildReceipts, groupQuestions } from "../message/receipts";
 import type { Message } from "../message/types";
-import { SourceError } from "../source/types";
+import type { TopicSummary } from "../message/topic-layout";
+import { SourceError, type MessageSource } from "../source/types";
 import { FilesView, type AttachmentContext } from "./Attachments";
 import { ChatView } from "./ChatView";
 import type { MessageKey } from "../i18n/catalog";
@@ -33,6 +36,9 @@ import { Toolbar } from "./Toolbar";
 import { RangeBar } from "./RangeBar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
+import { TopicList } from "./TopicList";
+import { useMergedSnapshot } from "./merged-snapshot";
+import { useTopicDigests } from "./useTopicDigests";
 import { buildRows, topicSummaries } from "./timeline";
 
 /** Names a source that is not a repository, so it is always visible which data is shown. */
@@ -107,6 +113,13 @@ function SnapshotTimes({
 
 export interface AppProps {
   readonly loader: Loader;
+  /**
+   * The source the loader reads. With it the viewer checks the repository layout first: a
+   * repository in the topic layout opens as a topic list and reads a topic's messages on demand.
+   */
+  readonly topicSource?: MessageSource;
+  /** The topic session a caller already opened on `topicSource`, so the layout is not read twice. */
+  readonly initialTopicSession?: TopicSession;
   /** A repository name, or a catalog message for a fixed title. */
   readonly title: string | { readonly key: MessageKey; readonly params?: Params };
   /** Configured own names; the first participant among them is the default "Viewing as". */
@@ -132,6 +145,8 @@ export interface AppProps {
 
 export function App({
   loader,
+  topicSource,
+  initialTopicSession,
   title,
   selfNames,
   identity,
@@ -146,7 +161,26 @@ export function App({
   signedIn,
 }: AppProps) {
   const { t, formatDateTime } = useLocale();
-  const snapshot = useSyncExternalStore(loader.subscribe, loader.getSnapshot);
+  const [topicSession] = useState<TopicSession | null>(
+    () => initialTopicSession ?? (topicSource === undefined ? null : new TopicSession(topicSource)),
+  );
+  const [discovered, setDiscovered] = useState(initialTopicSession !== undefined);
+  const discoveryReady = topicSession === null || discovered;
+  const [topicList, setTopicList] = useState<readonly TopicSummary[]>(
+    () => initialTopicSession?.topics() ?? [],
+  );
+  const [topicLayout, setTopicLayout] = useState(initialTopicSession?.inboxLayout === "topic");
+  const [openedTopics, setOpenedTopics] = useState<readonly string[]>([]);
+  const [closedOpen, setClosedOpen] = useState(false);
+  // What is loaded: the topics opened so far in the topic layout, the one loader otherwise.
+  const openedLoaders = useMemo(
+    () =>
+      topicLayout && topicSession !== null
+        ? openedTopics.map((name) => topicSession.loader(name))
+        : [loader],
+    [loader, openedTopics, topicLayout, topicSession],
+  );
+  const snapshot = useMergedSnapshot(openedLoaders);
   // The budget the API reported with its latest response; null until a response carried one.
   const reported = signedIn === undefined ? null : loader.rateLimit();
   // Only a plausible budget is shown: whole numbers, and no more left than the limit.
@@ -173,6 +207,22 @@ export function App({
   const announcedMessages = useRef<Set<string>>(new Set());
   const [arrivalAnnouncement, setArrivalAnnouncement] = useState("");
   const [busy, setBusy] = useState(true);
+  // The loader whose older pages and date jumps the chat offers: the open topic's, or the
+  // repository's own; null while All shows the topics loaded so far.
+  const selectedLoader = useMemo(
+    () =>
+      !topicLayout
+        ? loader
+        : topic !== null && topicSession !== null && openedTopics.includes(topic)
+          ? topicSession.loader(topic)
+          : null,
+    [loader, openedTopics, topic, topicLayout, topicSession],
+  );
+  const pagedLoaders = useMemo(
+    () => (selectedLoader === null ? [] : [selectedLoader]),
+    [selectedLoader],
+  );
+  const paging = useMergedSnapshot(pagedLoaders);
   const [checkingLive, setCheckingLive] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [readyRetryAt, setReadyRetryAt] = useState<Date | null>(null);
@@ -218,8 +268,28 @@ export function App({
       });
   };
 
+  /**
+   * Reads the repository layout and, in the topic layout, the topic list again. The first call
+   * after a failed discovery starts over, so the poller's retries finish the discovery too.
+   */
+  const syncTopics = useCallback(async (): Promise<unknown> => {
+    if (topicSession === null) return undefined;
+    try {
+      return await topicSession.refresh();
+    } finally {
+      // A loader that failed to refresh still leaves the list as the latest listing read it.
+      if (topicSession.currentHead !== null) {
+        setTopicList(topicSession.topics());
+        setTopicLayout(topicSession.inboxLayout === "topic");
+        setDiscovered(true);
+      }
+    }
+  }, [topicSession]);
+  // A repository that is not in the topic layout is polled through its own loader.
+  const syncing = topicSession !== null && (!discovered || topicLayout);
+
   useEffect(() => {
-    const poller = new Poller(() => loader.refresh(), {
+    const poller = new Poller(() => (syncing ? syncTopics() : loader.refresh()), {
       visible: () => document.visibilityState === "visible",
       ...(pollIntervalMs === undefined ? {} : { visibleIntervalMs: pollIntervalMs }),
       rateLimit: () => loader.rateLimit(),
@@ -230,8 +300,17 @@ export function App({
       poller.visibilityChanged();
     };
     document.addEventListener("visibilitychange", onVisibility);
+    const head = topicSession?.currentHead ?? null;
+    const first = () =>
+      !syncing
+        ? head === null
+          ? loader.open()
+          : loader.openWithHead(head)
+        : discovered
+          ? Promise.resolve()
+          : syncTopics();
     poller.start(() =>
-      loader.open().finally(() => {
+      first().finally(() => {
         setBusy(false);
       }),
     );
@@ -240,12 +319,38 @@ export function App({
       poller.stop();
       pollerRef.current = null;
     };
-  }, [loader, pollIntervalMs]);
+  }, [discovered, loader, pollIntervalMs, syncTopics, syncing, topicSession]);
 
   const topics = useMemo(
     () => topicSummaries(snapshot.items, snapshot.fresh),
     [snapshot.items, snapshot.fresh],
   );
+  const digests = useTopicDigests(
+    topicLayout ? topicSession : null,
+    topicList,
+    closedOpen,
+    setError,
+  );
+  const sortedTopics = useMemo(() => sortTopicSummaries(topicList, digests), [digests, topicList]);
+  const openTopic = (summary: TopicSummary, button: HTMLButtonElement) => {
+    if (topicSession === null) return;
+    setOpenedTopics((previous) =>
+      previous.includes(summary.name) ? previous : [...previous, summary.name],
+    );
+    setBusy(true);
+    topicSession
+      .loader(summary.name)
+      .openWithHead(topicSession.currentHead)
+      .catch(showError)
+      .finally(() => {
+        setBusy(false);
+      });
+    pendingJump.current = null;
+    setView("chat");
+    setTopic(summary.name);
+    lastTopicButton.current = button;
+    setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+  };
   const viewer = useMemo(
     () => resolveViewer(preferences, snapshot.participants, [...selfNames]),
     [preferences, snapshot.participants, selfNames],
@@ -263,6 +368,11 @@ export function App({
   const messages = useMemo(
     () => snapshot.items.flatMap((item) => (item.kind === "message" ? [item.message] : [])),
     [snapshot.items],
+  );
+  // The loaded messages of the loader that pages the chat.
+  const pagedMessages = useMemo(
+    () => paging.items.flatMap((item) => (item.kind === "message" ? [item.message] : [])),
+    [paging.items],
   );
   const questionStates = useMemo(
     () =>
@@ -327,7 +437,7 @@ export function App({
   }, [view, rows]);
   const attachments = useMemo<AttachmentContext>(
     () => ({
-      reader: loader.attachments,
+      reader: (selectedLoader ?? openedLoaders[0] ?? loader).attachments,
       loadedIds: new Set(messages.map((message) => message.id)),
       onJump: (id) => {
         const target = messages.find((message) => message.id === id);
@@ -339,7 +449,7 @@ export function App({
     }),
     // jumpToMessage reads the current view and topic through the closure it is created in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loader, messages, topic, view],
+    [loader, messages, openedLoaders, selectedLoader, topic, view],
   );
   useEffect(() => {
     const arrivals = [...snapshot.fresh].filter((path) => !announcedMessages.current.has(path));
@@ -419,7 +529,11 @@ export function App({
                 disabled={busy || retryingAfterLimit}
                 aria-busy={busy}
                 onClick={() => {
-                  run(() => loader.refresh(), pollIntervalMs ?? 0, "refresh");
+                  run(
+                    () => (syncing ? syncTopics() : loader.refresh()),
+                    pollIntervalMs ?? 0,
+                    "refresh",
+                  );
                 }}
               >
                 <RefreshIcon />
@@ -522,151 +636,184 @@ export function App({
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {arrivalAnnouncement}
       </p>
-      <div className="workspace" data-mobile-view={mobileConversation ? "conversation" : "topics"}>
-        <aside className="topics-pane">
-          <h2>{t("nav.conversations")}</h2>
-          <nav className="topics" aria-label={t("nav.topics")}>
-            <button
-              type="button"
-              aria-pressed={view === "questions"}
-              onClick={(event) => {
-                pendingJump.current = null;
-                setView("questions");
-                lastTopicButton.current = event.currentTarget;
-                setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
-              }}
-            >
-              <span>{t("nav.questions")}</span>
-              <span className="count">
-                {t("nav.questionsOpen", { count: questionGroups.open.length })}
-              </span>
-            </button>
-            <button
-              type="button"
-              aria-pressed={view === "files"}
-              onClick={(event) => {
-                pendingJump.current = null;
-                setView("files");
-                lastTopicButton.current = event.currentTarget;
-                setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
-              }}
-            >
-              <span>{t("nav.files")}</span>
-            </button>
-            <button
-              type="button"
-              aria-pressed={view === "chat" && topic === null}
-              onClick={(event) => {
-                pendingJump.current = null;
-                setView("chat");
-                setTopic(null);
-                lastTopicButton.current = event.currentTarget;
-                setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
-              }}
-            >
-              {t("nav.all")}
-            </button>
-            {topics.map((summary) => (
+      {!discoveryReady ? (
+        <main className="topic-discovery">
+          <h2>{t("heading.opening")}</h2>
+          <p>{t(error === null ? "opening.loading" : "opening.retry")}</p>
+        </main>
+      ) : (
+        <div
+          className="workspace"
+          data-mobile-view={mobileConversation ? "conversation" : "topics"}
+        >
+          <aside className="topics-pane">
+            <h2>{t(topicLayout ? "nav.topics" : "nav.conversations")}</h2>
+            <nav className="topics" aria-label={t("nav.topics")}>
               <button
-                key={summary.topic}
                 type="button"
-                aria-pressed={view === "chat" && topic === summary.topic}
+                aria-pressed={view === "chat" && topic === null}
                 onClick={(event) => {
                   pendingJump.current = null;
                   setView("chat");
-                  setTopic(summary.topic);
+                  setTopic(null);
                   lastTopicButton.current = event.currentTarget;
                   setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
                 }}
               >
-                <span className="topic-name">#{summary.topic}</span>
-                <span className="count">{summary.count}</span>
-                {summary.fresh > 0 && (
-                  <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>
-                )}
+                {t("nav.all")}
               </button>
-            ))}
-          </nav>
-        </aside>
-        <main className="conversation" aria-labelledby="conversation-heading">
-          <button
-            type="button"
-            className="back-to-topics"
-            onClick={() => {
-              setMobileConversation(false);
-            }}
-          >
-            {t("nav.back")}
-          </button>
-          <h2 id="conversation-heading" ref={conversationHeading} tabIndex={-1}>
-            {view === "questions"
-              ? t("heading.questions")
-              : view === "files"
-                ? topic === null
-                  ? t("heading.files")
-                  : t("heading.filesIn", { topic })
-                : topic === null
-                  ? t("heading.all")
-                  : `#${topic}`}
-          </h2>
-          {view === "questions" && (
-            <QuestionsView
-              groups={questionGroups}
-              people={people}
-              now={now}
-              onOpen={openQuestion}
-            />
-          )}
-          {view !== "questions" && (
-            <RangeBar
-              messages={messages}
-              jumpedTo={snapshot.jumpedTo}
-              disabled={busy || retryingAfterLimit}
-              onJump={(date) => {
-                run(() => loader.jumpTo(date), 0, "jump");
-              }}
-            />
-          )}
-          {view !== "questions" && snapshot.hasOlder && (
+              <button
+                type="button"
+                aria-pressed={view === "questions"}
+                onClick={(event) => {
+                  pendingJump.current = null;
+                  setView("questions");
+                  lastTopicButton.current = event.currentTarget;
+                  setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+                }}
+              >
+                <span>{t("nav.questions")}</span>
+                <span className="count">
+                  {t("nav.questionsOpen", { count: questionGroups.open.length })}
+                </span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={view === "files"}
+                onClick={(event) => {
+                  pendingJump.current = null;
+                  setView("files");
+                  lastTopicButton.current = event.currentTarget;
+                  setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+                }}
+              >
+                <span>{t("nav.files")}</span>
+              </button>
+              {topicLayout ? (
+                <TopicList
+                  topics={sortedTopics}
+                  selected={topic}
+                  pressed={view === "chat" ? topic : null}
+                  closedOpen={closedOpen}
+                  onClosedOpenChange={setClosedOpen}
+                  onSelect={openTopic}
+                />
+              ) : (
+                topics.map((summary) => (
+                  <button
+                    key={summary.topic}
+                    type="button"
+                    aria-pressed={view === "chat" && topic === summary.topic}
+                    onClick={(event) => {
+                      pendingJump.current = null;
+                      setView("chat");
+                      setTopic(summary.topic);
+                      lastTopicButton.current = event.currentTarget;
+                      setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+                    }}
+                  >
+                    <span className="topic-name">#{summary.topic}</span>
+                    <span className="count">{summary.count}</span>
+                    {summary.fresh > 0 && (
+                      <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>
+                    )}
+                  </button>
+                ))
+              )}
+            </nav>
+          </aside>
+          <main className="conversation" aria-labelledby="conversation-heading">
             <button
               type="button"
-              className="older"
-              disabled={busy || retryingAfterLimit}
+              className="back-to-topics"
               onClick={() => {
-                run(() => loader.loadOlder(), 0, "load-older");
+                setMobileConversation(false);
               }}
             >
-              {t("nav.loadOlder")}
+              {t("nav.back")}
             </button>
-          )}
-          {view === "files" && (
-            <FilesView
-              messages={
-                topic === null ? messages : messages.filter((message) => message.topic === topic)
-              }
-              context={attachments}
-              label={(name) => people.label(name)}
-              hasOlder={snapshot.hasOlder}
-            />
-          )}
-          {view === "chat" && (
-            <ChatView
-              rows={rows}
-              people={people}
-              attachments={attachments}
-              earlier={{
-                // Ids start with their timestamp, so a parent that sorts before the oldest loaded
-                // message is older than the loaded range.
-                beforeId: snapshot.hasOlder ? (messages[0]?.id ?? null) : null,
-                disabled: busy || retryingAfterLimit,
-                onLoad: () => {
-                  run(() => loader.loadOlder(), 0, "load-older");
-                },
-              }}
-            />
-          )}
-        </main>
-      </div>
+            <h2
+              id="conversation-heading"
+              className={topicLayout && topic !== null ? "topic-heading" : undefined}
+              ref={conversationHeading}
+              tabIndex={-1}
+            >
+              {view === "questions"
+                ? t("heading.questions")
+                : view === "files"
+                  ? topic === null
+                    ? t("heading.files")
+                    : t("heading.filesIn", { topic })
+                  : topic === null
+                    ? t("heading.all")
+                    : topicLayout
+                      ? (topicList.find((summary) => summary.name === topic)?.title ?? topic)
+                      : `#${topic}`}
+            </h2>
+            {topicLayout && openedTopics.length === 0 && (
+              <p className="topic-prompt">{t("topic.selectPrompt")}</p>
+            )}
+            {view === "questions" && (
+              <QuestionsView
+                groups={questionGroups}
+                people={people}
+                now={now}
+                onOpen={openQuestion}
+              />
+            )}
+            {view !== "questions" && selectedLoader !== null && (
+              <RangeBar
+                messages={pagedMessages}
+                jumpedTo={paging.jumpedTo}
+                disabled={busy || retryingAfterLimit}
+                onJump={(date) => {
+                  run(() => selectedLoader.jumpTo(date), 0, "jump");
+                }}
+              />
+            )}
+            {view !== "questions" && selectedLoader !== null && paging.hasOlder && (
+              <button
+                type="button"
+                className="older"
+                disabled={busy || retryingAfterLimit}
+                onClick={() => {
+                  run(() => selectedLoader.loadOlder(), 0, "load-older");
+                }}
+              >
+                {t("nav.loadOlder")}
+              </button>
+            )}
+            {view === "files" && (
+              <FilesView
+                messages={
+                  topic === null ? messages : messages.filter((message) => message.topic === topic)
+                }
+                context={attachments}
+                label={(name) => people.label(name)}
+                hasOlder={paging.hasOlder}
+              />
+            )}
+            {view === "chat" && (
+              <ChatView
+                rows={rows}
+                people={people}
+                attachments={attachments}
+                earlier={{
+                  // Ids start with their timestamp, so a parent that sorts before the oldest loaded
+                  // message is older than the loaded range.
+                  beforeId: paging.hasOlder ? (pagedMessages[0]?.id ?? null) : null,
+                  disabled: busy || retryingAfterLimit,
+                  onLoad: () => {
+                    if (selectedLoader !== null) {
+                      run(() => selectedLoader.loadOlder(), 0, "load-older");
+                    }
+                  },
+                }}
+              />
+            )}
+          </main>
+        </div>
+      )}
       <a
         className="jump-to-latest"
         data-mobile-view={mobileConversation ? "conversation" : "topics"}

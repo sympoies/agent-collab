@@ -490,6 +490,53 @@ button:hover {
   color: var(--text);
 }
 
+.topics .show-all-topics {
+  justify-content: center;
+  color: var(--muted);
+  background: transparent;
+  border: 1px dashed var(--border);
+}
+
+.topics .show-all-topics:hover {
+  color: var(--text);
+}
+
+.closed-topics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.closed-topics summary {
+  min-height: 40px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.closed-topics summary:hover {
+  background: var(--hover-strong);
+  color: var(--text);
+}
+
+.topic-prompt {
+  color: var(--muted);
+}
+
+.topic-heading {
+  overflow-wrap: anywhere;
+}
+
+.topic-discovery {
+  margin-top: 18px;
+  padding: 18px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
 .count,
 .topic {
   color: var(--muted);
@@ -1463,6 +1510,16 @@ span.chip {
   .topics button {
     width: auto;
     max-width: 100%;
+  }
+
+  /* The disclosure button and the Closed group take a full line under the topic chips. */
+  .topics .show-all-topics,
+  .closed-topics {
+    flex: 1 1 100%;
+  }
+
+  .closed-topics button {
+    align-self: flex-start;
   }
 
   .conversation {
