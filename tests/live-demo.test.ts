@@ -46,6 +46,43 @@ describe("LiveCheckGate", () => {
   });
 });
 
+describe("LiveCheckGate and a token", () => {
+  it("tells a rate-limit block from the normal spacing, and a token opens it", () => {
+    const time = clock();
+    const gate = new LiveCheckGate(time.now);
+    gate.record(null);
+    expect(gate.rateLimited()).toBe(false);
+    gate.record(new SourceError("rate-limited", "", 403, new Date(time.now() + 40 * MINUTE)));
+    expect(gate.rateLimited()).toBe(true);
+    gate.reset();
+    expect(gate.nextCheckAt()).toBeNull();
+    expect(gate.rateLimited()).toBe(false);
+    // The block ends by itself too.
+    gate.record(new SourceError("rate-limited", "", 403, new Date(time.now() + MINUTE)));
+    time.advance(6 * MINUTE);
+    expect(gate.rateLimited()).toBe(false);
+  });
+
+  it("reports the limit as the reason a check or the open left the static copy in place", async () => {
+    const time = clock();
+    const gate = new LiveCheckGate(time.now);
+    const checked = await checkLive(
+      () => rateLimitedSource(new Date(time.now() + 40 * MINUTE)),
+      { kind: "bundled" },
+      gate,
+      presenterEn,
+    );
+    expect(checked.rateLimited).toBe(true);
+    const again = await checkLive(
+      () => new FixtureSource({}),
+      { kind: "bundled" },
+      gate,
+      presenterEn,
+    );
+    expect(again.rateLimited).toBe(true);
+  });
+});
+
 describe("LiveCheckGate ties", () => {
   it("allows a request exactly at the reset time", () => {
     const time = clock();
@@ -105,6 +142,40 @@ describe("openLiveDemo without a snapshot", () => {
     expect(opened.view).toEqual({ kind: "bundled" });
     expect(opened.banner).toContain("paused");
     expect(opened.loader.getSnapshot().items).toHaveLength(1);
+  });
+
+  it("reports the rate limit as the reason when the open falls back to the bundled sample", async () => {
+    const limited = await openLiveDemo(
+      () => rateLimitedSource(new Date(Date.now() + 30 * MINUTE)),
+      repo([flat("2026-11", 3, 1)]),
+      new LiveCheckGate(),
+      presenterEn,
+      () => Promise.resolve(null),
+    );
+    expect(limited.view).toEqual({ kind: "bundled" });
+    expect(limited.rateLimited).toBe(true);
+
+    // Another failure is not a rate limit, and a blocked gate that is only spacing is not either.
+    const broken = new FixtureSource({});
+    vi.spyOn(broken, "head").mockRejectedValue(new SourceError("unreachable", ""));
+    const other = await openLiveDemo(
+      () => broken,
+      repo([flat("2026-11", 3, 1)]),
+      new LiveCheckGate(),
+      presenterEn,
+      () => Promise.resolve(null),
+    );
+    expect(other.rateLimited).toBe(false);
+    const spacing = new LiveCheckGate();
+    spacing.record(null);
+    const spaced = await openLiveDemo(
+      () => broken,
+      repo([flat("2026-11", 3, 1)]),
+      spacing,
+      presenterEn,
+      () => Promise.resolve(null),
+    );
+    expect(spaced.rateLimited).toBe(false);
   });
 
   it("shows the live repository when the API answers and the snapshot is missing", async () => {

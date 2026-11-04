@@ -21,6 +21,33 @@ per-IP limit, including a `304 Not Modified` response. Manual refresh is
 limited to the same five-minute interval and replaces the next scheduled poll.
 If the limit is reached, the viewer shows when to try again.
 
+## Raise the limit with a token
+
+Anonymous use of the GitHub API is capped at 60 requests per hour per IP address. A token has its
+own budget of 5,000 requests per hour, so it is the way out when the demo reports the limit.
+
+- **When the limit is hit,** the notice offers **Use a token for a higher limit**. It opens
+  Settings at the token section, with the public demo repository filled in.
+- **Creating the token.** The **Create a token on GitHub** link opens GitHub's fine-grained token
+  form with a name, a description and a 30-day expiry already filled in (and the owner taken from the
+  repository name you typed as the resource owner; that is the prefix you typed, not necessarily
+  your own account, so check it before creating the token). A token for a **public** repository, such as the demo,
+  needs no permission beyond the default read access. For a **private** repository it needs
+  read-only access to **Contents** of that one repository; the link adds that permission when
+  the repository you typed is not the demo. If GitHub does not accept a prefilled value, use the
+  plain token page link next to it and fill the form by hand. The link never contains a token.
+- **Where the token goes.** It is sent only to the configured API host (`api.github.com` by
+  default), stays in memory for this page session and is forgotten on reload, unless you choose the
+  encrypted browser store in Settings. Nothing about it is stored on a server; there is none.
+- **Using it.** Saving it opens the repository signed in. The banner says **Signed in with a
+  token: higher limit**, shows how many requests are left this hour once GitHub has reported it,
+  and has **Remove token**, which forgets the token everywhere and returns to anonymous use. **Remove token only forgets the token on this page.** It stays valid on GitHub until its 30-day expiry, so revoke it in your GitHub token settings if you no longer want it to exist. A
+  token saved in memory this session is also used by the demo's **Check live now**.
+- **Why not a "Sign in with GitHub" button.** As far as the public record shows, GitHub's token
+  endpoint still needs a client secret and has no CORS support, so a static page cannot finish
+  the exchange (the device flow has the same limit). This is worth re-checking later; if it
+  changes, a button can replace pasting a token.
+
 ## Read a local clone (experimental)
 
 If you keep a clone of the collaboration repository on your computer, the viewer

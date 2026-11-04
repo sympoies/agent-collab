@@ -203,4 +203,20 @@ export const zhTW: Messages = {
   "error.needsToken": "此儲存庫需要權杖，或不存在。",
   "file.badgeOther": "檔案",
   "bar.more": "更多",
+  "settings.tokenName": "Collab Viewer（唯讀）",
+  "settings.tokenDescription": "供 Collab Viewer 網頁使用的唯讀存取。",
+  "notice.useToken": "使用權杖以取得更高上限",
+  "settings.tokenWhy":
+    "權杖可將 GitHub 的上限從每小時 60 次提高到 5,000 次。權杖只會傳送到設定的 API 主機，除非你選擇加密的瀏覽器儲存，否則只存在記憶體中。",
+  "settings.tokenPublic": "公開儲存庫除了預設的讀取權限外，不需要其他權限。",
+  "settings.tokenPrivate": "私有儲存庫需要該儲存庫內容的讀取權限。",
+  "settings.tokenCreate": "在 GitHub 建立權杖",
+  "settings.tokenCreatePlain": "開啟一般權杖頁面",
+  "signedIn.banner": "已使用權杖登入：上限已提高。",
+  "signedIn.remaining": "本小時剩餘 {remaining} / {limit} 次請求。",
+  "signedIn.remove": "移除權杖",
+  "welcome.demoHeading": "試用示範",
+  "welcome.connectHeading": "連接儲存庫",
+  "welcome.limits":
+    "示範不需要權杖，但 GitHub 對匿名請求限制為每個位址每小時 60 次。使用唯讀權杖可提高到 5,000 次。",
 };

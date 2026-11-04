@@ -222,4 +222,21 @@ export const ja: Messages = {
   "error.needsToken": "このリポジトリはトークンが必要か、存在しません。",
   "file.badgeOther": "ファイル",
   "bar.more": "その他",
+  "settings.tokenName": "Collab Viewer (読み取り専用)",
+  "settings.tokenDescription": "Collab Viewer の Web ページ用の読み取り専用アクセス。",
+  "notice.useToken": "トークンを使って上限を引き上げる",
+  "settings.tokenWhy":
+    "トークンを使うと、GitHub の上限が1時間あたり60件から5,000件になります。トークンは設定した API ホストにのみ送信され、暗号化ブラウザ保存を選ばない限りメモリ上にだけ保持されます。",
+  "settings.tokenPublic": "公開リポジトリでは、標準の読み取り権限以外は不要です。",
+  "settings.tokenPrivate":
+    "非公開リポジトリでは、そのリポジトリのコンテンツへの読み取り権限が必要です。",
+  "settings.tokenCreate": "GitHub でトークンを作成",
+  "settings.tokenCreatePlain": "通常のトークン作成ページを開く",
+  "signedIn.banner": "トークンでサインイン中: 上限が引き上げられています。",
+  "signedIn.remaining": "この1時間の残り: {remaining} / {limit} 件",
+  "signedIn.remove": "トークンを削除",
+  "welcome.demoHeading": "デモを試す",
+  "welcome.connectHeading": "リポジトリに接続",
+  "welcome.limits":
+    "デモにトークンは不要ですが、GitHub は匿名のリクエストを1アドレスあたり1時間に60件までに制限しています。読み取り専用トークンを使うと5,000件になります。",
 };

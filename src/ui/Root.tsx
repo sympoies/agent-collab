@@ -29,6 +29,7 @@ import {
   openLiveDemo,
   type StaticDemoView,
 } from "../settings/live-demo";
+import { DEMO_REPOSITORY } from "../settings/live-demo";
 import { demoFiles } from "../demo/fixtures";
 import type { MessageRef } from "../i18n/translate";
 import { SourceError, type MessageSource } from "../source/types";
@@ -47,7 +48,8 @@ export interface LocalFolderOpen {
 export interface RootProps extends SettingsDeps {
   readonly createSource: (settings: ViewerSettings, token: Secret) => MessageSource;
   readonly createDemoSource: () => MessageSource;
-  readonly createLiveDemoSource: () => MessageSource;
+  /** The live demo source; the token, when there is one, is only sent to the API host. */
+  readonly createLiveDemoSource: (token: Secret | null) => MessageSource;
   /** Opens the browser's folder picker; null when the browser has none. Needs a user gesture. */
   readonly openLocalFolder: (() => Promise<LocalFolderOpen>) | null;
 }
@@ -66,6 +68,12 @@ interface ViewerScreen {
   readonly liveDemo: StaticDemoView | null;
   /** Names the source when it is not a repository, such as a local folder. */
   readonly source: SourceIndicator | null;
+  /** The public demo, in any copy; its rate limit notices offer a token. */
+  readonly demo: boolean;
+  /** The API limit is why a static demo copy stays on screen. */
+  readonly limitHit: boolean;
+  /** The viewer reads with a token. */
+  readonly signedIn: boolean;
 }
 
 /** The demos neither read nor write browser storage, so identity choices last for the view. */
@@ -79,6 +87,8 @@ type Screen =
       readonly storedEndpoints: Readonly<Record<CredentialStorage, string | null>>;
       /** The viewer to return to on cancel. */
       readonly back: ViewerScreen | null;
+      /** Scroll to the token section and focus its field. */
+      readonly focusToken: boolean;
     }
   | ViewerScreen;
 
@@ -92,6 +102,8 @@ export function Root(props: RootProps) {
   // open and check, and a live copy once read replaces the static copies for good.
   const [liveGate] = useState(() => new LiveCheckGate());
   const liveLoader = useRef<Loader | null>(null);
+  /** Whether the cached live copy was read with a token. */
+  const liveSignedIn = useRef(false);
   /** Why a folder could not be opened, shown on the welcome screen. */
   const [localMessage, setLocalMessage] = useState<MessageRef | null>(null);
 
@@ -104,6 +116,7 @@ export function Root(props: RootProps) {
     pollIntervalMs?: number,
     liveDemo: StaticDemoView | null = null,
     source: SourceIndicator | null = null,
+    extras: Partial<Pick<ViewerScreen, "demo" | "limitHit" | "signedIn">> = {},
   ): ViewerScreen => {
     viewers.current += 1;
     return {
@@ -117,6 +130,9 @@ export function Root(props: RootProps) {
       pollIntervalMs,
       liveDemo,
       source,
+      demo: extras.demo ?? false,
+      limitHit: extras.limitHit ?? false,
+      signedIn: extras.signedIn ?? false,
     };
   };
 
@@ -130,15 +146,67 @@ export function Root(props: RootProps) {
         key: `${settings.platform}:${settings.endpoint}/${settings.repository}`,
       },
       notice,
+      undefined,
+      null,
+      null,
+      { signedIn: true },
     );
 
-  const showSettings = async (back: ViewerScreen | null) => {
+  /**
+   * The token the user saved this page session for the public API, kept in memory only so the demo
+   * can use it for its live copy. Reloading forgets it; nothing here reads a credential store, so
+   * a slow or locked store never delays the demo.
+   */
+  const sessionToken = useRef<Secret | null>(null);
+  /** Counts changes of the demo token, so a request that started under another token is dropped. */
+  const tokenGeneration = useRef(0);
+  /**
+   * Sets the demo token (null for none). Whenever it changes, including to null, the cached live
+   * copy goes with it: that copy was read with the old token and must not outlive it.
+   */
+  const changeToken = (next: Secret | null) => {
+    const current = sessionToken.current;
+    if (
+      current === next ||
+      (current !== null && next !== null && current.reveal() === next.reveal())
+    ) {
+      return;
+    }
+    sessionToken.current = next;
+    tokenGeneration.current += 1;
+    liveLoader.current = null;
+    liveSignedIn.current = false;
+    if (next !== null) liveGate.reset();
+  };
+  const rememberToken = ({ settings, token }: OpenSettings) => {
+    changeToken(
+      settings.credentialStorage === "memory" && settings.endpoint === DEFAULT_DRAFT.endpoint
+        ? token
+        : null,
+    );
+  };
+  const demoToken = () => sessionToken.current;
+
+  const showSettings = async (
+    back: ViewerScreen | null,
+    options: { readonly focusToken?: boolean; readonly demo?: boolean } = {},
+  ) => {
     const operation = ++navigation.current;
     const settings = loadSettings(props.storage);
-    const draft = settings === null ? DEFAULT_DRAFT : draftFromSettings(settings);
+    let draft = settings === null ? DEFAULT_DRAFT : draftFromSettings(settings);
+    // From the demo, the token is for the demo repository unless a repository is already set up.
+    if (options.demo === true && draft.repository === "") {
+      draft = { ...draft, repository: DEMO_REPOSITORY };
+    }
     const stored = await storedEndpoints(props);
     if (operation !== navigation.current) return;
-    setScreen({ kind: "settings", draft, storedEndpoints: stored, back });
+    setScreen({
+      kind: "settings",
+      draft,
+      storedEndpoints: stored,
+      back,
+      focusToken: options.focusToken === true,
+    });
   };
 
   const openSavedRepository = async () => {
@@ -147,14 +215,21 @@ export function Root(props: RootProps) {
       const opened = await restore(props);
       if (operation !== navigation.current) return;
       if (opened === null) await showSettings(null);
-      else setScreen(open(opened));
+      else {
+        rememberToken(opened);
+        setScreen(open(opened));
+      }
     } catch {
       if (operation !== navigation.current) return;
       await showSettings(null);
     }
   };
 
-  const liveViewer = (loader: Loader, notice: string | MessageRef): ViewerScreen =>
+  const liveViewer = (
+    loader: Loader,
+    notice: string | MessageRef,
+    signedIn = false,
+  ): ViewerScreen =>
     viewer(
       loader,
       { key: "app.liveDemoTitle" },
@@ -162,50 +237,96 @@ export function Root(props: RootProps) {
       MEMORY_ONLY,
       notice,
       LIVE_DEMO_POLL_INTERVAL_MS,
+      null,
+      null,
+      { demo: true, signedIn },
     );
 
-  const showLiveDemo = () => {
+  const showLiveDemo = async (): Promise<void> => {
     const operation = ++navigation.current;
     if (liveLoader.current !== null) {
-      setScreen(liveViewer(liveLoader.current, { key: "live.showingLive" }));
+      setScreen(liveViewer(liveLoader.current, { key: "live.showingLive" }, liveSignedIn.current));
       return;
     }
-    void openLiveDemo(createLiveDemoSource, demoFiles, liveGate, { t, formatDateTime }).then(
-      (result) => {
-        if (result.view.kind === "live") liveLoader.current = result.loader;
-        if (operation !== navigation.current) return;
-        setScreen(
-          result.view.kind === "live"
-            ? liveViewer(result.loader, result.banner)
-            : viewer(
-                result.loader,
-                { key: "app.liveDemoTitle" },
-                [],
-                MEMORY_ONLY,
-                result.banner,
-                LIVE_DEMO_POLL_INTERVAL_MS,
-                result.view,
-              ),
-        );
-      },
+    const token = demoToken();
+    const generation = tokenGeneration.current;
+    const result = await openLiveDemo(() => createLiveDemoSource(token), demoFiles, liveGate, {
+      t,
+      formatDateTime,
+    });
+    // The token may have been removed or replaced while this ran; its result is then dropped, and
+    // so is the block it recorded: that limit belonged to another identity's budget.
+    if (generation !== tokenGeneration.current) {
+      liveGate.reset();
+      return;
+    }
+    if (result.view.kind === "live") {
+      liveLoader.current = result.loader;
+      liveSignedIn.current = token !== null;
+    }
+    if (operation !== navigation.current) return;
+    setScreen(
+      result.view.kind === "live"
+        ? liveViewer(result.loader, result.banner, token !== null)
+        : viewer(
+            result.loader,
+            { key: "app.liveDemoTitle" },
+            [],
+            MEMORY_ONLY,
+            result.banner,
+            LIVE_DEMO_POLL_INTERVAL_MS,
+            result.view,
+            null,
+            { demo: true, limitHit: result.rateLimited },
+          ),
     );
   };
 
   const checkLiveNow = async (current: ViewerScreen): Promise<void> => {
     if (current.liveDemo === null) return;
-    const result = await checkLive(createLiveDemoSource, current.liveDemo, liveGate, {
+    const token = demoToken();
+    const generation = tokenGeneration.current;
+    const result = await checkLive(() => createLiveDemoSource(token), current.liveDemo, liveGate, {
       t,
       formatDateTime,
     });
-    if (result.loader !== null) liveLoader.current = result.loader;
+    if (generation !== tokenGeneration.current) {
+      liveGate.reset();
+      return;
+    }
+    if (result.loader !== null) {
+      liveLoader.current = result.loader;
+      liveSignedIn.current = token !== null;
+    }
     const next =
       result.loader === null
-        ? { ...current, notice: result.notice }
-        : liveViewer(result.loader, result.notice);
+        ? { ...current, notice: result.notice, limitHit: result.rateLimited }
+        : liveViewer(result.loader, result.notice, token !== null);
     // Leave a viewer the user has since navigated away from alone.
     setScreen((previous) =>
       previous.kind === "viewer" && previous.id === current.id ? next : previous,
     );
+  };
+
+  const forgetToken = () => {
+    changeToken(null);
+  };
+
+  /** Forgets the token everywhere and returns to the welcome screen, anonymous again. */
+  const removeToken = async (current: ViewerScreen): Promise<void> => {
+    const operation = ++navigation.current;
+    try {
+      await removeCredentials(props);
+    } catch {
+      setScreen((previous) =>
+        previous.kind === "viewer" && previous.id === current.id
+          ? { ...previous, notice: { key: "settings.removeFailed" } }
+          : previous,
+      );
+      return;
+    }
+    forgetToken();
+    if (operation === navigation.current) setScreen({ kind: "welcome" });
   };
 
   /**
@@ -278,6 +399,7 @@ export function Root(props: RootProps) {
     const result = await apply(props, draft);
     if (operation !== navigation.current) return null;
     if (!result.ok) return result.errors;
+    rememberToken(result.open);
     setScreen(open(result.open, result.warning === null ? null : { key: result.warning }));
     return null;
   };
@@ -293,9 +415,16 @@ export function Root(props: RootProps) {
               <ThemeToggle />
             </div>
           </header>
-          <button type="button" onClick={showLiveDemo}>
+          <h2>{t("welcome.demoHeading")}</h2>
+          <button
+            type="button"
+            onClick={() => {
+              void showLiveDemo();
+            }}
+          >
             {t("welcome.openLiveDemo")}
           </button>
+          <p className="note">{t("welcome.limits")}</p>
           {openLocalFolder === null ? (
             <p className="local-unsupported note">{t("welcome.localUnsupported")}</p>
           ) : (
@@ -313,6 +442,7 @@ export function Root(props: RootProps) {
               {say(localMessage, t)}
             </p>
           )}
+          <h2>{t("welcome.connectHeading")}</h2>
           <button type="button" onClick={() => void openSavedRepository()}>
             {t("welcome.openSaved")}
           </button>
@@ -344,6 +474,7 @@ export function Root(props: RootProps) {
             onRemoveCredentials={async () => {
               const operation = ++navigation.current;
               await removeCredentials(props);
+              forgetToken();
               if (operation !== navigation.current) return;
               await showSettings(null);
             }}
@@ -354,7 +485,11 @@ export function Root(props: RootProps) {
                     navigation.current += 1;
                     setScreen(
                       back.liveDemo !== null && liveLoader.current !== null
-                        ? liveViewer(liveLoader.current, { key: "live.showingLive" })
+                        ? liveViewer(
+                            liveLoader.current,
+                            { key: "live.showingLive" },
+                            liveSignedIn.current,
+                          )
                         : back,
                     );
                   }
@@ -370,8 +505,9 @@ export function Root(props: RootProps) {
               );
             }}
             onOpenLiveDemo={() => {
-              showLiveDemo();
+              void showLiveDemo();
             }}
+            focusToken={screen.focusToken}
           />
         </div>
       );
@@ -400,6 +536,23 @@ export function Root(props: RootProps) {
                 },
               })}
           {...(screen.liveDemo === null ? {} : { onCheckLiveNow: () => checkLiveNow(screen) })}
+          {...(screen.demo && !screen.signedIn
+            ? {
+                onUseToken: () => {
+                  void showSettings(screen, { focusToken: true, demo: true });
+                },
+              }
+            : {})}
+          limitHit={screen.limitHit}
+          {...(screen.signedIn
+            ? {
+                signedIn: {
+                  onRemove: () => {
+                    void removeToken(screen);
+                  },
+                },
+              }
+            : {})}
         />
       );
   }

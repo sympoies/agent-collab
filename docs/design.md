@@ -611,6 +611,18 @@ Two different secrets with different purposes:
 
 ## 7. Polling and notifications
 
+  **Token steering.** When the API limit is why the static copy stays (a live check or the open),
+  the notice carries a "Use a token for a higher limit" action that opens Settings at the token
+  section (`#token-section`, field focused, demo repository filled in). The "Create a token"
+  link (`src/settings/token-link.ts`) uses only documented parameters (`name`, `description`,
+  `target_name`, `expires_in`, and `contents=read` for a repository other than the demo) and only
+  for `https://api.github.com`; it never contains a secret. A token saved in memory this page
+  session is kept in a Root ref (not read from a store, so a slow store never delays the demo) and
+  handed to `createLiveDemoSource(token)` for the live copy; saving it opens the request gate,
+  because the anonymous block no longer applies, and the authenticated responses decide from their
+  own headers. Signed-in viewers show the "higher limit" banner with the budget from
+  `Loader.rateLimit()` once known, and "Remove token" clears the stores, the ref and the cached
+  live copy. A token in the encrypted store is only used when its saved repository is opened.
 - **Poll target.** One conditional `head` request per interval. `not-modified`
   ends the cycle. A new revision lists `inbox/` and the newest month
   directory, diffs entry names against what is known, and reads only the new
