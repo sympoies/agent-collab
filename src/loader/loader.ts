@@ -257,9 +257,14 @@ export class Loader {
 
   /** Check the marker and load the newest page. Concurrent calls share one attempt. */
   open(): Promise<void> {
+    return this.openWithHead(null);
+  }
+
+  /** Reuse the head a caller has already read while discovering the repository layout. */
+  openWithHead(initialHead: Head | null): Promise<void> {
     this.opening ??= this.serialize(async () => {
       try {
-        const head = await this.source.head(null);
+        const head = initialHead ?? (await this.source.head(null));
         if (head === "not-modified") throw new SourceError("unexpected", "");
         const root = await this.source.listDirectory(head.revision, "");
         const participantData = await this.readMarker(root);

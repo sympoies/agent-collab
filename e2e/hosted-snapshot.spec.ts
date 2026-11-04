@@ -146,6 +146,8 @@ test("a hosted snapshot of topic folders shows new messages in an existing month
   const { foreign } = await deploy(page, () => body);
   await page.clock.install();
   await page.goto("/");
+  // The topic list comes first; the topic's messages load when it is opened.
+  await page.getByRole("button", { name: "general", exact: true }).click();
   await expect(page.getByText("First topic message.")).toBeVisible();
 
   body = topicSnapshot(

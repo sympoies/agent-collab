@@ -38,6 +38,11 @@ export class TopicSession {
   private states = new Map<string, TopicState>();
   private readonly loaders = new Map<string, { loader: Loader; treeId: string | null }>();
   private readonly digests = new Map<string, { treeId: string | null; digest: TopicDigest }>();
+  /** Digest reads in progress, so a caller that asks again joins the read instead of repeating it. */
+  private readonly digestReads = new Map<
+    string,
+    { treeId: string; promise: Promise<TopicDigest> }
+  >();
   private readonly openCache = new Map<
     string,
     { treeId: string | null; items: readonly OpenItem[] | null }
@@ -53,6 +58,11 @@ export class TopicSession {
   /** The topics as of the latest open or refresh: folders first, then legacy-only topics. */
   topics(): readonly TopicSummary[] {
     return [...this.states.values()].map((state) => state.summary);
+  }
+
+  /** The head used by the most recent successful open or refresh. */
+  get currentHead(): Head | null {
+    return this.head;
   }
 
   /** Reads the marker, `topics/` and the root index (the handful of requests of section 6.1). */
@@ -138,9 +148,19 @@ export class TopicSession {
     }
     const known = this.digests.get(topic);
     if (known?.treeId === state.treeId) return known.digest;
-    const digest = await this.readDigest(head.revision, topic);
-    this.digests.set(topic, { treeId: state.treeId, digest });
-    return digest;
+    const reading = this.digestReads.get(topic);
+    if (reading?.treeId === state.treeId) return reading.promise;
+    const treeId = state.treeId;
+    const promise: Promise<TopicDigest> = this.readDigest(head.revision, topic)
+      .then((digest) => {
+        this.digests.set(topic, { treeId, digest });
+        return digest;
+      })
+      .finally(() => {
+        if (this.digestReads.get(topic)?.promise === promise) this.digestReads.delete(topic);
+      });
+    this.digestReads.set(topic, { treeId, promise });
+    return promise;
   }
 
   /**

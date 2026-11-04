@@ -3001,6 +3001,9 @@ test("a topic-layout local folder shows a message added under a topic after Refr
   await installFakeFolder(page, { picker: "works", layout: "topic" });
   await page.goto("/");
   await page.getByRole("button", { name: "Open local folder (experimental)" }).click();
+  // The topic list comes first; a topic's messages load when it is opened.
+  await expect(page.getByText("The first message from the local clone.")).toBeHidden();
+  await page.getByRole("button", { name: "api", exact: true }).click();
   await expect(page.getByText("The first message from the local clone.")).toBeVisible();
   const last = page.locator(".source-indicator .last-changed");
   await expect(last).toContainText("· alice-agent");
