@@ -461,6 +461,22 @@ describe("Loader.refresh", () => {
     expect(first).toMatchObject({ message: { body: { lines: ["Edited before it was loaded."] } } });
   });
 
+  it("names the sender of the message in the newest changed file, and nobody otherwise", async () => {
+    const path = monthly("2026-10", 1, 1);
+    const id = path.slice(path.lastIndexOf("/") + 1, -".md".length);
+    const files = { ...repo([]), [path]: messageText(id, "bob-agent", "api") };
+    const source = new FixtureSource(files);
+    Object.assign(source, { lastChanged: () => new Date(0), lastChangedPath: () => path });
+    expect((await opened(source)).getSnapshot().lastChangedBy).toBe("bob-agent");
+    // The marker, a file that is not loaded, or a source that cannot tell: the time alone.
+    for (const other of [".agent-collab", monthly("2026-09", 1, 1), null]) {
+      const unknown = new FixtureSource(files);
+      Object.assign(unknown, { lastChanged: () => new Date(0), lastChangedPath: () => other });
+      expect((await opened(unknown)).getSnapshot().lastChangedBy).toBeNull();
+    }
+    expect((await opened(new FixtureSource(files))).getSnapshot().lastChangedBy).toBeNull();
+  });
+
   it("exposes when the data last changed, if the source knows", async () => {
     const source = new FixtureSource(repo([monthly("2026-10", 1, 1)]));
     const when = new Date("2026-11-03T08:00:00Z");

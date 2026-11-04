@@ -61,6 +61,7 @@ export const en = {
   "source.experimental": "experimental",
   "source.lastChange": "Last change seen {time}",
   "source.noChange": "No file changes seen yet",
+  "source.lastChangeBy": "Last change seen {time} · {name}",
   "source.lastChangeTitle": "{date} (file modification time on this computer)",
   "time.justNow": "just now",
   "time.minutes": "{count, plural, one {# minute ago} other {# minutes ago}}",

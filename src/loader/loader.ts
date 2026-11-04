@@ -39,6 +39,8 @@ export interface LoaderSnapshot {
   readonly incompleteTopics: readonly string[] | null;
   /** When the source's data last changed, as of the latest successful read, or null. */
   readonly lastChanged: Date | null;
+  /** The sender of the loaded message in the newest changed file, or null when there is none. */
+  readonly lastChangedBy: string | null;
 }
 
 export interface LoaderOptions {
@@ -194,6 +196,7 @@ export class Loader {
     rosterKnown: false,
     incompleteTopics: null,
     lastChanged: null,
+    lastChangedBy: null,
   };
   private queue: Promise<unknown> = Promise.resolve();
   private opening: Promise<void> | null = null;
@@ -527,6 +530,15 @@ export class Loader {
     );
   }
 
+  private lastChangedBy(items: readonly TimelineItem[]): string | null {
+    const path = this.source.lastChangedPath?.() ?? null;
+    if (path === null) return null;
+    for (const item of items) {
+      if (item.kind === "message" && item.message.path === path) return item.message.from;
+    }
+    return null;
+  }
+
   private publish(added: readonly TimelineItem[]): void {
     for (const item of added) this.items.set(itemName(item), item);
     const items = [...this.items.entries()]
@@ -542,6 +554,7 @@ export class Loader {
       rosterKnown: this.rosterKnown,
       incompleteTopics: this.incompleteTopics(),
       lastChanged: this.source.lastChanged?.() ?? null,
+      lastChangedBy: this.lastChangedBy(items),
     };
     for (const listener of this.listeners) listener();
   }

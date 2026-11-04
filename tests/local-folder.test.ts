@@ -746,3 +746,96 @@ describe("LocalFolderSource bounds and hostile folders", () => {
     await expect(empty.open()).rejects.toThrow("no .agent-collab marker");
   });
 });
+
+describe("LocalFolderSource in the topic layout", () => {
+  const NOW = 1_800_000_000_000;
+  const TOPIC_MARKER = "collab-protocol: 1\ninbox-layout: topic\n";
+  const topicPath = (id: string) => `topics/x/inbox/${id.slice(0, 7)}/${id}.md`;
+  const idOf = (day: number) => `2026-11-0${String(day)}T0901-alice-agent-x-01`;
+
+  function topicClone() {
+    const root = new MemoryDirectory();
+    root.addFile(".agent-collab", TOPIC_MARKER, NOW - 9_000);
+    root.addFile(topicPath(idOf(1)), messageText(idOf(1), "alice-agent", "x"), NOW - 8_000);
+    return root;
+  }
+
+  it("changes the revision and the last change when a topic message is added", async () => {
+    const root = topicClone();
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    const first = await source.head(null);
+    if (first === "not-modified") throw new Error("expected a head");
+    expect(source.lastChanged()).toEqual(new Date(NOW - 8_000));
+
+    root.addFile(topicPath(idOf(2)), messageText(idOf(2), "bob-agent", "x"), NOW - 1_000);
+    const second = await source.head(first);
+    expect(second).not.toBe("not-modified");
+    expect(source.lastChanged()).toEqual(new Date(NOW - 1_000));
+    // An unchanged poll still republishes nothing.
+    expect(await source.head(second as Exclude<typeof second, "not-modified">)).toBe(
+      "not-modified",
+    );
+  });
+
+  it("shows a message added under a topic after refresh", async () => {
+    const root = topicClone();
+    const loader = new Loader(new LocalFolderSource(root, { now: () => NOW }));
+    await loader.open();
+    expect(loader.getSnapshot().items).toHaveLength(1);
+    root.addFile(topicPath(idOf(2)), messageText(idOf(2), "bob-agent", "x"), NOW - 1_000);
+    await expect(loader.refresh()).resolves.toBe(1);
+    expect(loader.getSnapshot().items).toHaveLength(2);
+    expect(loader.getSnapshot().lastChanged).toEqual(new Date(NOW - 1_000));
+  });
+
+  it("changes the revision when a topic message is edited or deleted", async () => {
+    const root = topicClone();
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    const first = await source.head(null);
+    if (first === "not-modified") throw new Error("expected a head");
+    const file = root.addFile(topicPath(idOf(1)), "edited", NOW - 3_000);
+    const edited = await source.head(first);
+    expect(edited).not.toBe("not-modified");
+    const month = root.children.get("topics") as MemoryDirectory;
+    const inbox = (month.children.get("x") as MemoryDirectory).children.get(
+      "inbox",
+    ) as MemoryDirectory;
+    (inbox.children.get("2026-11") as MemoryDirectory).children.delete(file.name);
+    expect(await source.head(edited as Exclude<typeof edited, "not-modified">)).not.toBe(
+      "not-modified",
+    );
+  });
+
+  it("fails fast on a hostile number of topic folders", async () => {
+    const root = topicClone();
+    for (let index = 0; index < 300; index += 1) {
+      root.addFile(`topics/t${String(index)}/inbox/2026-11/m.md`, "x", NOW);
+    }
+    const source = new LocalFolderSource(root, { now: () => NOW, maxEntries: 100 });
+    await expect(source.head(null)).rejects.toMatchObject({ kind: "too-large" });
+  });
+
+  it("reports the path of the newest file, the greatest path on a tie", async () => {
+    const root = topicClone();
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    await source.head(null);
+    expect(source.lastChangedPath()).toBe(topicPath(idOf(1)));
+    root.addFile(topicPath(idOf(2)), messageText(idOf(2), "bob-agent", "x"), NOW - 8_000);
+    await source.head(null);
+    expect(source.lastChangedPath()).toBe(topicPath(idOf(2)));
+    const marker = root.children.get(".agent-collab");
+    if (marker instanceof MemoryFile) marker.replace(TOPIC_MARKER, NOW - 100);
+    await source.head(null);
+    expect(source.lastChangedPath()).toBe(".agent-collab");
+  });
+
+  it("does not read topic files outside the inbox during a scan", async () => {
+    const root = topicClone();
+    const notes = root.addFile("topics/x/TOPIC.md", "notes", NOW);
+    const attachment = root.addFile("topics/x/attachments/a.png", "png", NOW);
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    await source.head(null);
+    expect(notes.metadataReads + attachment.metadataReads).toBe(0);
+    expect(source.lastChanged()).toEqual(new Date(NOW - 8_000));
+  });
+});

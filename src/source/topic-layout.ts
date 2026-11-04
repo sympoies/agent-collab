@@ -96,6 +96,10 @@ export class TopicLayoutSource implements MessageSource {
     return this.inner.lastChanged?.() ?? null;
   }
 
+  lastChangedPath(): string | null {
+    return this.inner.lastChangedPath?.() ?? null;
+  }
+
   readBytes(entry: DirectoryEntry): Promise<Uint8Array> {
     if (this.inner.readBytes === undefined) {
       return Promise.reject(new SourceError("unexpected", entry.path));

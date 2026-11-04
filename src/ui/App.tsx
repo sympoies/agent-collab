@@ -348,7 +348,12 @@ export function App({
                 className="last-changed"
                 title={t("source.lastChangeTitle", { date: formatDateTime(snapshot.lastChanged) })}
               >
-                {t("source.lastChange", { time: relativeTime(snapshot.lastChanged, now, t) })}
+                {snapshot.lastChangedBy === null
+                  ? t("source.lastChange", { time: relativeTime(snapshot.lastChanged, now, t) })
+                  : t("source.lastChangeBy", {
+                      time: relativeTime(snapshot.lastChanged, now, t),
+                      name: people.label(snapshot.lastChangedBy),
+                    })}
               </span>
             )}
           </p>

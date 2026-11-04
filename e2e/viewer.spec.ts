@@ -1506,10 +1506,13 @@ function cloneMessage(id: string, from: string, body: string): string {
  */
 async function installFakeFolder(
   page: Page,
-  options: { picker: "works" | "cancels" | "missing" | "not-a-clone" },
+  options: {
+    picker: "works" | "cancels" | "missing" | "not-a-clone";
+    layout?: "topic";
+  },
 ) {
   await page.addInitScript(
-    ({ mode, marker, first }) => {
+    ({ mode, marker, first, layout }) => {
       if (mode === "missing") {
         Reflect.deleteProperty(window, "showDirectoryPicker");
         return;
@@ -1583,7 +1586,13 @@ async function installFakeFolder(
         } else directory.children.set(name, new FakeFile(name, content, modified));
       };
       if (mode !== "not-a-clone") write(".agent-collab", marker, Date.now() - 3_600_000);
-      write("inbox/2026-10/2026-10-08T0900-alice-agent-api-01.md", first, Date.now() - 10 * 60_000);
+      write(
+        layout === "topic"
+          ? "topics/api/inbox/2026-10/2026-10-08T0900-alice-agent-api-01.md"
+          : "inbox/2026-10/2026-10-08T0900-alice-agent-api-01.md",
+        first,
+        Date.now() - 10 * 60_000,
+      );
       Object.assign(window, {
         fakeClone: { write, counts, state },
         showDirectoryPicker: () => {
@@ -1596,7 +1605,8 @@ async function installFakeFolder(
     },
     {
       mode: options.picker,
-      marker: CLONE_MARKER,
+      layout: options.layout,
+      marker: options.layout === "topic" ? `${CLONE_MARKER}inbox-layout: topic\n` : CLONE_MARKER,
       first: cloneMessage(
         "2026-10-08T0900-alice-agent-api-01",
         "alice-agent",
@@ -1632,7 +1642,7 @@ for (const view of [
     const indicator = page.locator(".source-indicator");
     await expect(indicator).toContainText("Local folder · experimental");
     await expect(indicator.locator(".last-changed")).toHaveText(
-      /^Last change seen (just now|1 minute ago|\d+ minutes ago)$/,
+      /^Last change seen (just now|1 minute ago|\d+ minutes ago) · alice-agent$/,
     );
     await expect(indicator.locator(".last-changed")).toHaveAttribute(
       "title",
@@ -1689,7 +1699,7 @@ for (const view of [
     await page.clock.fastForward(61_000);
     await expect(page.getByText("A message that arrived on disk.")).toBeVisible();
     await expect(indicator.locator(".last-changed")).toHaveText(
-      /^Last change seen (just now|1 minute ago)$/,
+      /^Last change seen (just now|1 minute ago) · bob-agent$/,
     );
     expect(requests).toEqual([]);
   });
@@ -2648,4 +2658,72 @@ test("a jump in the monthly layout lists one month folder and reads one page", a
   expect(requests.filter((path) => path.includes("/git/blobs/"))).toHaveLength(6);
   expect(requests).toHaveLength(7);
   assertRequests();
+});
+
+// "@csp" also puts these in the WebKit project (see playwright.config.ts).
+for (const code of LOCALES) {
+  const messages = catalogsByLocale[code];
+  for (const view of [
+    { label: "desktop", size: { width: 1280, height: 800 } },
+    { label: "phone", size: { width: 390, height: 844 } },
+  ] as const) {
+    test(`the local folder status bar names who made the last change in ${LOCALE_NAMES[code]} on ${view.label} @csp`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(view.size);
+      await page.addInitScript((locale) => {
+        localStorage.setItem("agent-collab-viewer.locale", locale);
+      }, code);
+      await installFakeFolder(page, { picker: "works" });
+      await page.goto("/");
+      await page.getByRole("button", { name: messages["welcome.openLocal"] }).click();
+      const last = page.locator(".source-indicator .last-changed");
+      await expect(last).toContainText("alice-agent");
+      await expect(last).toContainText(" · ");
+      await expectNoClipping(page, ".source-indicator, .source-indicator span");
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `last-change-by-${code}-${view.label}.png`);
+    });
+  }
+}
+
+test("a topic-layout local folder shows a message added under a topic after Refresh", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date() });
+  await installFakeFolder(page, { picker: "works", layout: "topic" });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open local folder (experimental)" }).click();
+  await expect(page.getByText("The first message from the local clone.")).toBeVisible();
+  const last = page.locator(".source-indicator .last-changed");
+  await expect(last).toContainText("· alice-agent");
+
+  await page.evaluate(() => {
+    const clone = (
+      window as unknown as { fakeClone: { write: (p: string, c: string, m: number) => void } }
+    ).fakeClone;
+    clone.write(
+      "topics/api/inbox/2026-10/2026-10-08T0905-bob-agent-api-01.md",
+      [
+        "---",
+        "id: 2026-10-08T0905-bob-agent-api-01",
+        "from: bob-agent",
+        "to: all",
+        "topic: api",
+        "type: info",
+        "reply_to:",
+        "refs:",
+        "needs: none",
+        "due:",
+        "---",
+        "A message that arrived under a topic.",
+      ].join("\n"),
+      Date.now(),
+    );
+  });
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.getByText("A message that arrived under a topic.")).toBeVisible();
+  await expect(last).toContainText("· bob-agent");
 });
