@@ -1,6 +1,9 @@
 // The "More" menu of the narrow toolbar: a trigger (three dots) that opens a menu. Focus moves into
-// the menu, arrow keys, Home and End move between items, Escape closes it and returns focus to the
-// trigger, as does choosing an item; a click outside or Tab closes it.
+// the menu and arrow keys, Home and End move between items. Whenever the menu closes, focus goes
+// back to the trigger unless something else already has it: Escape, choosing an item and Tab
+// always return it (Tab closes the menu and keeps the tab order from the trigger); a click outside
+// leaves focus on a focusable target that was clicked, and returns it to the trigger when the
+// click landed on nothing focusable.
 
 import {
   createContext,
@@ -16,28 +19,55 @@ import {
 import { IconButton } from "./IconButton";
 import { MoreIcon } from "./icons";
 
-const CloseMenu = createContext<(returnFocus: boolean) => void>(() => undefined);
+const CloseMenu = createContext<() => void>(() => undefined);
 
 export function OverflowMenu({
   label,
   children,
+  onOpenChange,
 }: {
   readonly label: string;
   readonly children: ReactNode;
+  /** Told when the menu opens or closes (not when it unmounts while open). */
+  readonly onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const menu = useRef<HTMLDivElement | null>(null);
   const id = useId();
+  const refocus = useRef<number | undefined>(undefined);
 
   const items = (): HTMLElement[] => [
     ...(menu.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? []),
   ];
 
-  const close = (returnFocus: boolean) => {
-    setOpen(false);
-    if (returnFocus) trigger.current?.focus();
+  /**
+   * Focus is lost when it is on the body, on an element that has left the page, or still inside
+   * the menu, whose focused item unmounts with it.
+   */
+  const focusLost = () => {
+    const active = document.activeElement;
+    return (
+      active === null ||
+      active === document.body ||
+      !document.body.contains(active) ||
+      menu.current?.contains(active) === true
+    );
   };
+
+  const close = () => {
+    const lost = focusLost();
+    setOpen(false);
+    if (lost) trigger.current?.focus();
+  };
+
+  useEffect(() => {
+    // An unmount while open is not reported as a close: the toolbar uses that to move focus when
+    // the layout changes under an open menu.
+    onOpenChange?.(open);
+    // onOpenChange is a callback of the parent and is not part of when the menu opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -50,6 +80,12 @@ export function OverflowMenu({
         !trigger.current?.contains(target)
       ) {
         setOpen(false);
+        // The click focuses its target (if it can be focused) after this event; when nothing took
+        // the focus, give it back to the trigger.
+        window.clearTimeout(refocus.current);
+        refocus.current = window.setTimeout(() => {
+          if (focusLost()) trigger.current?.focus();
+        }, 0);
       }
     };
     document.addEventListener("pointerdown", onPointer);
@@ -57,6 +93,13 @@ export function OverflowMenu({
       document.removeEventListener("pointerdown", onPointer);
     };
   }, [open]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(refocus.current);
+    },
+    [],
+  );
 
   const onKeyDown = (event: KeyboardEvent) => {
     const list = items();
@@ -80,10 +123,12 @@ export function OverflowMenu({
         break;
       case "Escape":
         event.preventDefault();
-        close(true);
+        close();
         break;
       case "Tab":
-        setOpen(false);
+        // Closing unmounts the focused item; keep the tab order by leaving from the trigger.
+        event.preventDefault();
+        close();
         break;
     }
   };
@@ -124,22 +169,19 @@ export function OverflowMenu({
   );
 }
 
-/** A menu item: choosing it closes the menu and returns focus to the trigger. */
+/** A menu item: choosing it closes the menu; focus goes to the trigger unless the action took it. */
 export function MenuItem({
   icon,
   children,
   role = "menuitem",
   checked,
   onSelect,
-  keepFocus = false,
 }: {
   readonly icon?: ReactNode;
   readonly children: ReactNode;
-  readonly role?: "menuitem" | "menuitemradio";
+  readonly role?: "menuitem" | "menuitemradio" | "menuitemcheckbox";
   readonly checked?: boolean;
   readonly onSelect: () => void;
-  /** Leave focus where the action puts it (for example when it opens another screen). */
-  readonly keepFocus?: boolean;
 }) {
   const close = useContext(CloseMenu);
   return (
@@ -148,10 +190,10 @@ export function MenuItem({
       role={role}
       className="menu-item"
       tabIndex={-1}
-      {...(role === "menuitemradio" ? { "aria-checked": checked === true } : {})}
+      {...(role !== "menuitem" ? { "aria-checked": checked === true } : {})}
       onClick={() => {
         onSelect();
-        close(!keepFocus);
+        close();
       }}
     >
       {icon !== undefined && <span className="menu-icon">{icon}</span>}

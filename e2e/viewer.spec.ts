@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 import { en, LOCALE_NAMES, LOCALES } from "../src/i18n/catalog";
 import { ja } from "../src/i18n/ja";
@@ -473,7 +473,10 @@ async function toolbarAction(page: Page, name: string) {
     return;
   }
   await bar.getByRole("button", { name: /^(More|その他|更多)$/ }).click();
-  await page.getByRole("menuitem", { name, exact: true }).click();
+  await page
+    .getByRole("menuitem", { name, exact: true })
+    .or(page.getByRole("menuitemcheckbox", { name, exact: true }))
+    .click();
 }
 
 async function saveScreenshot(page: Page, filename: string) {
@@ -1680,6 +1683,156 @@ function contrast(a: string, b: string): number {
   return (lighter + 0.05) / (darker + 0.05);
 }
 
+/**
+ * The color a glyph is drawn on: the backgrounds from the page down to the element, translucent
+ * ones (a hover tint) composited over what is beneath them.
+ */
+async function surfaceAndGlyph(locator: Locator): Promise<{ glyph: string; surface: string }> {
+  return locator.evaluate((node) => {
+    const layers: number[][] = [];
+    for (let element: Element | null = node; element !== null; element = element.parentElement) {
+      const match = /rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)/.exec(
+        getComputedStyle(element).backgroundColor,
+      );
+      if (match === null) continue;
+      const alpha = match[4] === undefined ? 1 : Number(match[4]);
+      if (alpha > 0) layers.push([Number(match[1]), Number(match[2]), Number(match[3]), alpha]);
+      if (alpha === 1) break;
+    }
+    let base = [255, 255, 255];
+    for (const [r = 0, g = 0, b = 0, a = 1] of layers.reverse()) {
+      base = [r, g, b].map((value, index) => Math.round(value * a + (base[index] ?? 0) * (1 - a)));
+    }
+    return { glyph: getComputedStyle(node).color, surface: `rgb(${base.join(", ")})` };
+  });
+}
+
+for (const view of [
+  { label: "desktop", size: { width: 1280, height: 800 } },
+  { label: "phone", size: { width: 390, height: 844 } },
+] as const) {
+  for (const theme of [
+    { name: "night-owl", scheme: "dark" },
+    { name: "paper", scheme: "light" },
+  ] as const) {
+    test(`toolbar glyphs keep 3:1 in every state, names are computed and the menu keyboard flow works on ${view.label} in ${theme.name}`, async ({
+      page,
+    }) => {
+      await page.emulateMedia({ colorScheme: theme.scheme });
+      await page.setViewportSize(view.size);
+      const assertRequests = await openViewer(page, "attachments");
+      await expect(page.locator("html")).toHaveAttribute("data-theme", theme.name);
+      const phone = view.size.width < 721;
+      const bar = page.locator(".bar-actions");
+      const checked: string[] = [];
+      const expectReadable = async (locator: Locator, what: string) => {
+        const { glyph, surface } = await surfaceAndGlyph(locator);
+        expect(contrast(glyph, surface), `${what}: ${glyph} on ${surface}`).toBeGreaterThanOrEqual(
+          3,
+        );
+        checked.push(what);
+      };
+
+      // Names: the computed accessible name of every control, and the tooltip of every icon button.
+      const nameOf = en;
+      await expect(page.getByRole("combobox", { name: nameOf["bar.viewingAs"] })).toBeVisible();
+      if (!phone) {
+        await expect(page.getByRole("combobox", { name: nameOf["language.label"] })).toBeVisible();
+      }
+      const iconNames = [
+        nameOf["bar.refresh"],
+        ...(phone
+          ? [nameOf["bar.more"]]
+          : [nameOf["bar.profile"], nameOf["bar.localFolder"], nameOf["bar.settings"]]),
+      ];
+      for (const name of iconNames) {
+        const button = bar.getByRole("button", { name, exact: true });
+        await expect(button).toHaveAccessibleName(name);
+        await expect(button).toHaveAttribute("title", name);
+        await expectReadable(button, `${name} at rest`);
+        await button.hover();
+        await expectReadable(button, `${name} hovered`);
+      }
+      // Focus-visible: reach the first icon button with the keyboard.
+      await page.keyboard.press("Tab");
+      const focused = page.locator(":focus-visible");
+      await expect(focused).toHaveCount(1);
+      await expectReadable(focused, "keyboard focus");
+      // Disabled (Refresh while a refresh is running): the glyph is dimmed but stays measurable.
+      const refresh = bar.getByRole("button", { name: nameOf["bar.refresh"], exact: true });
+      await refresh.evaluate((node) => {
+        (node as HTMLButtonElement).disabled = true;
+      });
+      await expectReadable(refresh, "Refresh disabled");
+      await refresh.evaluate((node) => {
+        (node as HTMLButtonElement).disabled = false;
+      });
+      if (!phone) await expectReadable(page.locator(".language-switcher .glyph"), "language globe");
+
+      if (phone) {
+        const more = bar.getByRole("button", { name: nameOf["bar.more"], exact: true });
+        // Space, Enter and ArrowDown on the trigger each open the menu and focus its first item.
+        for (const keyName of ["Space", "Enter", "ArrowDown"]) {
+          await more.focus();
+          await page.keyboard.press(keyName);
+          await expect(page.getByRole("menu")).toBeVisible();
+          await expect(page.getByRole("menuitemcheckbox").first()).toBeFocused();
+          await page.keyboard.press("Escape");
+          await expect(page.getByRole("menu")).toHaveCount(0);
+          await expect(more).toBeFocused();
+        }
+        await more.press("Enter");
+        const menu = page.getByRole("menu");
+        // Every item has a computed name, and the glyphs read on the floating surface.
+        const names = [
+          nameOf["bar.profile"],
+          nameOf["bar.localFolder"],
+          ...LOCALES.map((code) => LOCALE_NAMES[code]),
+          nameOf["theme.use"].replace("{theme}", nameOf["theme.paper"]),
+          nameOf["bar.settings"],
+        ];
+        const nightOwl = nameOf["theme.use"].replace("{theme}", nameOf["theme.nightOwl"]);
+        for (const name of names) {
+          const item = menu
+            .getByRole("menuitem", { name, exact: true })
+            .or(menu.getByRole("menuitemcheckbox", { name, exact: true }))
+            .or(menu.getByRole("menuitemradio", { name, exact: true }))
+            .or(menu.getByRole("menuitem", { name: nightOwl, exact: true }));
+          await expect(item.first()).toHaveAccessibleName(/\S/);
+        }
+        await expect(
+          menu.getByRole("menuitemcheckbox", { name: nameOf["bar.profile"] }),
+        ).toHaveAttribute("aria-checked", "false");
+        for (const glyph of await menu.locator(".menu-icon svg").all()) {
+          await expectReadable(glyph, "menu glyph");
+        }
+        await menu.getByRole("menuitem").first().hover();
+        await expectReadable(menu.locator(".menu-icon svg").first(), "menu glyph hovered");
+        // Tab closes the menu and leaves from the trigger.
+        await page.keyboard.press("Tab");
+        await expect(menu).toHaveCount(0);
+        await expect(more).toBeFocused();
+        // An outside click on nothing focusable returns focus to the trigger; the target is not in the menu.
+        await more.click();
+        await expect(menu).toBeVisible();
+        const outside = page.locator(".topics-pane").first();
+        expect(await outside.evaluate((node) => node.closest(".menu") === null)).toBe(true);
+        await outside.click({ position: { x: 5, y: 5 } });
+        await expect(menu).toHaveCount(0);
+        await expect(more).toBeFocused();
+        // An outside click on a focusable control leaves the focus on that control.
+        await more.click();
+        const viewing = page.getByRole("combobox", { name: nameOf["bar.viewingAs"] });
+        await viewing.click();
+        await expect(menu).toHaveCount(0);
+        await expect(viewing).toBeFocused();
+      }
+      expect(checked.length).toBeGreaterThan(iconNames.length);
+      assertRequests();
+    });
+  }
+}
+
 for (const code of LOCALES) {
   for (const view of [
     { label: "desktop", size: { width: 1280, height: 800 } },
@@ -1756,10 +1909,10 @@ for (const code of LOCALES) {
           const menu = page.getByRole("menu");
           await expect(menu).toBeVisible();
           await expect(more).toHaveAttribute("aria-expanded", "true");
-          const first = page.getByRole("menuitem").first();
+          const first = page.locator('[role^="menuitem"]').first();
           await expect(first).toBeFocused();
           await page.keyboard.press("ArrowDown");
-          await expect(page.getByRole("menuitem").nth(1)).toBeFocused();
+          await expect(page.locator('[role^="menuitem"]').nth(1)).toBeFocused();
           await expectNoClipping(page, ".menu, .menu-item");
           // Settings sits at the bottom of the menu.
           await expect(page.getByRole("menuitem").last()).toHaveAccessibleName(

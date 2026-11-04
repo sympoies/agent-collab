@@ -2,7 +2,7 @@
 // refresh button and "Viewing as" and put the rest behind one "More" menu. The set of controls and
 // their order are the same in both.
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { LOCALE_NAMES, LOCALES } from "../i18n/catalog";
 import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
@@ -53,18 +53,46 @@ export function Toolbar({
   const narrow = useNarrow();
   const theme = useThemeAction();
   const profile = t("bar.profile");
+  const menuOpen = useRef(false);
+  const bar = useRef<HTMLDivElement | null>(null);
+
+  // Crossing the width threshold swaps the layout. When the menu was open its focused item is
+  // gone, so focus goes to the control that replaces it: the More button on a phone, the first
+  // control that left the menu (Profile & colors) on a wide screen.
+  useEffect(() => {
+    if (!menuOpen.current) return;
+    menuOpen.current = false;
+    const active = document.activeElement;
+    if (active === null || active === document.body || !document.body.contains(active)) {
+      bar.current
+        ?.querySelector<HTMLElement>(
+          narrow ? "[aria-haspopup=menu]" : "[aria-controls=profile-panel]",
+        )
+        ?.focus();
+    }
+  }, [narrow]);
 
   if (narrow) {
     return (
-      <div className="bar-actions" data-layout="menu">
+      <div ref={bar} className="bar-actions" data-layout="menu">
         {primary}
         {viewingAs}
-        <OverflowMenu label={t("bar.more")}>
-          <MenuItem icon={<UserIcon />} onSelect={onToggleProfile}>
+        <OverflowMenu
+          label={t("bar.more")}
+          onOpenChange={(open) => {
+            menuOpen.current = open;
+          }}
+        >
+          <MenuItem
+            role="menuitemcheckbox"
+            checked={profileOpen}
+            icon={<UserIcon />}
+            onSelect={onToggleProfile}
+          >
             {profile}
           </MenuItem>
           {onPickLocalFolder !== undefined && (
-            <MenuItem icon={<FolderIcon />} onSelect={onPickLocalFolder} keepFocus>
+            <MenuItem icon={<FolderIcon />} onSelect={onPickLocalFolder}>
               {t("bar.localFolder")}
             </MenuItem>
           )}
@@ -86,7 +114,7 @@ export function Toolbar({
           <MenuItem icon={theme.toLight ? <SunIcon /> : <MoonIcon />} onSelect={theme.toggle}>
             {theme.label}
           </MenuItem>
-          <MenuItem icon={<SettingsIcon />} onSelect={onOpenSettings} keepFocus>
+          <MenuItem icon={<SettingsIcon />} onSelect={onOpenSettings}>
             {t("bar.settings")}
           </MenuItem>
         </OverflowMenu>
@@ -95,7 +123,7 @@ export function Toolbar({
   }
 
   return (
-    <div className="bar-actions" data-layout="icons">
+    <div ref={bar} className="bar-actions" data-layout="icons">
       {primary}
       {viewingAs}
       <IconButton

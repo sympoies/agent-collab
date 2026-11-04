@@ -151,18 +151,73 @@ describe("icon buttons and the overflow menu", () => {
     expect(document.activeElement).toBe(trigger(host));
   });
 
-  it("closes on a click outside, without taking focus back, and on Tab", async () => {
+  it("closes on Tab and keeps the tab order by leaving from the trigger", async () => {
     const host = await render(menu());
     await click(trigger(host));
+    const tab = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
     await act(async () => {
-      host.querySelector("button")?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      host.querySelector('[role="menu"]')?.dispatchEvent(tab);
       await Promise.resolve();
     });
+    expect(tab.defaultPrevented).toBe(true);
     expect(host.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger(host));
+  });
+
+  const pointerdown = async (target: Element | null) => {
+    await act(async () => {
+      target?.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+  };
+
+  it("an outside click on a focusable target leaves the focus there; on nothing it returns to the trigger", async () => {
+    const host = await render(menu());
+    await click(trigger(host));
+    const other = host.querySelector("button");
+    // The click focuses its target after the pointer event.
+    other?.focus();
+    await pointerdown(other);
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(other);
 
     await click(trigger(host));
-    await key(host.querySelector('[role="menu"]'), "Tab");
+    expect(host.querySelector('[role="menu"]')).not.toBeNull();
+    await pointerdown(document.body);
     expect(host.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger(host));
+  });
+
+  it("removes its document listener when it closes or unmounts open", async () => {
+    const add = vi.spyOn(document, "addEventListener");
+    const remove = vi.spyOn(document, "removeEventListener");
+    const host = await render(menu());
+    await click(trigger(host));
+    const added = add.mock.calls.filter(([type]) => type === "pointerdown");
+    expect(added).toHaveLength(1);
+    await key(host.querySelector('[role="menu"]'), "Escape");
+    expect(remove.mock.calls.filter(([type]) => type === "pointerdown")).toHaveLength(1);
+    await click(trigger(host));
+    act(() => {
+      mounted?.root.unmount();
+    });
+    mounted = null;
+    expect(remove.mock.calls.filter(([type]) => type === "pointerdown")).toHaveLength(2);
+    add.mockRestore();
+    remove.mockRestore();
+  });
+
+  it("does not let Escape reach other keyboard handlers as a second action", async () => {
+    // Nothing in the app listens for Escape on the document; this pins that the menu is the only
+    // consumer, so adding one later has to deal with the menu first.
+    const seen = vi.fn();
+    document.addEventListener("keydown", seen);
+    const host = await render(menu());
+    await click(trigger(host));
+    await key(host.querySelector('[role="menu"]'), "Escape");
+    const escapes = seen.mock.calls.filter(([event]) => (event as KeyboardEvent).key === "Escape");
+    expect(escapes.every(([event]) => (event as KeyboardEvent).defaultPrevented)).toBe(true);
+    document.removeEventListener("keydown", seen);
   });
 
   it("opens from the trigger with the Down arrow key", async () => {
