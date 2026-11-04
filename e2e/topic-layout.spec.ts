@@ -168,5 +168,10 @@ test("a 5,000-message topic repository opens on All with every topic's newest pa
   await page.getByRole("button", { name: "Load older messages" }).click();
   await expect(page.locator(".message")).toHaveCount(100);
   expect(numbers(messageBlobs())).toEqual(wanted({ [selectedTopic]: 100 }));
+  // 12 topics: their first pages (50 files each), one older page and the trees around them (719 measured).
+  expect(requests.length).toBeLessThan(750);
+  expect(
+    requests.filter((path) => path.startsWith("/git/trees/month:")).length,
+  ).toBeLessThanOrEqual(12 * 4);
   expect(unhandled).toEqual([]);
 });

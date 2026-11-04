@@ -180,15 +180,16 @@ export function App({
   const [openedTopics, setOpenedTopics] = useState<readonly string[]>([]);
   const [closedOpen, setClosedOpen] = useState(false);
   // What is loaded: the topics opened so far in the topic layout, the one loader otherwise.
-  // Once All has asked for the topics, they stay part of what is loaded, for every view.
-  const [allQueued, setAllQueued] = useState(false);
+  // The topics the All view has read so far. Only a topic that was read is registered with the
+  // session, so a refresh never opens (and reads a first page of) a topic nobody asked for.
+  const [allRead, setAllRead] = useState<ReadonlySet<string>>(() => new Set());
   const allNames = useMemo(
     () => topicList.filter((summary) => summary.status !== "closed").map((summary) => summary.name),
     [topicList],
   );
   const loadedTopics = useMemo(
-    () => [...new Set([...openedTopics, ...(allQueued ? allNames : [])])],
-    [allNames, allQueued, openedTopics],
+    () => [...new Set([...openedTopics, ...allRead])],
+    [allRead, openedTopics],
   );
   const openedLoaders = useMemo(
     () =>
@@ -425,8 +426,6 @@ export function App({
   const showingAll = view === "chat" && topic === null && topicLayout;
   const allSession = showingAll && (!narrow || mobileConversation) ? topicSession : null;
   const allKey = allNames.join("\n");
-  if (allSession !== null && !allQueued) setAllQueued(true);
-  const [allRead, setAllRead] = useState<ReadonlySet<string>>(() => new Set());
   const allReadNow = useRef(allRead);
   useEffect(() => {
     if (allSession === null) return;

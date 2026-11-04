@@ -190,6 +190,101 @@ describe("topic list screen", () => {
       inOrder("2026-01-01T0900-alice-agent-archive-01", API_ID);
     });
 
+    /** Ten topics, one message each; `topic-NN` is the NNth. */
+    function many(): Record<string, string> {
+      const repository: Record<string, string> = { ".agent-collab": MARKER };
+      for (let index = 1; index <= 10; index += 1) {
+        const name = `topic-${String(index).padStart(2, "0")}`;
+        const id = `2026-10-${String(index).padStart(2, "0")}T0900-alice-agent-${name}-01`;
+        repository[`topics/${name}/inbox/2026-10/${id}.md`] = messageText(id, "alice-agent", name);
+      }
+      return repository;
+    }
+    const messagePath = (name: string) =>
+      `topics/${name}/inbox/2026-10/2026-10-${name.slice(-2)}T0900-alice-agent-${name}-01.md`;
+
+    /**
+     * Holds every message file read (the activity reads never read one); `topics()` are the topics
+     * whose messages were asked for so far.
+     */
+    function counted(source: FixtureSource) {
+      const read = source.readFile.bind(source);
+      const asked = new Set<string>();
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      source.readFile = async (entry) => {
+        const topic = /^topics\/([^/]+)\/inbox\//.exec(entry.path)?.[1];
+        if (topic !== undefined) {
+          asked.add(topic);
+          await gate;
+        }
+        return read(entry);
+      };
+      return { topics: () => asked.size, release };
+    }
+
+    it("reads four topics at a time and stops the queue when All is left", async () => {
+      const source = new FixtureSource(many());
+      const reads = counted(source);
+      await mount(source);
+      expect(reads.topics()).toBe(4);
+      expect(host.querySelector(".all-status")?.textContent).toBe("Loading topics: 0 of 10");
+
+      await click(entry("topic-01"));
+      reads.release();
+      await settle();
+      await settle();
+      // Only the four in flight finished; the six not yet started were never read.
+      expect(reads.topics()).toBe(4);
+    });
+
+    it("does not read a topic All has not reached when the topic list refreshes", async () => {
+      const files10 = many();
+      const source = new FixtureSource(files10);
+      const reads = counted(source);
+      await mount(source);
+      await click(entry("topic-01"));
+      // The reads in flight finish first; the Refresh button waits while a topic is opening.
+      reads.release();
+      await settle();
+
+      source.commit({
+        ...files10,
+        "topics/topic-10/inbox/2026-10/2026-10-20T0900-alice-agent-topic-10-01.md": messageText(
+          "2026-10-20T0900-alice-agent-topic-10-01",
+          "alice-agent",
+          "topic-10",
+        ),
+      });
+      await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
+      await settle();
+      expect(source.reads.filter((path) => path.includes("topics/topic-10/inbox/"))).toEqual([]);
+      expect(source.reads).toContain(messagePath("topic-01"));
+    });
+
+    it("keeps the count short and the error visible when a topic cannot be read, until the next refresh", async () => {
+      const source = new FixtureSource(files);
+      const list = source.listDirectory.bind(source);
+      let failing = true;
+      source.listDirectory = (revision, path) =>
+        failing && path === "topics/ops/inbox"
+          ? Promise.reject(new SourceError("unreachable", ""))
+          : list(revision, path);
+      await mount(source);
+      expect(host.querySelector(".all-status")?.textContent).toBe("Loading topics: 2 of 3");
+      expect(host.querySelector(".error")).not.toBeNull();
+      expect(text()).not.toContain(OPS_ID);
+
+      failing = false;
+      await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
+      expect(text()).toContain(OPS_ID);
+      expect(host.querySelector(".all-status")?.textContent).toBe(
+        "Closed topics appear here once opened.",
+      );
+    });
+
     it("says there are no messages only when no topic has any", async () => {
       const source = new FixtureSource({
         ".agent-collab": MARKER,
