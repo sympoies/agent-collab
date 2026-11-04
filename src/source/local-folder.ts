@@ -2,7 +2,6 @@
 // of the collaboration files (docs/design/local-source.md) and answers "not modified" when nothing
 // changed, so an unchanged folder republishes nothing.
 
-import { MAX_MERGED_TOPICS } from "./topic-layout";
 import { SourceError, type DirectoryEntry, type Head, type MessageSource } from "./types";
 
 /** The small structural surface needed by native handles and in-memory tests. */
@@ -254,16 +253,7 @@ export class LocalFolderSource implements MessageSource {
         const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
         if (validRepoPath(entryPath)) handles.push(handle);
       }
-      // A topic folder is walked only for its inbox, and only the first MAX_MERGED_TOPICS topics
-      // are walked: the merged view refuses more than that anyway.
-      const skipped = new Set<LocalHandle>();
-      if (path === "topics") {
-        handles.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-        handles
-          .filter(isDirectoryHandle)
-          .slice(MAX_MERGED_TOPICS)
-          .forEach((extra) => skipped.add(extra));
-      }
+      // A topic folder is walked only for its inbox; the entry budget bounds the topic count.
       const topicFolder = TOPIC_FOLDER_RE.test(path);
       const entries = await mapLimit(handles, METADATA_CONCURRENCY, async (handle) => {
         const entryPath = path === "" ? handle.name : `${path}/${handle.name}`;
@@ -292,7 +282,7 @@ export class LocalFolderSource implements MessageSource {
         if (isDirectoryHandle(handle)) {
           // The inbox, its month folders and, in the topic layout, the same under every topic are
           // walked; anything deeper is listed on demand.
-          const scanned = isScannedPath(entryPath, handle.name, path) && !skipped.has(handle);
+          const scanned = isScannedPath(entryPath, handle.name, path);
           const children = scanned ? await scanDirectory(handle, entryPath) : null;
           return {
             name: handle.name,

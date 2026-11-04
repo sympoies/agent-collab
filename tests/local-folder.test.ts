@@ -788,6 +788,33 @@ describe("LocalFolderSource in the topic layout", () => {
     expect(loader.getSnapshot().lastChanged).toEqual(new Date(NOW - 1_000));
   });
 
+  it("changes the revision when a topic message is edited or deleted", async () => {
+    const root = topicClone();
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    const first = await source.head(null);
+    if (first === "not-modified") throw new Error("expected a head");
+    const file = root.addFile(topicPath(idOf(1)), "edited", NOW - 3_000);
+    const edited = await source.head(first);
+    expect(edited).not.toBe("not-modified");
+    const month = root.children.get("topics") as MemoryDirectory;
+    const inbox = (month.children.get("x") as MemoryDirectory).children.get(
+      "inbox",
+    ) as MemoryDirectory;
+    (inbox.children.get("2026-11") as MemoryDirectory).children.delete(file.name);
+    expect(await source.head(edited as Exclude<typeof edited, "not-modified">)).not.toBe(
+      "not-modified",
+    );
+  });
+
+  it("fails fast on a hostile number of topic folders", async () => {
+    const root = topicClone();
+    for (let index = 0; index < 300; index += 1) {
+      root.addFile(`topics/t${String(index)}/inbox/2026-11/m.md`, "x", NOW);
+    }
+    const source = new LocalFolderSource(root, { now: () => NOW, maxEntries: 100 });
+    await expect(source.head(null)).rejects.toMatchObject({ kind: "too-large" });
+  });
+
   it("reports the path of the newest file, the greatest path on a tie", async () => {
     const root = topicClone();
     const source = new LocalFolderSource(root, { now: () => NOW });
