@@ -1,6 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { assembleSnapshot } from "./demo-snapshot-rules.mjs";
+
 const token = process.env.GITHUB_TOKEN;
 if (!token) throw new Error("GITHUB_TOKEN is required to create the live-demo snapshot.");
 
@@ -35,37 +37,16 @@ if (tree?.truncated === true || !Array.isArray(tree?.tree)) {
   throw new Error("The live-demo repository tree is incomplete.");
 }
 
-const entries = tree.tree
-  .filter(
-    (entry) =>
-      entry?.type === "blob" &&
-      entry.mode !== "120000" &&
-      (entry.path === ".agent-collab" ||
-        (entry.path.startsWith("inbox/") && entry.path.endsWith(".md")) ||
-        entry.path.startsWith("topics/")) &&
-      typeof entry.sha === "string" &&
-      typeof entry.path === "string" &&
-      (typeof entry.size !== "number" || entry.size <= 1024 * 1024),
-  )
-  .sort((left, right) => left.path.localeCompare(right.path));
-
-if (!entries.some((entry) => entry.path === ".agent-collab")) {
-  throw new Error("The live-demo collaboration marker is missing.");
-}
-
-const files = [];
-for (const entry of entries) {
-  const response = await request(
-    `/git/blobs/${encodeURIComponent(entry.sha)}`,
-    "application/vnd.github.raw+json",
-  );
-  files.push({ path: entry.path, text: await response.text() });
-}
-
-const snapshot = {
-  schemaVersion: 1,
-  generatedAt: new Date().toISOString(),
+const { json } = await assembleSnapshot({
+  entries: tree.tree,
+  readBytes: async (entry) => {
+    const response = await request(
+      `/git/blobs/${encodeURIComponent(entry.sha)}`,
+      "application/vnd.github.raw+json",
+    );
+    return new Uint8Array(await response.arrayBuffer());
+  },
   revision: treeSha,
-  files,
-};
-writeFileSync(resolve("public/demo-snapshot.json"), JSON.stringify(snapshot));
+  generatedAt: new Date().toISOString(),
+});
+writeFileSync(resolve("public/demo-snapshot.json"), json);
