@@ -228,11 +228,18 @@ function questionThread(): MessageFixture[] {
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
-/** A table with 40 columns of long-ish values: wider than any viewport the viewer supports. */
+/** The viewer shows at most this many CSV rows (CSV_PREVIEW_ROWS in src/ui/Attachments.tsx). */
+const CSV_ROW_CAP = 100;
+
+/**
+ * A table with 40 columns of long-ish values, wider than any viewport the viewer supports, and
+ * more rows than the preview shows, so it also scrolls vertically inside its box.
+ */
 function wideCsv(): string {
   const columns = Array.from({ length: 40 }, (_, index) => `column_${String(index + 1)}`);
   const row = (name: string) => columns.map((column) => `${name}-${column}-value`).join(",");
-  return [columns.join(","), row("a"), row("b")].join("\n") + "\n";
+  const rows = Array.from({ length: CSV_ROW_CAP + 20 }, (_, index) => row(`r${String(index)}`));
+  return [columns.join(","), ...rows].join("\n") + "\n";
 }
 
 const TOPIC_FILES: Readonly<Record<string, { sha: string; body: string | Buffer }>> = {
@@ -1126,27 +1133,49 @@ for (const identity of identityCases) {
     await expect(card("results.csv").locator("td")).toHaveText(["alice", "9, great", "bob", "7"]);
 
     // A table wider than the screen scrolls inside its card; the page and the card do not grow.
+    // The case that is running is the one the title says.
+    expect(await page.evaluate(() => window.innerWidth)).toBe(identity.viewport.width);
+    expect(await page.evaluate(() => window.matchMedia("(max-width: 720px)").matches)).toBe(phone);
     await card("wide.csv").locator("summary").click();
     const wide = card("wide.csv");
     await expect(wide.locator("th")).toHaveCount(40);
-    const fit = await wide.evaluate((node) => {
-      const table = node.querySelector<HTMLElement>(".csv-preview");
-      const box = node.getBoundingClientRect();
-      const inner = table?.getBoundingClientRect();
+    const fit = await wide.evaluate((node, cap) => {
+      const box = node.querySelector<HTMLElement>(".csv-preview");
+      const card = node.getBoundingClientRect();
+      const inner = box?.getBoundingClientRect();
+      const cells = [...node.querySelectorAll("th, td")].map((cell) => {
+        const style = getComputedStyle(cell);
+        const line = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.3;
+        const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+        // A cell that wraps per character would be several lines tall.
+        return {
+          oneLine: cell.getBoundingClientRect().height <= line + padding + 4,
+          noWrap: style.whiteSpace === "nowrap",
+        };
+      });
       return {
-        scrolls: (table?.scrollWidth ?? 0) > (table?.clientWidth ?? 0),
-        insideCard: (inner?.right ?? Infinity) <= box.right + 0.5,
-        cardInsideViewport: box.right <= window.innerWidth + 0.5,
+        scrollsAcross: (box?.scrollWidth ?? 0) > (box?.clientWidth ?? 0),
+        scrollsDown: (box?.scrollHeight ?? 0) > (box?.clientHeight ?? 0),
+        insideCard: (inner?.right ?? Infinity) <= card.right + 0.5,
+        cardInsideViewport: card.right <= window.innerWidth + 0.5,
+        rows: node.querySelectorAll("tbody tr").length === cap,
+        everyCellOneLine: cells.every((cell) => cell.oneLine && cell.noWrap),
+        cells: cells.length,
         pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
       };
-    });
-    expect({ ...fit, pageOverflow: Math.max(fit.pageOverflow, 0) }).toEqual({
-      scrolls: true,
+    }, CSV_ROW_CAP);
+    expect(fit.cells).toBeGreaterThan(40);
+    expect(fit.pageOverflow).toBeLessThanOrEqual(0);
+    expect({ ...fit, cells: 0, pageOverflow: 0 }).toEqual({
+      scrollsAcross: true,
+      scrollsDown: true,
       insideCard: true,
       cardInsideViewport: true,
+      rows: true,
+      everyCellOneLine: true,
+      cells: 0,
       pageOverflow: 0,
     });
-    expect(fit.pageOverflow).toBeLessThanOrEqual(0);
     await saveScreenshot(page, `wide-csv-${identity.label}-${identity.theme}.png`);
 
     await card("diagram.png").locator("summary").click();
@@ -1429,76 +1458,175 @@ for (const view of [
 }
 
 // The production CSP has no `style-src`, so an inline style attribute is a violation in browsers
-// that report them. Chromium and WebKit both walk the main screens and must see no style attribute
-// in the DOM. WebKit additionally reports one `style-src-attr` violation for every `<select>` it
-// creates (its built-in popup button carries an inline style; a bare `<select>` on a page with
-// this CSP does the same), so there the violations must match the number of selects exactly:
-// anything more is an inline style of ours.
-for (const engine of ["chromium", "webkit"] as const) {
-  test(`no inline style attribute and no CSP violation of ours in ${engine}`, async ({
-    playwright,
-  }) => {
-    const browser = await playwright[engine].launch();
-    try {
-      const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-      await page.addInitScript(() => {
-        const log: string[] = [];
-        const state = { violations: log, selects: 0 };
-        Object.assign(window, { cspProbe: state });
-        document.addEventListener("securitypolicyviolation", (event) => {
-          log.push(`${event.violatedDirective} ${event.blockedURI}`);
-        });
-        // Count every select that enters the document, including those inside added subtrees.
-        new MutationObserver((records) => {
-          for (const record of records) {
-            for (const node of record.addedNodes) {
-              if (!(node instanceof Element)) continue;
-              state.selects +=
-                (node.matches("select") ? 1 : 0) + node.querySelectorAll("select").length;
-            }
-          }
-        }).observe(document, { childList: true, subtree: true });
-      });
-      const probe = () =>
-        page.evaluate(
-          () =>
-            (window as unknown as { cspProbe: { violations: string[]; selects: number } }).cspProbe,
-        );
-      const inlineStyles = () => page.locator("[style]").count();
-      const expectClean = async (step: string) => {
-        const { violations, selects } = await probe();
-        const unexpected = engine === "webkit" ? violations.length - selects : violations.length;
-        expect({
-          step,
-          styles: await inlineStyles(),
-          unexpected,
-          kinds: new Set(violations),
-        }).toEqual({
-          step,
-          styles: 0,
-          unexpected: 0,
-          kinds:
-            engine === "webkit" && selects > 0 ? new Set(["style-src-attr inline"]) : new Set(),
-        });
-      };
+// that report them. The "@csp" tests run in Chromium and in WebKit (the two projects of
+// playwright.config.ts) and must see no style attribute in the DOM on the main screens. WebKit
+// additionally reports one `style-src-attr` violation for every `<select>` it creates (its
+// built-in popup button carries an inline style; a bare `<select>` on a page with this CSP does
+// the same), so there the violations must match the number of selects exactly: anything more is
+// an inline style of ours. A missing browser fails the run; it is never skipped.
+test("no inline style attribute and no CSP violation of ours @csp", async ({
+  page,
+  browserName,
+}, testInfo) => {
+  expect(browserName, "the project runs its own engine").toBe(testInfo.project.name);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.addInitScript(() => {
+    const log: string[] = [];
+    const state = { violations: log, selects: 0 };
+    Object.assign(window, { cspProbe: state });
+    document.addEventListener("securitypolicyviolation", (event) => {
+      log.push(`${event.violatedDirective} ${event.blockedURI}`);
+    });
+    // Count every select that enters the document, including those inside added subtrees.
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          state.selects +=
+            (node.matches("select") ? 1 : 0) + node.querySelectorAll("select").length;
+        }
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  const probe = () =>
+    page.evaluate(
+      () => (window as unknown as { cspProbe: { violations: string[]; selects: number } }).cspProbe,
+    );
+  const inlineStyles = () => page.locator("[style]").count();
+  const seen: string[] = [];
+  const expectClean = async (step: string) => {
+    const { violations, selects } = await probe();
+    const unexpected = browserName === "webkit" ? violations.length - selects : violations.length;
+    expect({
+      step,
+      styles: await inlineStyles(),
+      unexpected,
+      kinds: new Set(violations),
+    }).toEqual({
+      step,
+      styles: 0,
+      unexpected: 0,
+      kinds:
+        browserName === "webkit" && selects > 0 ? new Set(["style-src-attr inline"]) : new Set(),
+    });
+    seen.push(step);
+  };
 
-      const assertRequests = await openViewer(page, "attachments");
-      await page.getByRole("button", { name: /^#api/ }).click();
-      const first = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
-      await first.locator(".file-card", { hasText: "wide.csv" }).locator("summary").click();
-      await expect(first.locator("th")).toHaveCount(40);
-      await expect(page.locator(".group").first()).toHaveAttribute("data-slot", /^[0-7]$/);
-      await expectClean("chat");
-      await page.getByRole("button", { name: "Profile & colors" }).click();
-      await expect(page.locator(".profile .swatch").first()).toBeVisible();
-      await expectClean("profile");
-      await page.getByRole("button", { name: "Settings" }).click();
-      await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-      await expectClean("settings");
-      assertRequests();
-    } finally {
-      await browser.close();
-    }
+  const assertRequests = await installApiStub(page, "attachments");
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Open another repository" })).toBeVisible();
+  await expectClean("welcome");
+  await page.getByRole("button", { name: "Open another repository" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
+  await expectClean("settings");
+  await page
+    .getByRole("textbox", { name: "Repository", exact: true })
+    .fill("alice-agent/fixture-repo");
+  await page.getByLabel("Branch").fill("main");
+  await page.getByLabel("My names").fill("alice-agent");
+  await page.getByLabel("Access token").fill("fake-token");
+  await page.getByRole("button", { name: "Save and open" }).click();
+  await page.getByRole("button", { name: /^#api/ }).click();
+  const first = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
+  await first.locator(".file-card", { hasText: "wide.csv" }).locator("summary").click();
+  await expect(first.locator("th")).toHaveCount(40);
+  await first.locator(".file-card", { hasText: "diagram.png" }).locator("summary").click();
+  await expect(first.locator("img")).toBeVisible();
+  await expect(page.locator(".group").first()).toHaveAttribute("data-slot", /^[0-7]$/);
+  await expectClean("chat with previews");
+  await page.getByRole("button", { name: /^Questions/ }).click();
+  await expect(page.locator("#conversation-heading")).toHaveText("Questions");
+  await expectClean("questions with receipts");
+  await page.getByRole("button", { name: "Files" }).click();
+  await expect(page.locator("#conversation-heading")).toContainText("Files");
+  await expectClean("files");
+  await page.getByRole("button", { name: "Profile & colors" }).click();
+  await expect(page.locator(".profile .swatch").first()).toBeVisible();
+  await expectClean("profile");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(page.getByRole("heading", { name: "Settings" }).first()).toBeVisible();
+  await expectClean("settings again");
+  expect(seen).toEqual([
+    "welcome",
+    "settings",
+    "chat with previews",
+    "questions with receipts",
+    "files",
+    "profile",
+    "settings again",
+  ]);
+  assertRequests();
+});
+
+test("the favicon is requested under the base path and does not 404", async ({ page }) => {
+  const failures: string[] = [];
+  page.on("response", (response) => {
+    if (response.status() >= 400) failures.push(`${response.status()} ${response.url()}`);
+  });
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Open another repository" })).toBeVisible();
+  const link = page.locator('link[rel="icon"]');
+  await expect(link).toHaveAttribute("type", "image/svg+xml");
+  const href = await link.getAttribute("href");
+  expect(href).toBe("/favicon.svg");
+  // Headless browsers do not always fetch the icon by themselves; fetch what the page declares.
+  const icon = await page.request.get(new URL(href ?? "", page.url()).toString());
+  expect(icon.status()).toBe(200);
+  expect(icon.headers()["content-type"]).toContain("image/svg+xml");
+  expect(await icon.text()).toContain("<svg");
+  expect(failures.filter((failure) => failure.includes("favicon"))).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+});
+
+// The colors people get were not changed by moving them from inline styles to data-slot rules:
+// the resolved color of every slot, in each theme, is the pre-change palette.
+const PALETTES = {
+  paper: ["#af4e1c", "#2d6c3f", "#6d4aa8", "#2457a7", "#0a7685", "#a43c2e", "#855b00", "#596b79"],
+  "night-owl": [
+    "#f78c6c",
+    "#addb67",
+    "#c792ea",
+    "#82aaff",
+    "#7fdbca",
+    "#ef5350",
+    "#ffcb8b",
+    "#8ba1b8",
+  ],
+} as const;
+
+function rgbOf(hex: string): string {
+  const value = Number.parseInt(hex.slice(1), 16);
+  return `rgb(${String((value >> 16) & 255)}, ${String((value >> 8) & 255)}, ${String(value & 255)})`;
+}
+
+for (const theme of ["paper", "night-owl"] as const) {
+  test(`every person slot resolves to its palette color in ${theme}`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: theme === "paper" ? "light" : "dark" });
+    const assertRequests = await openViewer(page, "attachments");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
+    await page.getByRole("button", { name: "Profile & colors" }).click();
+    const person = page.locator(".profile-person").first();
+    const swatches = person.locator(".swatch");
+    await expect(swatches).toHaveCount(PALETTES[theme].length);
+    const resolved = await swatches.evaluateAll((nodes) =>
+      nodes.map((node) => ({
+        slot: node.getAttribute("data-slot"),
+        color: getComputedStyle(node).backgroundColor,
+      })),
+    );
+    expect(resolved).toEqual(
+      PALETTES[theme].map((hex, slot) => ({ slot: String(slot), color: rgbOf(hex) })),
+    );
+    // Choosing a slot colors that person's messages with it (a color override on data-slot).
+    await swatches.nth(3).locator("input").check();
+    const group = page.locator(".group").first();
+    await expect(group).toHaveAttribute("data-slot", "3");
+    await expect(group.locator(".avatar")).toHaveCSS("background-color", rgbOf(PALETTES[theme][3]));
+    assertRequests();
   });
 }
 

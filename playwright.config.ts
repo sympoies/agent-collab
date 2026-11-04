@@ -16,11 +16,16 @@ export default defineConfig({
   outputDir: resolve(screenshots, "test-results"),
   use: {
     baseURL: `http://127.0.0.1:${String(port)}`,
-    browserName: "chromium",
     headless: true,
     viewport: { width: 1280, height: 800 },
     trace: "retain-on-failure",
   },
+  // Chromium runs every test. WebKit runs only the tests tagged "@csp", because the CSP check
+  // needs an engine that reports inline styles; a browser that is not installed fails the run.
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    { name: "webkit", use: { browserName: "webkit" }, grep: /@csp/ },
+  ],
   webServer: {
     command: `pnpm preview --host 127.0.0.1 --port ${String(port)} --strictPort`,
     url: `http://127.0.0.1:${String(port)}`,
