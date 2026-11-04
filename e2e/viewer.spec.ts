@@ -2456,7 +2456,7 @@ test("a topic folder snapshot keeps questions visible when WebKit omits the mark
   );
 
   await expect(page.getByRole("heading", { name: /local-folder/ })).toBeVisible();
-  await page.getByRole("button", { name: "api", exact: true }).click();
+  await page.getByRole("button", { name: /^#api/ }).click();
   await expect(page.getByText("Question about the API.")).toBeVisible();
   const viewingAs = page.getByLabel("Viewing as");
   await expect(viewingAs.locator("option")).toHaveText(["Observer", "alice-agent", "bob-agent"]);
