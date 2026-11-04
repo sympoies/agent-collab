@@ -1,7 +1,7 @@
 // Settings screen. Secret inputs are masked, never prefilled and never echoed back.
 
 import { useLocale } from "../i18n/LocaleProvider";
-import { useEffect, useRef, useState, type ReactNode, type SubmitEvent } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type SubmitEvent } from "react";
 
 import {
   savedForm,
@@ -25,6 +25,13 @@ export interface SettingsViewProps {
   readonly onOpenLiveDemo: () => void;
   /** Scroll to the token section and focus its field when the screen opens. */
   readonly focusToken?: boolean;
+}
+
+/** Accessibility attributes the field gives its control. */
+interface FieldAria {
+  readonly id: string;
+  readonly "aria-describedby": string | undefined;
+  readonly "aria-invalid": true | undefined;
 }
 
 export function SettingsView(props: SettingsViewProps) {
@@ -76,26 +83,48 @@ export function SettingsView(props: SettingsViewProps) {
       });
   };
 
-  const field = (name: keyof SettingsDraft, label: string, input: ReactNode, hint?: string) => (
-    <label className="field">
-      <span>{label}</span>
-      {input}
-      {hint !== undefined && <small>{hint}</small>}
-      {errors[name] !== undefined && (
-        <small className="field-error" role="alert">
-          {t(errors[name])}
-        </small>
-      )}
-    </label>
-  );
+  const ids = useId();
+  /**
+   * A field with its label, hint and error. The hint and the error sit outside the label, so the
+   * field's accessible name is the label alone; the input points at them with aria-describedby
+   * and carries aria-invalid while it has an error.
+   */
+  const field = (
+    name: keyof SettingsDraft,
+    label: string,
+    input: (aria: FieldAria) => ReactNode,
+    hint?: string,
+  ) => {
+    const id = `${ids}-${name}`;
+    const error = errors[name];
+    const described = [
+      hint !== undefined ? `${id}-hint` : null,
+      error !== undefined ? `${id}-error` : null,
+    ].filter((value) => value !== null);
+    return (
+      <div className="field">
+        <label htmlFor={id}>{label}</label>
+        {input({
+          id,
+          "aria-describedby": described.length > 0 ? described.join(" ") : undefined,
+          "aria-invalid": error !== undefined ? true : undefined,
+        })}
+        {hint !== undefined && <small id={`${id}-hint`}>{hint}</small>}
+        {error !== undefined && (
+          <small id={`${id}-error`} className="field-error" role="alert">
+            {t(error)}
+          </small>
+        )}
+      </div>
+    );
+  };
 
   return (
     <form className="settings" onSubmit={submit} autoComplete="off">
-      <h1>{t("settings.title")}</h1>
-      {field(
-        "platform",
-        t("settings.platform"),
+      <h2>{t("settings.title")}</h2>
+      {field("platform", t("settings.platform"), (aria) => (
         <select
+          {...aria}
           value={draft.platform}
           onChange={(event) => {
             update("platform")(event.target.value);
@@ -105,55 +134,59 @@ export function SettingsView(props: SettingsViewProps) {
           <option value="gitlab" disabled>
             {t("settings.gitlab")}
           </option>
-        </select>,
-      )}
+        </select>
+      ))}
       {field(
         "endpoint",
         t("settings.endpoint"),
-        <input
-          type="url"
-          value={draft.endpoint}
-          onChange={(event) => {
-            update("endpoint")(event.target.value);
-          }}
-        />,
+        (aria) => (
+          <input
+            {...aria}
+            type="url"
+            value={draft.endpoint}
+            onChange={(event) => {
+              update("endpoint")(event.target.value);
+            }}
+          />
+        ),
         t("settings.endpointHint"),
       )}
-      {field(
-        "repository",
-        t("settings.repository"),
+      {field("repository", t("settings.repository"), (aria) => (
         <input
+          {...aria}
           type="text"
           placeholder={t("settings.repositoryPlaceholder")}
           value={draft.repository}
           onChange={(event) => {
             update("repository")(event.target.value);
           }}
-        />,
-      )}
-      {field(
-        "branch",
-        t("settings.branch"),
+        />
+      ))}
+      {field("branch", t("settings.branch"), (aria) => (
         <input
+          {...aria}
           type="text"
           placeholder={t("settings.branchPlaceholder")}
           value={draft.branch}
           onChange={(event) => {
             update("branch")(event.target.value);
           }}
-        />,
-      )}
+        />
+      ))}
       {field(
         "selfNames",
         t("settings.myNames"),
-        <input
-          type="text"
-          placeholder={t("settings.myNamesPlaceholder")}
-          value={draft.selfNames}
-          onChange={(event) => {
-            update("selfNames")(event.target.value);
-          }}
-        />,
+        (aria) => (
+          <input
+            {...aria}
+            type="text"
+            placeholder={t("settings.myNamesPlaceholder")}
+            value={draft.selfNames}
+            onChange={(event) => {
+              update("selfNames")(event.target.value);
+            }}
+          />
+        ),
         t("settings.myNamesHint"),
       )}
       <section id="token-section" className="token-help">
@@ -174,17 +207,20 @@ export function SettingsView(props: SettingsViewProps) {
       {field(
         "token",
         t("settings.token"),
-        <input
-          ref={tokenInput}
-          type="password"
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={stored ? t("settings.tokenStored") : ""}
-          value={draft.token}
-          onChange={(event) => {
-            update("token")(event.target.value);
-          }}
-        />,
+        (aria) => (
+          <input
+            {...aria}
+            ref={tokenInput}
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder={stored ? t("settings.tokenStored") : ""}
+            value={draft.token}
+            onChange={(event) => {
+              update("token")(event.target.value);
+            }}
+          />
+        ),
         t("settings.tokenHint"),
       )}
       <p className="note">{t("settings.encryptedHint")}</p>

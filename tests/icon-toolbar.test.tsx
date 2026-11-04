@@ -220,6 +220,16 @@ describe("icon buttons and the overflow menu", () => {
     document.removeEventListener("keydown", seen);
   });
 
+  it("closing with the trigger itself returns focus to it, even if the click did not focus it", async () => {
+    const host = await render(menu());
+    await click(trigger(host));
+    expect(document.activeElement).toBe(items(host)[0]);
+    // A click that does not move focus (Safari): focus is still on the item when the trigger fires.
+    await click(trigger(host));
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger(host));
+  });
+
   it("opens from the trigger with the Down arrow key", async () => {
     const host = await render(menu());
     await key(trigger(host), "ArrowDown");

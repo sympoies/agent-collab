@@ -21,6 +21,14 @@ per-IP limit, including a `304 Not Modified` response. Manual refresh is
 limited to the same five-minute interval and replaces the next scheduled poll.
 If the limit is reached, the viewer shows when to try again.
 
+**Check live now** on a cold cache is not cheap: it reads the repository metadata,
+the ref, the commit, the trees and one request per message file, about 24
+anonymous API requests. That is roughly 40 percent of GitHub's anonymous
+budget of 60 requests per hour per IP address, and several visitors behind one
+shared address (an office or a home network) can use it up together. For
+regular use, open the repository with a token, or read a local clone (below),
+which makes no network request at all.
+
 ## Raise the limit with a token
 
 Anonymous use of the GitHub API is capped at 60 requests per hour per IP address. A token has its

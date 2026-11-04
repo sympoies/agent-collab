@@ -113,7 +113,7 @@ describe("Root with a local folder", () => {
     expect(host.querySelector('[role="alert"]')?.textContent).toContain(
       "not a collaboration clone",
     );
-    expect(host.querySelector("h1")?.textContent).toBe("Agent collaboration viewer");
+    expect(host.querySelector("h1")?.textContent).toBe("Collab Viewer");
   });
 
   it("opens the clone read-only, labels it experimental and shows when it last changed", async () => {

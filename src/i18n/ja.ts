@@ -1,7 +1,7 @@
 import type { Messages } from "./catalog";
 
 export const ja: Messages = {
-  "app.title": "エージェント協調ビューア",
+  "app.title": "Collab Viewer",
   "app.settingsTitle": "Collab Viewer",
   "language.label": "言語",
   "theme.use": "{theme}テーマを使う",
@@ -14,7 +14,7 @@ export const ja: Messages = {
   "welcome.localUnsupported":
     "ローカルフォルダーを開くには、フォルダーを開けるブラウザー（パソコンの Chrome や Edge など）が必要です。",
   "bar.refresh": "更新",
-  "bar.viewingAs": "表示する人",
+  "bar.viewingAs": "閲覧者",
   "bar.observer": "オブザーバー",
   "bar.profile": "プロフィールと色",
   "bar.localFolder": "ローカルフォルダー",
@@ -81,7 +81,7 @@ export const ja: Messages = {
   "live.hitLimit": "ライブ確認が GitHub の API 上限に達しました",
   "live.unavailable": "ライブ確認を利用できません",
   "live.stillShowing": "{reason}。引き続き {shown} を表示しています。{next}",
-  "live.nextCheck": " 次回のライブ確認: {date}。",
+  "live.nextCheck": "次回のライブ確認: {date}。",
   "live.checked": "ライブのリポジトリを確認しました。",
   "live.showingSnapshot": "{date} に生成されたスナップショットを表示しています。",
   "live.snapshotMissing":
@@ -93,9 +93,9 @@ export const ja: Messages = {
   "chat.replyMissing": "{id} への返信（元のメッセージは未表示）",
   "chat.to": "宛先",
   "chat.everyone": "全員",
-  "chat.issueCount": "問題 {count} 件",
+  "chat.issueCount": "形式の不備 {count} 件",
   "chat.issueTitle": "このメッセージはプロトコルに従っていません",
-  "chat.needs": "必要なこと:",
+  "chat.needs": "必要事項:",
   "chat.due": "期限 {date}",
   "chat.dueOverdue": "期限 {date}（期限切れ）",
   "chat.you": "あなた",
@@ -135,7 +135,7 @@ export const ja: Messages = {
   "profile.reset": "色と名前をリセット",
   "profile.note":
     "色と表示名は、このリポジトリ用としてこのブラウザーにだけ保存されます。共同作業のリポジトリには何も書き込まれません。",
-  "profile.empty": "表示する人はまだいません。",
+  "profile.empty": "表示できる人はまだいません。",
   "profile.displayName": "{name} の表示名",
   "profile.color": "{name} の色",
   "color.coral": "コーラル",
@@ -180,7 +180,7 @@ export const ja: Messages = {
   "settings.branchPlaceholder": "デフォルトブランチ",
   "settings.myNames": "自分の名前",
   "settings.myNamesPlaceholder": "alice, alice-agent",
-  "settings.myNamesHint": "これらの名前は、「表示する人」の初期値として使われます。",
+  "settings.myNamesHint": "これらの名前は、「閲覧者」の初期値として使われます。",
   "settings.token": "アクセストークン",
   "settings.tokenStored": "保存済み。変更しない場合は空のままにします",
   "settings.tokenHint":

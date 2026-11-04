@@ -255,6 +255,22 @@ const TOPIC_FILES: Readonly<Record<string, { sha: string; body: string | Buffer 
   "archive.bin": { sha: "topic-bin", body: "opaque bytes" },
 };
 
+/** Two topics, one of them named by a single unbreakable word (no hyphen to break at) far wider than a phone screen. */
+function longTopicThread(): MessageFixture[] {
+  return [
+    makeMessage("2026-10-08", "0900", "alice-agent", "api", 1, "info", "Short topic message."),
+    makeMessage(
+      "2026-10-08",
+      "0910",
+      "alice-agent",
+      "anextraordinarilylongtopicnamewithoutanybreakopportunityatall0123456789abcdefghij",
+      1,
+      "info",
+      "Long topic message.",
+    ),
+  ];
+}
+
 function attachmentThread(): MessageFixture[] {
   const first = makeMessage(
     "2026-10-08",
@@ -309,7 +325,7 @@ function json(route: Route, value: unknown, status = 200, headers: Record<string
 
 async function installApiStub(
   page: Page,
-  mode: "long" | "questions" | "attachments" | "empty" | "error",
+  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic",
 ) {
   const messages =
     mode === "long"
@@ -318,7 +334,9 @@ async function installApiStub(
         ? questionThread()
         : mode === "attachments"
           ? attachmentThread()
-          : [];
+          : mode === "long-topic"
+            ? longTopicThread()
+            : [];
   const arrivalOne = makeMessage(
     "2026-10-09",
     "1030",
@@ -463,7 +481,7 @@ async function installApiStub(
 
 async function openViewer(
   page: Page,
-  mode: "long" | "questions" | "attachments" | "empty" | "error",
+  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic",
 ) {
   const assertRequests = await installApiStub(page, mode);
   await page.goto("/");
@@ -652,7 +670,7 @@ test("empty repositories and provider errors have clear states", async ({ page }
 test("welcome screen exposes live-demo, saved-repository, and theme controls", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Agent collaboration viewer" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Collab Viewer" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open live demo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open saved repository" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open another repository" })).toBeVisible();
@@ -700,7 +718,9 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   );
   await expect(page.locator("html")).toHaveCSS("scroll-behavior", "auto");
   const timestamp = page.locator("time").first();
-  await timestamp.focus();
+  // A message time is not a tab stop; its full timestamp shows on hover.
+  await expect(page.locator("time[tabindex]")).toHaveCount(0);
+  await timestamp.hover();
   await expect(timestamp.locator(".time-tooltip")).toBeVisible();
   await expect(timestamp.locator(".time-tooltip")).toHaveText("2026-10-09 10:00");
   assertRequests();
@@ -1757,6 +1777,132 @@ for (const theme of ["paper", "night-owl"] as const) {
   });
 }
 
+for (const identity of identityCases) {
+  test(`every topic and its counter are visible on ${identity.label} in ${identity.theme}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: identity.scheme });
+    await page.setViewportSize(identity.viewport);
+    const assertRequests = await openViewer(page, "attachments");
+    await expect(page.locator("html")).toHaveAttribute("data-theme", identity.theme);
+    const chips = page.locator(".topics button");
+    await expect(page.getByRole("button", { name: /^#ops/ })).toBeVisible();
+    expect(await chips.count()).toBeGreaterThan(1);
+    // Nothing is cut at the screen edge or hidden in a scroller, and the counters are readable.
+    const boxes = await chips.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        const count = node.querySelector(".count")?.getBoundingClientRect();
+        return {
+          inside: box.left >= 0 && box.right <= window.innerWidth + 0.5,
+          counter:
+            count === undefined || (count.right <= window.innerWidth + 0.5 && count.width > 0),
+        };
+      }),
+    );
+    expect(await page.locator(".topics .count").count()).toBeGreaterThan(1);
+    expect(boxes.every((box) => box.inside && box.counter)).toBe(true);
+    const scroller = await page
+      .locator(".topics")
+      .evaluate((node) => node.scrollWidth - node.clientWidth);
+    expect(scroller).toBeLessThanOrEqual(1);
+    await saveScreenshot(page, `topics-${identity.label}-${identity.theme}.png`);
+    assertRequests();
+  });
+}
+
+for (const code of LOCALES) {
+  test(`a very long topic name stays inside its button on a phone in ${LOCALE_NAMES[code]}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const assertRequests = await openViewer(page, "long-topic");
+    if (code !== "en") {
+      await page.getByRole("button", { name: /^(More|その他|更多)$/ }).click();
+      await page.getByRole("menuitemradio", { name: LOCALE_NAMES[code], exact: true }).click();
+      await expect(page.locator("html")).toHaveAttribute("lang", code);
+    }
+    const long = page.locator(".topics button", { hasText: "anextraordinarilylongtopic" });
+    await expect(long).toBeVisible();
+    const fit = await page.locator(".topics button").evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const box = node.getBoundingClientRect();
+        const count = node.querySelector(".count")?.getBoundingClientRect();
+        return {
+          insideScreen: box.left >= 0 && box.right <= window.innerWidth + 0.5,
+          noInnerOverflow: node.scrollWidth <= node.clientWidth + 1,
+          // Buttons without a counter (Files, All) pass; the topics' counters stay inside.
+          counterInside:
+            count === undefined ||
+            (count.width > 0 && count.left >= box.left - 0.5 && count.right <= box.right + 0.5),
+        };
+      }),
+    );
+    expect(fit.length).toBeGreaterThan(2);
+    expect(await page.locator(".topics .count").count()).toBeGreaterThan(2);
+    expect(fit.every((entry) => entry.insideScreen)).toBe(true);
+    expect(fit.every((entry) => entry.noInnerOverflow)).toBe(true);
+    expect(fit.every((entry) => entry.counterInside)).toBe(true);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `long-topic-${code}.png`);
+    assertRequests();
+  });
+}
+
+test("activating a message link with the keyboard moves focus to the message", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const assertRequests = await openViewer(page, "attachments");
+  await page.getByRole("button", { name: /^#api/ }).click();
+  const focused = () => page.evaluate(() => document.activeElement?.id ?? "");
+
+  // Same topic: the target message takes the focus and keeps its highlight.
+  const link = page
+    .locator("#msg-2026-10-08T0905-bob-agent-api-02")
+    .getByRole("link", { name: /^Message 2026-10-08 09:00/ });
+  await link.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(focused).toBe("msg-2026-10-08T0900-alice-agent-api-01");
+  await expect(page.locator("#msg-2026-10-08T0900-alice-agent-api-01")).toHaveCSS(
+    "outline-style",
+    "solid",
+  );
+
+  // Another topic: the viewer switches topic and the focus lands on the message there.
+  const other = page
+    .locator("#msg-2026-10-08T0900-alice-agent-api-01")
+    .getByRole("link", { name: /^Message 2026-10-08 09:10/ });
+  await other.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#conversation-heading")).toHaveText("#ops");
+  await expect.poll(focused).toBe("msg-2026-10-08T0910-alice-agent-ops-01");
+
+  // The message itself is a focus target, not an extra tab stop.
+  await expect(page.locator("time[tabindex], .message[tabindex='0']")).toHaveCount(0);
+  assertRequests();
+});
+
+test("settings have one h1 and fields named without their hints, with errors connected", async ({
+  page,
+}) => {
+  await installApiStub(page, "empty");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open another repository" }).click();
+  await expect(page.locator("h1")).toHaveCount(1);
+  // The hint is a description, not part of the field's name.
+  const names = page.getByRole("textbox", { name: "My names", exact: true });
+  await expect(names).toHaveAccessibleDescription(/default "Viewing as" person/);
+  const repository = page.getByRole("textbox", { name: "Repository", exact: true });
+  await expect(repository).not.toHaveAttribute("aria-invalid", "true");
+  await page.getByRole("button", { name: "Save and open" }).click();
+  await expect(repository).toHaveAttribute("aria-invalid", "true");
+  const error = page.locator("[role=alert]", { hasText: /owner\/repository/i });
+  await expect(error).toBeVisible();
+  await expect(repository).toHaveAccessibleDescription(/owner\/repository/i);
+  await expect(page.locator("h1")).toHaveCount(1);
+});
+
 test("a browser without a folder picker gets an explanation instead of a broken button", async ({
   page,
 }) => {
@@ -1778,7 +1924,7 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
   await expect(page.getByRole("alert")).toHaveText(
     "No folder selected, or the browser does not allow this folder.",
   );
-  await expect(page.getByRole("heading", { name: "Agent collaboration viewer" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Collab Viewer" })).toBeVisible();
 
   const other = await page.context().newPage();
   await installFakeFolder(other, { picker: "not-a-clone" });
@@ -1821,6 +1967,9 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
  */
 async function expectNoClipping(page: Page, selectors: string) {
   for (const selector of selectors.split(",").map((part) => part.trim())) {
+    // A screen that was just opened may not have rendered yet; a selector that never appears
+    // still fails, with the message below.
+    await expect(page.locator(selector).first(), `"${selector}" matched nothing`).toBeAttached();
     const result = await page.$$eval(selector, (elements) => ({
       count: elements.length,
       clipped: elements
@@ -1864,7 +2013,8 @@ for (const code of LOCALES) {
       await expect(page.locator("html")).toHaveAttribute("lang", other);
       await page.getByLabel(catalogsByLocale[other]["language.label"]).selectOption(code);
       await expect(page.locator("html")).toHaveAttribute("lang", code);
-      await expect(page.getByRole("heading", { level: 1 })).toHaveText(messages["app.title"]);
+      // The product name is the same English name in every language.
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Collab Viewer");
       await expect(
         page.getByRole("button", { name: messages["welcome.openLiveDemo"] }),
       ).toBeVisible();
@@ -1878,8 +2028,10 @@ for (const code of LOCALES) {
       await page.getByRole("button", { name: messages["welcome.openAnother"] }).click();
       await expectNoClipping(
         page,
-        ".settings button, .settings .field > span, .settings legend, .settings .note, .token-help, .token-help p, .token-help a",
+        ".settings button, .settings .field > label, .settings legend, .settings .note, .token-help, .token-help p, .token-help a",
       );
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Collab Viewer");
+      await expect(page.locator("h1")).toHaveCount(1);
       await saveScreenshot(page, `i18n-settings-${code}-${view.label}.png`);
       await page.getByRole("button", { name: messages["settings.openOffline"] }).click();
       const toolbar = page.locator(".bar-actions");
@@ -2024,9 +2176,9 @@ test("the browser language picks the interface language, and an unwritable store
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page.locator("html")).toHaveAttribute("lang", "ja");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(ja["app.title"]);
+  await expect(page.getByRole("button", { name: ja["welcome.openLiveDemo"] })).toBeVisible();
   await page.getByLabel(ja["language.label"]).selectOption("zh-TW");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(zhTW["app.title"]);
+  await expect(page.getByRole("button", { name: zhTW["welcome.openLiveDemo"] })).toBeVisible();
   expect(errors).toEqual([]);
   await context.close();
 });

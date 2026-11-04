@@ -142,7 +142,10 @@ export function OverflowMenu({
         aria-expanded={open}
         aria-controls={open ? id : undefined}
         onClick={() => {
-          setOpen(!open);
+          // Closing goes through close() so focus returns here even where a click does not focus
+          // a button (Safari).
+          if (open) close();
+          else setOpen(true);
         }}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" && !open) {
