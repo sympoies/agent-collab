@@ -93,7 +93,7 @@ describe("FileListFolderSource", () => {
   it("rejects an oversized folder with the local folder message", () => {
     expect(
       () => new FileListFolderSource([folderFile("inbox/a.md", "123456789")], { maxBytes: 8 }),
-    ).toThrowError("This folder is too large to read. Choose the clone folder itself.");
+    ).toThrow("This folder is too large to read. Choose the clone folder itself.");
   });
 
   it("rejects file-count overflow", () => {
@@ -102,7 +102,7 @@ describe("FileListFolderSource", () => {
         new FileListFolderSource([folderFile("inbox/a.md", "a"), folderFile("inbox/b.md", "b")], {
           maxFiles: 1,
         }),
-    ).toThrowError("This folder is too large to read. Choose the clone folder itself.");
+    ).toThrow("This folder is too large to read. Choose the clone folder itself.");
   });
 
   it("rejects a file larger than the shared 1 MiB limit", () => {

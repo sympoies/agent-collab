@@ -2363,12 +2363,18 @@ test("a file input opens a local snapshot in each language on a phone without ne
     if (browserName === "webkit") {
       // Playwright's WebKit directory fixture omits dotfiles; keep the picked files and add the
       // repository marker to model the FileList a directory chooser returns to the app.
-      await input.evaluate((element) =>
-        element.addEventListener("change", (event) => event.stopImmediatePropagation(), {
-          capture: true,
-          once: true,
-        }),
-      );
+      await input.evaluate((element) => {
+        element.addEventListener(
+          "change",
+          (event) => {
+            event.stopImmediatePropagation();
+          },
+          {
+            capture: true,
+            once: true,
+          },
+        );
+      });
     }
     await input.setInputFiles(fileURLToPath(new URL("./fixtures/local-folder", import.meta.url)));
     if (browserName === "webkit") {

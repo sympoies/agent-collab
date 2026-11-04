@@ -48,10 +48,6 @@ export interface LocalFolderOpen {
   readonly snapshot?: boolean;
 }
 
-export type LocalFolderSelection =
-  | { readonly kind: "files"; readonly files: readonly File[] | FileList }
-  | { readonly kind: "drop"; readonly dataTransfer: DataTransfer };
-
 export interface RootProps extends SettingsDeps {
   readonly createSource: (settings: ViewerSettings, token: Secret) => MessageSource;
   readonly createDemoSource: () => MessageSource;
@@ -60,7 +56,7 @@ export interface RootProps extends SettingsDeps {
   /** Opens the browser's folder picker; null when the browser has none. Needs a user gesture. */
   readonly openLocalFolder: (() => Promise<LocalFolderOpen>) | null;
   /** Creates a read-only source from a directory input or dropped folder. */
-  readonly openLocalFileList?: (selection: LocalFolderSelection) => Promise<LocalFolderOpen>;
+  readonly openLocalFileList?: (files: readonly File[] | FileList) => Promise<LocalFolderOpen>;
   /** Reads the snapshot this deployment serves next to the app; null when it serves none. */
   readonly createHostedSource?: (() => MessageSource) | null;
 }
@@ -104,6 +100,61 @@ async function openRepository(
   await session.open();
   if (session.inboxLayout !== "topic") await loader.openWithHead(session.currentHead);
   return { loader, session };
+}
+
+interface DroppedDirectoryEntry {
+  readonly name: string;
+  readonly isFile: boolean;
+  readonly isDirectory: boolean;
+  file?(success: (file: File) => void, failure?: (error: DOMException) => void): void;
+  createReader?(): {
+    readEntries(
+      success: (entries: DroppedDirectoryEntry[]) => void,
+      failure?: (error: DOMException) => void,
+    ): void;
+  };
+}
+
+function droppedEntryFiles(entry: DroppedDirectoryEntry, relativePath: string): Promise<File[]> {
+  if (entry.isFile && entry.file !== undefined) {
+    return new Promise((resolve, reject) => {
+      entry.file?.((file) => {
+        Object.defineProperty(file, "webkitRelativePath", { value: relativePath });
+        resolve([file]);
+      }, reject);
+    });
+  }
+  if (!entry.isDirectory || entry.createReader === undefined) return Promise.resolve([]);
+
+  const reader = entry.createReader();
+  const children: DroppedDirectoryEntry[] = [];
+  const readBatch = (): Promise<void> =>
+    new Promise((resolve, reject) => {
+      reader.readEntries((batch) => {
+        children.push(...batch);
+        if (batch.length === 0) resolve();
+        else void readBatch().then(resolve, reject);
+      }, reject);
+    });
+  return readBatch().then(async () => {
+    const nested = await Promise.all(
+      children.map((child) => droppedEntryFiles(child, `${relativePath}/${child.name}`)),
+    );
+    return nested.flat();
+  });
+}
+
+async function filesFromDrop(dataTransfer: DataTransfer): Promise<readonly File[]> {
+  const items = Array.from(dataTransfer.items) as Array<
+    DataTransferItem & { webkitGetAsEntry?: () => DroppedDirectoryEntry | null }
+  >;
+  const entries = items.flatMap((item) => {
+    const entry = item.webkitGetAsEntry?.();
+    return entry === null || entry === undefined ? [] : [entry];
+  });
+  if (entries.length === 0) return Array.from(dataTransfer.files);
+  const files = await Promise.all(entries.map((entry) => droppedEntryFiles(entry, entry.name)));
+  return files.flat();
 }
 
 /** The demos neither read nor write browser storage, so identity choices last for the view. */
@@ -450,13 +501,13 @@ export function Root(props: RootProps) {
   };
 
   const chooseLocalFiles = async (
-    selection: LocalFolderSelection,
+    files: readonly File[] | FileList,
     current: ViewerScreen | null,
     operation = ++navigation.current,
   ): Promise<void> => {
     if (openLocalFileList === undefined) return;
-    if (selection.kind === "files" && selection.files.length === 0) return;
-    await openLocalSource(() => openLocalFileList(selection), current, operation);
+    if (files.length === 0) return;
+    await openLocalSource(() => openLocalFileList(files), current, operation);
   };
 
   const beginFilePick = (current: ViewerScreen | null): void => {
@@ -470,13 +521,22 @@ export function Root(props: RootProps) {
     const pending = pendingFilePick.current;
     pendingFilePick.current = null;
     if (pending === null || pending.operation !== navigation.current) return;
-    void chooseLocalFiles({ kind: "files", files }, pending.current, pending.operation);
+    void chooseLocalFiles(files, pending.current, pending.operation);
   };
 
-  const acceptDroppedFolder = (dataTransfer: DataTransfer): void => {
+  const acceptDroppedFolder = async (dataTransfer: DataTransfer): Promise<void> => {
     if (openLocalFileList === undefined) return;
     const operation = ++navigation.current;
-    void chooseLocalFiles({ kind: "drop", dataTransfer }, null, operation);
+    try {
+      await chooseLocalFiles(await filesFromDrop(dataTransfer), null, operation);
+    } catch (error) {
+      if (operation !== navigation.current) return;
+      setLocalMessage(
+        error instanceof SourceError && error.kind === "too-large"
+          ? { key: "local.tooLarge" }
+          : { key: "local.noFolder" },
+      );
+    }
   };
 
   const folderInput = (

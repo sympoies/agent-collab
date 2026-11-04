@@ -163,38 +163,43 @@ export class FileListFolderSource implements MessageSource {
     return this.changed;
   }
 
-  async head(previous: Head | null): Promise<Head | "not-modified"> {
-    if (previous?.validator === this.revision) return "not-modified";
-    return { revision: this.revision, validator: this.revision };
+  head(previous: Head | null): Promise<Head | "not-modified"> {
+    return Promise.resolve(
+      previous?.validator === this.revision
+        ? "not-modified"
+        : { revision: this.revision, validator: this.revision },
+    );
   }
 
-  async listDirectory(revision: string, path: string): Promise<readonly DirectoryEntry[]> {
-    if (revision !== this.revision || (path !== "" && !safeRelativePath(path))) {
-      throw new SourceError("forbidden", path);
-    }
-    let directory = this.root;
-    for (const segment of pathSegments(path)) {
-      const child = directory.children.get(segment);
-      if (child === undefined || !("children" in child)) throw new SourceError("not-found", path);
-      directory = child;
-    }
-    return [...directory.children.entries()]
-      .map(([name, child]) => {
-        if ("children" in child) {
-          const children = [...child.children.values()]
-            .map((entry) => ("entry" in entry ? entry.entry.objectId : `directory:${entry.path}`))
-            .sort()
-            .join("\n");
-          return {
-            name,
-            path: child.path,
-            kind: "directory" as const,
-            objectId: stableId("directory", children),
-          };
-        }
-        return child.entry;
-      })
-      .sort((left, right) => left.name.localeCompare(right.name));
+  listDirectory(revision: string, path: string): Promise<readonly DirectoryEntry[]> {
+    return Promise.resolve().then(() => {
+      if (revision !== this.revision || (path !== "" && !safeRelativePath(path))) {
+        throw new SourceError("forbidden", path);
+      }
+      let directory = this.root;
+      for (const segment of pathSegments(path)) {
+        const child = directory.children.get(segment);
+        if (child === undefined || !("children" in child)) throw new SourceError("not-found", path);
+        directory = child;
+      }
+      return [...directory.children.entries()]
+        .map(([name, child]) => {
+          if ("children" in child) {
+            const children = [...child.children.values()]
+              .map((entry) => ("entry" in entry ? entry.entry.objectId : `directory:${entry.path}`))
+              .sort()
+              .join("\n");
+            return {
+              name,
+              path: child.path,
+              kind: "directory" as const,
+              objectId: stableId("directory", children),
+            };
+          }
+          return child.entry;
+        })
+        .sort((left, right) => left.name.localeCompare(right.name));
+    });
   }
 
   async readFile(entry: DirectoryEntry): Promise<string> {

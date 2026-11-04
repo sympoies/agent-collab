@@ -88,13 +88,15 @@ describe("Root with a local folder", () => {
   }
 
   it("offers the file-list fallback and points the unsupported browser hint to it", async () => {
-    const host = await render(null, undefined, async (files) => ({
-      source: new FixtureSource({
-        ".agent-collab": MARKER,
-        [flat("2026-10", 1, 1)]: messageText(ID, "alice-agent", "api"),
+    const host = await render(null, undefined, (files) =>
+      Promise.resolve({
+        source: new FixtureSource({
+          ".agent-collab": MARKER,
+          [flat("2026-10", 1, 1)]: messageText(ID, "alice-agent", "api"),
+        }),
+        name: files[0]?.webkitRelativePath.split("/")[0] ?? "clone",
       }),
-      name: files[0]?.webkitRelativePath.split("/")[0] ?? "clone",
-    }));
+    );
     expect(button(host, "Open local folder")).toBeUndefined();
     expect(button(host, "Choose local folder from files")).toBeDefined();
     expect(host.querySelector(".local-unsupported")?.textContent).toContain(
