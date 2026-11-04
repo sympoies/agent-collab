@@ -910,6 +910,14 @@ button:hover {
   font-size: 0.8rem;
 }
 
+.reminder-count {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
 .conclusion-text {
   flex-basis: 100%;
   margin: 0;

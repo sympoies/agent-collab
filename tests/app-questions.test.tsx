@@ -62,7 +62,7 @@ add(
   "alice-agent",
   "ops",
   "info",
-  { to: "bob-agent", reply_to: CONCLUDED },
+  { to: "all", reply_to: CONCLUDED },
   "We chose North.",
 );
 add(

@@ -38,6 +38,14 @@ function Item({
             ` · ${t("questions.progress", { answered: state.progress.answered, target: state.progress.target })}`}
         </span>
       </button>
+      {state.reminders.length > 0 && (
+        <span className="reminder-count">
+          {t("receipt.reminders", {
+            count: state.reminders.length,
+            time: state.reminders.at(-1)?.timestamp ?? "",
+          })}
+        </span>
+      )}
       {item.waitingForViewer && <span className="you">{t("questions.waiting")}</span>}
       {state.conclusionText !== null && <p className="conclusion-text">{state.conclusionText}</p>}
     </li>

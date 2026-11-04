@@ -15,6 +15,8 @@ export interface QuestionState {
   readonly answerers: readonly string[];
   readonly conclusion: Message | null;
   readonly conclusionText: string | null;
+  /** Named info replies from the question's sender, oldest first. They never conclude it. */
+  readonly reminders: readonly Message[];
 }
 
 export interface QuestionDerivationContext {
@@ -78,11 +80,14 @@ export function deriveQuestionStates(
     const eligible = new Set(eligibleAnswerers);
     const answerers = new Set<string>();
     let conclusion: Message | null = null;
+    const reminders: Message[] = [];
 
     for (const message of repliesByQuestion.get(question.id) ?? []) {
       if (message.type === "answer" && eligible.has(message.from)) answerers.add(message.from);
       if (message.type === "info" && message.from === question.from) {
-        if (conclusion === null || message.id > conclusion.id) conclusion = message;
+        // A named info from the sender is a reminder; only a broadcast info concludes.
+        if (message.to.length > 0) reminders.push(message);
+        else if (conclusion === null || message.id > conclusion.id) conclusion = message;
       }
     }
 
@@ -99,6 +104,7 @@ export function deriveQuestionStates(
       answerers: eligibleAnswerers.filter((name) => answerers.has(name)),
       conclusion,
       conclusionText: conclusion === null ? null : bodyText(conclusion),
+      reminders,
     };
   });
 }
@@ -112,5 +118,6 @@ function unknownState(question: Message): QuestionState {
     answerers: [],
     conclusion: null,
     conclusionText: null,
+    reminders: [],
   };
 }

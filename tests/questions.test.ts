@@ -169,6 +169,60 @@ describe("deriveQuestionStates", () => {
     });
   });
 
+  it("treats a named info from the sender as a reminder that keeps the question open", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any" });
+    const first = parsed(2, "alice-agent", "info", { reply_to: question.id, to: "bob-agent" });
+    const second = parsed(3, "alice-agent", "info", { reply_to: question.id, to: "bob-agent" });
+    expect(derive([question, first, second])[0]).toMatchObject({
+      state: "open",
+      conclusion: null,
+      conclusionText: null,
+      reminders: [first, second],
+    });
+  });
+
+  it.each([["all"], [""]])("concludes on a broadcast info (to: %j)", (to) => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any" });
+    const info = parsed(2, "alice-agent", "info", { reply_to: question.id, to }, "Decided.");
+    expect(derive([question, info])[0]).toMatchObject({
+      state: "concluded",
+      conclusionText: "Decided.",
+      reminders: [],
+    });
+  });
+
+  it("never concludes on an info from someone else, named or broadcast", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any" });
+    const named = parsed(2, "bob-agent", "info", { reply_to: question.id, to: "alice-agent" });
+    const broadcast = parsed(3, "carol-agent", "info", { reply_to: question.id });
+    expect(derive([question, named, broadcast])[0]).toMatchObject({
+      state: "open",
+      conclusion: null,
+      reminders: [],
+    });
+  });
+
+  it("concludes with the broadcast text after several reminders", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any" });
+    const reminders = [2, 3].map((minute) =>
+      parsed(minute, "alice-agent", "info", { reply_to: question.id, to: "bob-agent" }, "Ping."),
+    );
+    const final = parsed(4, "alice-agent", "info", { reply_to: question.id }, "Final text.");
+    const late = parsed(
+      5,
+      "alice-agent",
+      "info",
+      { reply_to: question.id, to: "bob-agent" },
+      "Late ping.",
+    );
+    expect(derive([question, ...reminders, final, late])[0]).toMatchObject({
+      state: "concluded",
+      conclusion: final,
+      conclusionText: "Final text.",
+      reminders: [...reminders, late],
+    });
+  });
+
   it("returns one state per question and ignores unrelated replies", () => {
     const first = parsed(1, "alice-agent", "question", { replies: "2" });
     const second = parsed(2, "bob-agent", "question", { to: "carol-agent" });

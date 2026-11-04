@@ -17,6 +17,8 @@ export interface MessageView {
   readonly addressed: boolean;
   /** Acknowledgements, recipient states and question progress, when the message has any. */
   readonly receipts: MessageReceipts | null;
+  /** A named info from a question\'s sender to its own question: a reminder, not a conclusion. */
+  readonly reminder: boolean;
 }
 
 export type Row =
@@ -128,6 +130,11 @@ export function buildRows(items: readonly TimelineItem[], options: RowOptions): 
         message.from !== options.viewer &&
         message.to.includes(options.viewer),
       receipts: receipts.get(message.id) ?? null,
+      reminder:
+        message.replyTo !== null &&
+        (receipts.get(message.replyTo)?.question?.reminders ?? []).some(
+          (reminder) => reminder.id === message.id,
+        ),
     };
     if (
       group !== null &&

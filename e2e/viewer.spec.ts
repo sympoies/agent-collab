@@ -169,6 +169,28 @@ function questionThread(): MessageFixture[] {
     open,
     makeMessage(
       "2026-10-08",
+      "0903",
+      "alice-agent",
+      "api",
+      6,
+      "info",
+      "Friendly nudge about the schema.",
+      "bob-agent",
+      open.id,
+    ),
+    makeMessage(
+      "2026-10-08",
+      "0904",
+      "alice-agent",
+      "api",
+      7,
+      "info",
+      "Second nudge about the schema.",
+      "bob-agent",
+      open.id,
+    ),
+    makeMessage(
+      "2026-10-08",
       "0901",
       "bob-agent",
       "api",
@@ -221,7 +243,7 @@ function questionThread(): MessageFixture[] {
       3,
       "info",
       "We chose North.",
-      "bob-agent",
+      "all",
       concluded.id,
     ),
   ];
@@ -1248,6 +1270,34 @@ test("identity choices still work when browser storage rejects reads and writes"
   assertRequests();
 });
 
+for (const code of ["ja", "zh-TW"] as const) {
+  test(`reminders are labeled and fit on a phone in ${LOCALE_NAMES[code]}`, async ({ page }) => {
+    const messages = catalogsByLocale[code];
+    await page.setViewportSize({ width: 390, height: 844 });
+    const assertRequests = await openViewer(page, "questions");
+    await page.getByRole("button", { name: /^(More|その他|更多)$/ }).click();
+    await page.getByRole("menuitemradio", { name: LOCALE_NAMES[code], exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", code);
+    await page.getByRole("button", { name: /^#api/ }).click();
+    const question = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
+    await expect(question.locator(".reminder-count")).toHaveText(
+      messages["receipt.reminders"].replace("{count}", "2").replace("{time}", "09:04"),
+    );
+    const nudge = page.locator(".message", { hasText: "Friendly nudge about the schema." });
+    await expect(nudge.locator(".badge")).toHaveText(messages["type.reminder"]);
+    await page.getByRole("button", { name: messages["nav.back"] }).click();
+    await page.getByRole("button", { name: new RegExp(`^${messages["nav.questions"]}`) }).click();
+    const open = page.getByRole("region", { name: messages["questions.open"] });
+    await expect(open.locator(".reminder-count")).toHaveText(
+      messages["receipt.reminders"].replace("{count}", "2").replace("{time}", "2026-10-08 09:04"),
+    );
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    assertRequests();
+  });
+}
+
 for (const identity of identityCases) {
   test(`receipts and the Questions view work on ${identity.label} in ${identity.theme}`, async ({
     page,
@@ -1266,6 +1316,10 @@ for (const identity of identityCases) {
       "bob-agent acknowledged 09:01 · reply expected within 10 minutes",
     );
     await expect(question.locator(".question-progress")).toContainText("0/1 answered");
+    await expect(question.locator(".reminder-count")).toHaveText("2 reminders, last 09:04");
+    const nudge = page.locator(".message", { hasText: "Friendly nudge about the schema." });
+    await expect(nudge.locator(".badge")).toHaveText("reminder");
+    await expect(nudge.locator(".conclusion")).toHaveCount(0);
     await expect(page.locator(".message", { hasText: "Received. Expected reply" })).toHaveCount(0);
     await question.getByText("Recipients").click();
     await expect(question.locator(".recipients")).toContainText("no read receipt");
@@ -1284,6 +1338,8 @@ for (const identity of identityCases) {
     await expect(page.locator("#conversation-heading")).toHaveText("Questions");
     const open = page.getByRole("region", { name: "Open" });
     await expect(open.locator(".question-text")).toHaveText(["Is the schema final?"]);
+    await expect(open.locator(".reminder-count")).toHaveText("2 reminders, last 2026-10-08 09:04");
+    await expect(open.locator(".conclusion-text")).toHaveCount(0);
     await expect(
       page.getByRole("region", { name: "Answered" }).locator(".question-text"),
     ).toHaveText(["Can the field be optional?"]);
