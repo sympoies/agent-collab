@@ -2,7 +2,10 @@
 // and on a phone. Synthetic data only: a stubbed GitHub API, no real network. The "@csp" tag also
 // runs the tests in WebKit.
 
-import { expect, test, type Route } from "@playwright/test";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+
+import { expect, test, type Page, type Route } from "@playwright/test";
 
 const LONG_TOPIC = "a-topic-name-that-is-long-enough-to-wrap-without-overflow-at-phone-width";
 const FILLERS = Array.from(
@@ -54,6 +57,145 @@ async function json(route: Route, value: unknown) {
   });
 }
 
+/** Saves a screenshot for hands-on review next to the other browser-test screenshots. */
+async function saveScreenshot(page: Page, filename: string) {
+  const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
+  mkdirSync(directory, { recursive: true });
+  await page.screenshot({ path: join(directory, filename) });
+}
+
+/** What the stubbed repository serves; `bumped` adds a newer message to one topic and a new head. */
+interface RepositoryState {
+  bumped: boolean;
+}
+
+const BUMPED_TOPIC = "topic-05";
+const BUMPED_ID = `2026-10-09T0900-alice-agent-${BUMPED_TOPIC}-01`;
+
+async function serveRepository(page: Page, requests: string[], state: RepositoryState) {
+  await page.route("https://api.github.com/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.replace("/repos/alice-agent/fixture-repo", "");
+    requests.push(path);
+    if (request.headers()["authorization"] !== "Bearer fake-token") {
+      await route.fulfill({ status: 401, body: "{}" });
+      return;
+    }
+    if (path === "/git/ref/heads/main") {
+      await json(route, { object: { sha: state.bumped ? "rev2" : "rev" } });
+    } else if (path === "/git/commits/rev" || path === "/git/commits/rev2") {
+      // Trees are cached by id, so a new head needs new ids for what changed.
+      await json(route, { tree: { sha: path.endsWith("rev2") ? "root2" : "root" } });
+    } else if (path === "/git/trees/root" || path === "/git/trees/root2") {
+      await json(route, {
+        truncated: false,
+        tree: [
+          entry(".agent-collab", "marker", "blob"),
+          entry("index.md", "index", "blob"),
+          entry("topics", path.endsWith("root2") ? "topics2" : "topics", "tree"),
+        ],
+      });
+    } else if (path === "/git/trees/topics" || path === "/git/trees/topics2") {
+      await json(route, {
+        truncated: false,
+        tree: [
+          entry("api", "topic:api", "tree"),
+          entry(LONG_TOPIC, "topic:long", "tree"),
+          entry("archive", "topic:archive", "tree"),
+          ...FILLERS.map((name) =>
+            entry(
+              name,
+              name === BUMPED_TOPIC && state.bumped ? "topic:new" : `topic:${name}`,
+              "tree",
+            ),
+          ),
+        ],
+      });
+    } else if (path === "/git/trees/topic:api") {
+      await json(route, { truncated: false, tree: [entry("inbox", "inbox:api", "tree")] });
+    } else if (path === "/git/trees/topic:archive") {
+      await json(route, {
+        truncated: false,
+        tree: [entry("inbox", "inbox:archive", "tree")],
+      });
+    } else if (path === "/git/trees/inbox:archive") {
+      await json(route, {
+        truncated: false,
+        tree: [entry("2026-01", "month:archive", "tree")],
+      });
+    } else if (path === "/git/trees/month:archive") {
+      await json(route, { truncated: false, tree: [] });
+    } else if (path === "/git/trees/inbox:api") {
+      await json(route, {
+        truncated: false,
+        tree: [entry("2026-10", "month:api", "tree")],
+      });
+    } else if (path === "/git/trees/month:api") {
+      await json(route, {
+        truncated: false,
+        tree: [entry(`${MESSAGE_ID}.md`, "message:api", "blob")],
+      });
+    } else if (path === "/git/trees/topic:new") {
+      await json(route, { truncated: false, tree: [entry("inbox", "inbox:new", "tree")] });
+    } else if (path === "/git/trees/inbox:new") {
+      await json(route, { truncated: false, tree: [entry("2026-10", "month:new", "tree")] });
+    } else if (path === "/git/trees/month:new") {
+      await json(route, {
+        truncated: false,
+        tree: [entry(`${BUMPED_ID}.md`, "message:new", "blob")],
+      });
+    } else if (
+      path === "/git/trees/topic:long" ||
+      FILLERS.some((name) => path === `/git/trees/topic:${name}`)
+    ) {
+      await json(route, { truncated: false, tree: [] });
+    } else if (path === "/git/blobs/marker") {
+      await route.fulfill({ status: 200, body: MARKER });
+    } else if (path === "/git/blobs/index") {
+      await route.fulfill({
+        status: 200,
+        body: [
+          "| topic | title | status |",
+          "|---|---|---|",
+          "| api | The API | open |",
+          `| ${LONG_TOPIC} | | open |`,
+          "| archive | Archive | closed |",
+          ...FILLERS.map((name) => `| ${name} | | open |`),
+        ].join("\n"),
+      });
+    } else if (path === "/git/blobs/message:api") {
+      await route.fulfill({
+        status: 200,
+        body: [
+          "---",
+          `id: ${MESSAGE_ID}`,
+          "from: alice-agent",
+          "to: bob-agent",
+          "topic: api",
+          "type: info",
+          "needs: none",
+          "---",
+          "Topic list message body.",
+        ].join("\n"),
+      });
+    } else {
+      await route.fulfill({ status: 404, body: "{}" });
+    }
+  });
+}
+
+async function openRepository(page: Page) {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open another repository" }).click();
+  await page
+    .getByRole("textbox", { name: "Repository", exact: true })
+    .fill("alice-agent/fixture-repo");
+  await page.getByLabel("Branch").fill("main");
+  await page.getByLabel("My names").fill("alice-agent");
+  await page.getByLabel("Access token").fill("fake-token");
+  await page.getByRole("button", { name: "Save and open" }).click();
+}
+
 test.describe("topic list navigation", () => {
   for (const locale of ["en", "ja", "zh-TW"] as const) {
     for (const theme of ["paper", "night-owl"] as const) {
@@ -61,6 +203,7 @@ test.describe("topic list navigation", () => {
         test(`${locale}, ${theme}, ${String(width)}px @csp`, async ({ page }) => {
           const text = TEXT[locale];
           const requests: string[] = [];
+          const state: RepositoryState = { bumped: false };
           await page.addInitScript(
             ({ theme: selectedTheme }) => {
               localStorage.setItem("agent-collab-viewer.theme", selectedTheme);
@@ -68,112 +211,9 @@ test.describe("topic list navigation", () => {
             { theme },
           );
           await page.setViewportSize({ width, height: width === 1280 ? 600 : 850 });
-          await page.route("https://api.github.com/**", async (route) => {
-            const request = route.request();
-            const path = new URL(request.url()).pathname.replace(
-              "/repos/alice-agent/fixture-repo",
-              "",
-            );
-            requests.push(path);
-            if (request.headers()["authorization"] !== "Bearer fake-token") {
-              await route.fulfill({ status: 401, body: "{}" });
-              return;
-            }
-            if (path === "/git/ref/heads/main") {
-              await json(route, { object: { sha: "rev" } });
-            } else if (path === "/git/commits/rev") {
-              await json(route, { tree: { sha: "root" } });
-            } else if (path === "/git/trees/root") {
-              await json(route, {
-                truncated: false,
-                tree: [
-                  entry(".agent-collab", "marker", "blob"),
-                  entry("index.md", "index", "blob"),
-                  entry("topics", "topics", "tree"),
-                ],
-              });
-            } else if (path === "/git/trees/topics") {
-              await json(route, {
-                truncated: false,
-                tree: [
-                  entry("api", "topic:api", "tree"),
-                  entry(LONG_TOPIC, "topic:long", "tree"),
-                  entry("archive", "topic:archive", "tree"),
-                  ...FILLERS.map((name) => entry(name, `topic:${name}`, "tree")),
-                ],
-              });
-            } else if (path === "/git/trees/topic:api") {
-              await json(route, { truncated: false, tree: [entry("inbox", "inbox:api", "tree")] });
-            } else if (path === "/git/trees/topic:archive") {
-              await json(route, {
-                truncated: false,
-                tree: [entry("inbox", "inbox:archive", "tree")],
-              });
-            } else if (path === "/git/trees/inbox:archive") {
-              await json(route, {
-                truncated: false,
-                tree: [entry("2026-01", "month:archive", "tree")],
-              });
-            } else if (path === "/git/trees/month:archive") {
-              await json(route, { truncated: false, tree: [] });
-            } else if (path === "/git/trees/inbox:api") {
-              await json(route, {
-                truncated: false,
-                tree: [entry("2026-10", "month:api", "tree")],
-              });
-            } else if (path === "/git/trees/month:api") {
-              await json(route, {
-                truncated: false,
-                tree: [entry(`${MESSAGE_ID}.md`, "message:api", "blob")],
-              });
-            } else if (
-              path === "/git/trees/topic:long" ||
-              FILLERS.some((name) => path === `/git/trees/topic:${name}`)
-            ) {
-              await json(route, { truncated: false, tree: [] });
-            } else if (path === "/git/blobs/marker") {
-              await route.fulfill({ status: 200, body: MARKER });
-            } else if (path === "/git/blobs/index") {
-              await route.fulfill({
-                status: 200,
-                body: [
-                  "| topic | title | status |",
-                  "|---|---|---|",
-                  "| api | The API | open |",
-                  `| ${LONG_TOPIC} | | open |`,
-                  "| archive | Archive | closed |",
-                  ...FILLERS.map((name) => `| ${name} | | open |`),
-                ].join("\n"),
-              });
-            } else if (path === "/git/blobs/message:api") {
-              await route.fulfill({
-                status: 200,
-                body: [
-                  "---",
-                  `id: ${MESSAGE_ID}`,
-                  "from: alice-agent",
-                  "to: bob-agent",
-                  "topic: api",
-                  "type: info",
-                  "needs: none",
-                  "---",
-                  "Topic list message body.",
-                ].join("\n"),
-              });
-            } else {
-              await route.fulfill({ status: 404, body: "{}" });
-            }
-          });
+          await serveRepository(page, requests, state);
 
-          await page.goto("/");
-          await page.getByRole("button", { name: "Open another repository" }).click();
-          await page
-            .getByRole("textbox", { name: "Repository", exact: true })
-            .fill("alice-agent/fixture-repo");
-          await page.getByLabel("Branch").fill("main");
-          await page.getByLabel("My names").fill("alice-agent");
-          await page.getByLabel("Access token").fill("fake-token");
-          await page.getByRole("button", { name: "Save and open" }).click();
+          await openRepository(page);
           if (width === 390) {
             await page.getByRole("button", { name: "More" }).click();
             await page.getByRole("menuitemradio", { name: text.language }).click();
@@ -230,6 +270,7 @@ test.describe("topic list navigation", () => {
             expect(await page.evaluate(() => window.scrollY)).toBe(pageTop);
           }
 
+          await saveScreenshot(page, `topic-list-${locale}-${theme}-${String(width)}.png`);
           // The selected topic stays listed when the list is collapsed again.
           const hidden = list.getByRole("button", { name: "topic-12", exact: true });
           await hidden.click();
@@ -278,4 +319,76 @@ test.describe("topic list navigation", () => {
       }
     }
   }
+});
+
+// A list that re-sorts after a refresh must not move the reader. Chromium only: it drives the
+// real pointer.
+test.describe("the topic list holds still for the reader", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 600 });
+  });
+
+  async function openExpanded(page: Page, state: RepositoryState) {
+    const requests: string[] = [];
+    await serveRepository(page, requests, state);
+    await openRepository(page);
+    const list = page.locator(".topics-pane");
+    await expect(list.getByRole("button", { name: "The API", exact: true })).toBeVisible();
+    await page.mouse.move(1260, 300);
+    await expect(list.locator(".topics > button").nth(3)).toHaveText("The API");
+    await list.getByRole("button", { name: "Show all 14 topics" }).click();
+    return { list, requests };
+  }
+
+  const order = (list: ReturnType<Page["locator"]>) =>
+    list.locator(".topics > button").allTextContents();
+
+  test("the order waits while the pointer is in the list", async ({ page }) => {
+    const state: RepositoryState = { bumped: false };
+    const { list, requests } = await openExpanded(page, state);
+    const before = await order(list);
+
+    const row = list.getByRole("button", { name: "topic-03", exact: true });
+    const box = await row.boundingBox();
+    if (box === null) throw new Error("The row has no box.");
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+    // Refresh from the keyboard, so the pointer stays over the list.
+    state.bumped = true;
+    const refresh = page.getByRole("button", { name: "Refresh", exact: true });
+    await refresh.focus();
+    await page.keyboard.press("Enter");
+    await expect.poll(() => requests.includes("/git/trees/month:new")).toBe(true);
+    await expect(refresh).toHaveAttribute("aria-busy", "false");
+    expect(await order(list)).toEqual(before);
+
+    await page.mouse.move(1260, 300);
+    await expect(list.locator(".topics > button").nth(3)).toHaveText(BUMPED_TOPIC);
+  });
+
+  test("the selection and the scroll position stay when the list re-sorts", async ({ page }) => {
+    const state: RepositoryState = { bumped: false };
+    const { list, requests } = await openExpanded(page, state);
+    const selected = list.getByRole("button", { name: "topic-02", exact: true });
+    await selected.click();
+    await expect(selected).toHaveAttribute("aria-pressed", "true");
+    await list.evaluate((pane) => {
+      pane.scrollTop = pane.scrollHeight;
+    });
+    const scrolled = await list.evaluate((pane) => pane.scrollTop);
+    expect(scrolled).toBeGreaterThan(0);
+    await saveScreenshot(page, "topic-list-resort-before.png");
+
+    // Pointer and focus leave the list, then a refresh brings a newer message to topic-05.
+    await page.mouse.move(1260, 300);
+    await page.getByRole("button", { name: "Refresh", exact: true }).focus();
+    state.bumped = true;
+    await page.keyboard.press("Enter");
+    await expect.poll(() => requests.includes("/git/trees/month:new")).toBe(true);
+    await expect(list.locator(".topics > button").nth(3)).toHaveText(BUMPED_TOPIC);
+
+    await expect(selected).toHaveAttribute("aria-pressed", "true");
+    expect(await list.evaluate((pane) => pane.scrollTop)).toBe(scrolled);
+    await saveScreenshot(page, "topic-list-resort-after.png");
+  });
 });

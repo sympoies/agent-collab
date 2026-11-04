@@ -435,6 +435,8 @@ button:hover {
 }
 
 .topics-pane {
+  /* A re-sorted list keeps its scroll offset; the browser would otherwise shift it to follow a row. */
+  overflow-anchor: none;
   position: sticky;
   top: 78px;
   max-height: calc(100vh - 96px);

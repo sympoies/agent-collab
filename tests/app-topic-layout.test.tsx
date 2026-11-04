@@ -266,6 +266,97 @@ describe("topic list screen", () => {
     expect(host.querySelector("button.show-all-topics")?.textContent).toBe("Show all 14 topics");
   });
 
+  it("lists a closed topic that is open while its group is collapsed", async () => {
+    const source = new FixtureSource(files);
+    await mount(source);
+    const toggle = async (open: boolean) => {
+      const group = host.querySelector<HTMLDetailsElement>(".closed-topics");
+      act(() => {
+        if (group !== null) group.open = open;
+        group?.dispatchEvent(new Event("toggle"));
+      });
+      await settle();
+    };
+    await toggle(true);
+    await click(entry("Archive"));
+    await toggle(false);
+    expect(rowLabels()).toContain("Archive");
+    expect(entry("Archive").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("reads activity four topics at a time, joins reads in progress and stops when left", async () => {
+    const many: Record<string, string> = { ".agent-collab": MARKER };
+    for (let index = 1; index <= 10; index += 1) {
+      const name = `topic-${String(index).padStart(2, "0")}`;
+      const id = `2026-10-${String(index).padStart(2, "0")}T0900-alice-agent-${name}-01`;
+      many[`topics/${name}/inbox/2026-10/${id}.md`] = messageText(id, "alice-agent", name);
+    }
+    const source = new FixtureSource(many);
+    const list = source.listDirectory.bind(source);
+    const started: string[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    source.listDirectory = async (revision, path) => {
+      if (/^topics\/[^/]+$/.test(path)) {
+        started.push(path);
+        inFlight += 1;
+        peak = Math.max(peak, inFlight);
+        await gate;
+        inFlight -= 1;
+      }
+      return list(revision, path);
+    };
+    await mount(source);
+    expect(started).toHaveLength(4);
+    expect(peak).toBe(4);
+
+    // A refresh while those reads are in progress joins them instead of repeating them.
+    source.commit({ ...many });
+    await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
+    expect(started).toHaveLength(4);
+
+    release();
+    await settle();
+    await settle();
+    expect(peak).toBe(4);
+    expect([...new Set(started)]).toHaveLength(10);
+    expect(started).toHaveLength(10);
+  });
+
+  it("stops reading activity when the viewer is left", async () => {
+    const many: Record<string, string> = { ".agent-collab": MARKER };
+    for (let index = 1; index <= 10; index += 1) {
+      const name = `topic-${String(index).padStart(2, "0")}`;
+      const id = `2026-10-${String(index).padStart(2, "0")}T0900-alice-agent-${name}-01`;
+      many[`topics/${name}/inbox/2026-10/${id}.md`] = messageText(id, "alice-agent", name);
+    }
+    const source = new FixtureSource(many);
+    const list = source.listDirectory.bind(source);
+    const started: string[] = [];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    source.listDirectory = async (revision, path) => {
+      if (/^topics\/[^/]+$/.test(path)) {
+        started.push(path);
+        await gate;
+      }
+      return list(revision, path);
+    };
+    await mount(source);
+    expect(started).toHaveLength(4);
+    act(() => root?.unmount());
+    root = null;
+    release();
+    await settle();
+    expect(started).toHaveLength(4);
+  });
+
   it("stays on the topic list with a retry after a transient discovery failure", async () => {
     const source = new FixtureSource(files);
     const head = source.head.bind(source);

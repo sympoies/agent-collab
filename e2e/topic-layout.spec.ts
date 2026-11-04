@@ -160,7 +160,8 @@ test("a 5,000-message topic repository lists first and loads the selected topic 
   // Exactly the selected topic's newest page; other topics' message files are not fetched.
   expect(numbers(messageBlobs())).toEqual(wanted(50));
   expect(requests.length).toBeLessThan(150);
-  // Only the selected topic's newest months are listed, not every topic's history.
+  // The background activity reads list each topic's newest month, and the selected topic its
+  // first pages; no topic's whole history is listed.
   expect(
     requests.filter((path) => path.startsWith("/git/trees/month:")).length,
   ).toBeLessThanOrEqual(24);

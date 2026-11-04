@@ -34,6 +34,8 @@ export function TopicList({
   const active = useMemo(() => topics.filter((topic) => topic.status !== "closed"), [topics]);
   const closed = useMemo(() => topics.filter((topic) => topic.status === "closed"), [topics]);
   const { shown, total, collapsible } = visibleTopics(active, { expanded, keep });
+  // A closed topic that is open stays in the list while its group is collapsed.
+  const pulled = closedOpen ? undefined : closed.find((topic) => topic.name === selected);
 
   const row = (topic: TopicSummary) => (
     <button
@@ -63,6 +65,7 @@ export function TopicList({
           {expanded ? t("topic.showFewer") : t("topic.showAll", { count: total })}
         </button>
       )}
+      {pulled !== undefined && row(pulled)}
       {closed.length > 0 && (
         <details
           className="closed-topics"

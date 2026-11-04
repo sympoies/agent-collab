@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Loader } from "../loader/loader";
 import { Poller } from "../loader/poller";
-import { sortTopicSummaries } from "../loader/topic-activity";
+import { sameTopics, sortTopicSummaries } from "../loader/topic-activity";
 import { TopicSession } from "../loader/topic-session";
 import {
   colorOrder,
@@ -170,6 +170,8 @@ export function App({
     () => initialTopicSession?.topics() ?? [],
   );
   const [topicLayout, setTopicLayout] = useState(initialTopicSession?.inboxLayout === "topic");
+  // Counts reads of the topic list, so a failed activity read is tried again after each one.
+  const [topicSyncs, setTopicSyncs] = useState(0);
   const [openedTopics, setOpenedTopics] = useState<readonly string[]>([]);
   const [closedOpen, setClosedOpen] = useState(false);
   // What is loaded: the topics opened so far in the topic layout, the one loader otherwise.
@@ -279,7 +281,9 @@ export function App({
     } finally {
       // A loader that failed to refresh still leaves the list as the latest listing read it.
       if (topicSession.currentHead !== null) {
-        setTopicList(topicSession.topics());
+        const latest = topicSession.topics();
+        setTopicList((known) => (sameTopics(known, latest) ? known : latest));
+        setTopicSyncs((count) => count + 1);
         setTopicLayout(topicSession.inboxLayout === "topic");
         setDiscovered(true);
       }
@@ -328,7 +332,9 @@ export function App({
   const digests = useTopicDigests(
     topicLayout ? topicSession : null,
     topicList,
+    topic,
     closedOpen,
+    topicSyncs,
     setError,
   );
   const sortedTopics = useMemo(() => sortTopicSummaries(topicList, digests), [digests, topicList]);

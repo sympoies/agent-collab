@@ -28,6 +28,20 @@ export function sortTopicSummaries(
   });
 }
 
+/** True when both lists name the same topics with the same titles and states, in order. */
+export function sameTopics(a: readonly TopicSummary[], b: readonly TopicSummary[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (topic, index) =>
+        topic.name === b[index]?.name &&
+        topic.title === b[index].title &&
+        topic.status === b[index].status &&
+        topic.folder === b[index].folder,
+    )
+  );
+}
+
 export interface VisibleTopics {
   readonly shown: readonly TopicSummary[];
   /** All topics of the section, shown or not (the number the disclosure button names). */
