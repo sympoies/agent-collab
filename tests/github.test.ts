@@ -342,6 +342,61 @@ describe("GitHubSource rate limits and errors", () => {
 });
 
 describe("GitHubSource with the loader", () => {
+  it("jumps to a past day with one month folder listing and the page's files", async () => {
+    const ids = {
+      aug10: "2026-08-10T0900-bob-agent-api-01",
+      aug15: "2026-08-15T0900-bob-agent-api-01",
+      aug20: "2026-08-20T0900-bob-agent-api-01",
+      sep: "2026-09-02T0900-bob-agent-api-01",
+      oct: "2026-10-01T0900-bob-agent-api-01",
+    };
+    const blob = (name: string, id: string): [string, Reply] => [
+      `${REPO}/git/blobs/b-${name}`,
+      raw(messageText(id, "bob-agent", "api")),
+    ];
+    const { fetch, calls } = fakeFetch({
+      [`${REPO}/git/ref/heads/main`]: json({ object: { sha: "c1" } }, { etag: '"e1"' }),
+      [`${REPO}/git/commits/c1`]: json({ tree: { sha: "t-root" } }),
+      [`${REPO}/git/trees/t-root`]: tree([
+        { path: ".agent-collab", type: "blob", sha: "b-marker" },
+        { path: "inbox", type: "tree", sha: "t-inbox" },
+      ]),
+      [`${REPO}/git/trees/t-inbox`]: tree([
+        { path: "2026-08", type: "tree", sha: "t-aug" },
+        { path: "2026-09", type: "tree", sha: "t-sep" },
+        { path: "2026-10", type: "tree", sha: "t-oct" },
+      ]),
+      [`${REPO}/git/trees/t-oct`]: tree([{ path: `${ids.oct}.md`, type: "blob", sha: "b-oct" }]),
+      [`${REPO}/git/trees/t-sep`]: tree([{ path: `${ids.sep}.md`, type: "blob", sha: "b-sep" }]),
+      [`${REPO}/git/trees/t-aug`]: tree([
+        { path: `${ids.aug10}.md`, type: "blob", sha: "b-aug10" },
+        { path: `${ids.aug15}.md`, type: "blob", sha: "b-aug15" },
+        { path: `${ids.aug20}.md`, type: "blob", sha: "b-aug20" },
+      ]),
+      [`${REPO}/git/blobs/b-marker`]: raw("collab-protocol: 1\ninbox-layout: monthly\n"),
+      ...Object.fromEntries([
+        blob("oct", ids.oct),
+        blob("sep", ids.sep),
+        blob("aug10", ids.aug10),
+        blob("aug15", ids.aug15),
+        blob("aug20", ids.aug20),
+      ]),
+    });
+    const loader = new Loader(source(fetch), { pageSize: 2 });
+    await loader.open();
+    calls.length = 0;
+    await loader.jumpTo("2026-08-15");
+    expect(calls.map((call) => call.url).sort()).toEqual(
+      [`${REPO}/git/trees/t-aug`, `${REPO}/git/blobs/b-aug10`, `${REPO}/git/blobs/b-aug15`].sort(),
+    );
+    expect(
+      loader
+        .getSnapshot()
+        .items.map((item) => (item.kind === "message" ? item.message.id : item.path)),
+    ).toEqual([ids.aug10, ids.aug15]);
+    expect(loader.getSnapshot().jumpedTo).toBe("2026-08-15");
+  });
+
   it("loads a monthly repository end to end through the interface", async () => {
     const id = "2026-10-01T0900-bob-agent-api-01";
     const { fetch } = fakeFetch({

@@ -30,6 +30,7 @@ import { IconButton } from "./IconButton";
 import { RefreshIcon } from "./icons";
 import { relativeTime } from "./relativeTime";
 import { Toolbar } from "./Toolbar";
+import { RangeBar } from "./RangeBar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
 import { buildRows, topicSummaries } from "./timeline";
@@ -553,6 +554,16 @@ export function App({
           {view === "questions" && (
             <QuestionsView groups={questionGroups} people={people} onOpen={openQuestion} />
           )}
+          {view !== "questions" && (
+            <RangeBar
+              messages={messages}
+              jumpedTo={snapshot.jumpedTo}
+              disabled={busy || retryingAfterLimit}
+              onJump={(date) => {
+                run(() => loader.jumpTo(date), 0, "jump");
+              }}
+            />
+          )}
           {view !== "questions" && snapshot.hasOlder && (
             <button
               type="button"
@@ -575,7 +586,22 @@ export function App({
               hasOlder={snapshot.hasOlder}
             />
           )}
-          {view === "chat" && <ChatView rows={rows} people={people} attachments={attachments} />}
+          {view === "chat" && (
+            <ChatView
+              rows={rows}
+              people={people}
+              attachments={attachments}
+              earlier={{
+                // Ids start with their timestamp, so a parent that sorts before the oldest loaded
+                // message is older than the loaded range.
+                beforeId: snapshot.hasOlder ? (messages[0]?.id ?? null) : null,
+                disabled: busy || retryingAfterLimit,
+                onLoad: () => {
+                  run(() => loader.loadOlder(), 0, "load-older");
+                },
+              }}
+            />
+          )}
         </main>
       </div>
       <a

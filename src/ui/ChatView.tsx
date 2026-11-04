@@ -1,6 +1,6 @@
 // Chat timeline. Message text is always rendered as React text, never as HTML.
 
-import { Fragment, type ReactNode } from "react";
+import { createContext, Fragment, useContext, type ReactNode } from "react";
 
 import type { MessageReceipts } from "../message/receipts";
 import type { Message } from "../message/types";
@@ -45,10 +45,28 @@ function firstLine(message: Message, t: Translate): string {
   return message.body.lines.find((line) => line.trim() !== "") ?? "";
 }
 
+/** What a reply needs to offer loading its original when that is older than the loaded range. */
+export interface Earlier {
+  /** Replies to an id sorting before this one have an older original; null when none can. */
+  readonly beforeId: string | null;
+  readonly disabled: boolean;
+  readonly onLoad: () => void;
+}
+
+const EarlierContext = createContext<Earlier>({
+  beforeId: null,
+  disabled: true,
+  onLoad: () => undefined,
+});
+
 /** "Reply to <id> (parent not shown)", with the id in monospace wherever the language puts it. */
-function replyMissing(id: string, t: Translate): ReactNode {
+function replyMissing(
+  id: string,
+  key: "chat.replyMissing" | "chat.replyEarlier",
+  t: Translate,
+): ReactNode {
   const marker = "\uE000";
-  const [before = "", after = ""] = t("chat.replyMissing", { id: marker }).split(marker);
+  const [before = "", after = ""] = t(key, { id: marker }).split(marker);
   return (
     <>
       {before}
@@ -60,10 +78,21 @@ function replyMissing(id: string, t: Translate): ReactNode {
 
 function Quote({ view }: { view: MessageView }) {
   const t = useT();
+  const earlier = useContext(EarlierContext);
   const replyTo = view.message.replyTo;
   if (replyTo === null) return null;
   if (view.parent === null) {
-    return <p className="quote missing">{replyMissing(replyTo, t)}</p>;
+    if (earlier.beforeId !== null && replyTo < earlier.beforeId) {
+      return (
+        <p className="quote missing">
+          {replyMissing(replyTo, "chat.replyEarlier", t)}{" "}
+          <button type="button" disabled={earlier.disabled} onClick={earlier.onLoad}>
+            {t("nav.loadOlder")}
+          </button>
+        </p>
+      );
+    }
+    return <p className="quote missing">{replyMissing(replyTo, "chat.replyMissing", t)}</p>;
   }
   return (
     <a className="quote" href={`#msg-${view.parent.id}`}>
@@ -313,10 +342,12 @@ export function ChatView({
   rows,
   people,
   attachments,
+  earlier,
 }: {
   rows: readonly Row[];
   people: People;
   attachments: AttachmentContext;
+  earlier: Earlier;
 }) {
   const t = useT();
   if (rows.length === 0) return <p className="empty">{t("chat.empty")}</p>;
@@ -324,21 +355,23 @@ export function ChatView({
     (row) => row.kind === "group" && row.messages.some((view) => view.fresh),
   );
   return (
-    <ol className="timeline">
-      {rows.map((row, index) => {
-        const showNewMarker = index === newMarkerIndex;
-        return (
-          <Fragment key={rowKey(row, index)}>
-            {showNewMarker && (
-              <li className="new-marker" role="separator" aria-label={t("a11y.newMessages")}>
-                <span>{t("a11y.newMessages")}</span>
-              </li>
-            )}
-            <RowView row={row} people={people} attachments={attachments} />
-          </Fragment>
-        );
-      })}
-      <li id="latest-message" className="latest-anchor" aria-hidden="true" />
-    </ol>
+    <EarlierContext.Provider value={earlier}>
+      <ol className="timeline">
+        {rows.map((row, index) => {
+          const showNewMarker = index === newMarkerIndex;
+          return (
+            <Fragment key={rowKey(row, index)}>
+              {showNewMarker && (
+                <li className="new-marker" role="separator" aria-label={t("a11y.newMessages")}>
+                  <span>{t("a11y.newMessages")}</span>
+                </li>
+              )}
+              <RowView row={row} people={people} attachments={attachments} />
+            </Fragment>
+          );
+        })}
+        <li id="latest-message" className="latest-anchor" aria-hidden="true" />
+      </ol>
+    </EarlierContext.Provider>
   );
 }
