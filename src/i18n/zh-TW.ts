@@ -48,6 +48,7 @@ export const zhTW: Messages = {
   "source.experimental": "實驗性",
   "source.lastChange": "最後變更：{time}",
   "source.noChange": "尚未偵測到檔案變更",
+  "source.lastChangeBy": "最後變更：{time} · {name}",
   "source.lastChangeTitle": "{date}（此電腦上的檔案修改時間）",
   "time.justNow": "剛剛",
   "time.minutes": "{count, plural, other {# 分鐘前}}",

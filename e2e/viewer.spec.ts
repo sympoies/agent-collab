@@ -2649,3 +2649,32 @@ test("a jump in the monthly layout lists one month folder and reads one page", a
   expect(requests).toHaveLength(7);
   assertRequests();
 });
+
+// "@csp" also puts these in the WebKit project (see playwright.config.ts).
+for (const code of LOCALES) {
+  const messages = catalogsByLocale[code];
+  for (const view of [
+    { label: "desktop", size: { width: 1280, height: 800 } },
+    { label: "phone", size: { width: 390, height: 844 } },
+  ] as const) {
+    test(`the local folder status bar names who made the last change in ${LOCALE_NAMES[code]} on ${view.label} @csp`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(view.size);
+      await page.addInitScript((locale) => {
+        localStorage.setItem("agent-collab-viewer.locale", locale);
+      }, code);
+      await installFakeFolder(page, { picker: "works" });
+      await page.goto("/");
+      await page.getByRole("button", { name: messages["welcome.openLocal"] }).click();
+      const last = page.locator(".source-indicator .last-changed");
+      await expect(last).toContainText("alice-agent");
+      await expect(last).toContainText(" · ");
+      await expectNoClipping(page, ".source-indicator, .source-indicator span");
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+      ).toBeLessThanOrEqual(0);
+      await saveScreenshot(page, `last-change-by-${code}-${view.label}.png`);
+    });
+  }
+}

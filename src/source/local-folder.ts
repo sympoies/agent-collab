@@ -158,6 +158,7 @@ interface Scan {
   /** Listings of the root, the inbox and every inbox directory, read once per scan. */
   readonly listings: ReadonlyMap<string, readonly DirectoryEntry[]>;
   readonly lastChanged: Date | null;
+  readonly lastChangedPath: string | null;
 }
 
 function directoryIdOf(entries: readonly DirectoryEntry[]): string {
@@ -184,6 +185,11 @@ export class LocalFolderSource implements MessageSource {
   ) {
     this.now = options.now ?? Date.now;
     this.maxEntries = options.maxEntries ?? MAX_SCAN_ENTRIES;
+  }
+
+  /** The file with the newest modification time in the latest scan; the greatest path on a tie. */
+  lastChangedPath(): string | null {
+    return this.scan?.lastChangedPath ?? null;
   }
 
   /** The newest modification time seen by the latest successful scan. */
@@ -228,7 +234,11 @@ export class LocalFolderSource implements MessageSource {
   private async scanTree(): Promise<Scan> {
     const listings = new Map<string, readonly DirectoryEntry[]>();
     const withMetadata = createLimiter(METADATA_CONCURRENCY);
-    const seen: { newest: number | null; entries: number } = { newest: null, entries: 0 };
+    const seen: { newest: number | null; newestPath: string | null; entries: number } = {
+      newest: null,
+      newestPath: null,
+      entries: 0,
+    };
     const latestTrusted = this.now() + FUTURE_SKEW_MS;
 
     const scanDirectory = async (
@@ -264,9 +274,12 @@ export class LocalFolderSource implements MessageSource {
           if (
             meta.modified !== null &&
             meta.modified <= latestTrusted &&
-            (seen.newest === null || meta.modified > seen.newest)
+            (seen.newest === null ||
+              meta.modified > seen.newest ||
+              (meta.modified === seen.newest && entryPath > (seen.newestPath ?? "")))
           ) {
             seen.newest = meta.modified;
+            seen.newestPath = entryPath;
           }
           return {
             name: handle.name,
@@ -303,6 +316,7 @@ export class LocalFolderSource implements MessageSource {
       revision: stableId("scan", directoryIdOf(rootEntries)),
       listings,
       lastChanged: seen.newest === null ? null : new Date(seen.newest),
+      lastChangedPath: seen.newestPath,
     };
   }
 

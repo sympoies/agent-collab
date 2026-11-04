@@ -40,6 +40,8 @@ export interface MessageSource {
    * file modification time). Sources that cannot tell omit it.
    */
   lastChanged?(): Date | null;
+  /** The path of the file that `lastChanged` is the modification time of, if known. */
+  lastChangedPath?(): string | null;
   /** Bytes of a file entry, for image previews. Sources that cannot read bytes omit it. */
   readBytes?(entry: DirectoryEntry): Promise<Uint8Array>;
   /**

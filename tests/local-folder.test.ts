@@ -788,6 +788,20 @@ describe("LocalFolderSource in the topic layout", () => {
     expect(loader.getSnapshot().lastChanged).toEqual(new Date(NOW - 1_000));
   });
 
+  it("reports the path of the newest file, the greatest path on a tie", async () => {
+    const root = topicClone();
+    const source = new LocalFolderSource(root, { now: () => NOW });
+    await source.head(null);
+    expect(source.lastChangedPath()).toBe(topicPath(idOf(1)));
+    root.addFile(topicPath(idOf(2)), messageText(idOf(2), "bob-agent", "x"), NOW - 8_000);
+    await source.head(null);
+    expect(source.lastChangedPath()).toBe(topicPath(idOf(2)));
+    const marker = root.children.get(".agent-collab");
+    if (marker instanceof MemoryFile) marker.replace(TOPIC_MARKER, NOW - 100);
+    await source.head(null);
+    expect(source.lastChangedPath()).toBe(".agent-collab");
+  });
+
   it("does not read topic files outside the inbox during a scan", async () => {
     const root = topicClone();
     const notes = root.addFile("topics/x/TOPIC.md", "notes", NOW);

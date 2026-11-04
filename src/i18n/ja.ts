@@ -49,6 +49,7 @@ export const ja: Messages = {
   "source.experimental": "試験的",
   "source.lastChange": "最終変更: {time}",
   "source.noChange": "ファイルの変更はまだありません",
+  "source.lastChangeBy": "最終変更: {time} · {name}",
   "source.lastChangeTitle": "{date}（このコンピューター上のファイル更新日時）",
   "time.justNow": "たった今",
   "time.minutes": "{count, plural, other {# 分前}}",
