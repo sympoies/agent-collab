@@ -28,6 +28,7 @@ function makeMessage(
   to = "bob-agent",
   replyTo = "",
   refs = "",
+  due = "",
 ): MessageFixture {
   const id = `${date}T${time}-${from}-${topic}-${String(sequence).padStart(2, "0")}`;
   return {
@@ -42,7 +43,7 @@ function makeMessage(
       `reply_to: ${replyTo}`,
       `refs: ${refs}`.trimEnd(),
       "needs: none",
-      "due:",
+      `due: ${due}`.trimEnd(),
       "---",
       body,
     ].join("\n"),
@@ -145,6 +146,10 @@ function questionThread(): MessageFixture[] {
     1,
     "question",
     "Is the schema final?",
+    "bob-agent",
+    "",
+    "",
+    "2026-10-09",
   );
   const answered = makeMessage(
     "2026-10-08",
@@ -245,6 +250,29 @@ function questionThread(): MessageFixture[] {
       "We chose North.",
       "all",
       concluded.id,
+    ),
+    // Reminders after the conclusion: with the answer, six entries, one more than the list shows.
+    ...[1, 2, 3, 4, 5].map((number) =>
+      makeMessage(
+        "2026-10-08",
+        `091${String(2 + number)}`,
+        "alice-agent",
+        "ops",
+        3 + number,
+        "info",
+        `Region nudge ${String(number)}.`,
+        "bob-agent",
+        concluded.id,
+      ),
+    ),
+    makeMessage(
+      "2026-10-08",
+      "0920",
+      "alice-agent",
+      "ops",
+      9,
+      "decision-needed",
+      "Approve the rollout plan?",
     ),
   ];
 }
@@ -1300,6 +1328,106 @@ for (const code of ["ja", "zh-TW"] as const) {
   });
 }
 
+test("the Questions view shows the replies, the acknowledgement line and the reminders @csp", async ({
+  page,
+}) => {
+  const assertRequests = await openViewer(page, "questions");
+  await page.getByRole("button", { name: /^Questions/ }).click();
+  const open = page.getByRole("region", { name: "Open" });
+  const asked = open.locator(".question-item", { hasText: "Is the schema final?" });
+  await expect(asked.locator(".question-ack")).toHaveText(
+    "bob-agent acknowledged 2026-10-08 09:01 · reply expected within 10 minutes",
+  );
+  // An acknowledgement with its own text is a reply entry, not the compact line.
+  const wordy = asked.locator('.question-reply[data-kind="ack"]');
+  await expect(wordy).toContainText("Looking into the schema. Blocked on the review.");
+  await expect(wordy.locator(".badge")).toHaveText("ack");
+  const nudges = asked.locator('.question-reply[data-kind="reminder"]');
+  await expect(nudges).toHaveCount(2);
+  await expect(nudges.first().locator(".badge")).toHaveText("reminder");
+  await expect(nudges.first()).toContainText("Friendly nudge about the schema.");
+  // Nothing in the list reads as an answer yet, and the question says how long it has waited.
+  await expect(asked.locator('.question-reply[data-kind="answer"]')).toHaveCount(0);
+  await expect(asked.locator(".question-waiting")).toHaveText(/^Unanswered for \d+ days$/);
+  await expect(asked.locator(".question-overdue")).toHaveText("Overdue · due 2026-10-09");
+  const answered = page.getByRole("region", { name: "Answered" });
+  const reply = answered.locator('.question-reply[data-kind="answer"]');
+  await expect(reply.locator(".badge")).toHaveText("answer");
+  await expect(reply).toContainText("Yes, it can.");
+  await expect(answered.locator(".question-waiting, .question-overdue")).toHaveCount(0);
+  assertRequests();
+});
+
+test("the reply list of a question is reachable and expandable with the keyboard @csp", async ({
+  page,
+}) => {
+  const assertRequests = await openViewer(page, "questions");
+  await page.getByRole("button", { name: /^Questions/ }).click();
+  const concluded = page
+    .getByRole("region", { name: "Concluded" })
+    .locator(".question-item", { hasText: "Which region ships first?" });
+  const toggle = concluded.locator("button.replies-toggle");
+  await expect(toggle).toHaveText("Show all 6 replies");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(concluded.locator(".question-reply")).toHaveCount(5);
+  const focused = (selector: string) =>
+    page.evaluate((query) => document.activeElement?.matches(query) ?? false, selector);
+  const tabTo = async (selector: string) => {
+    for (let step = 0; step < 60 && !(await focused(selector)); step += 1) {
+      await page.keyboard.press("Tab");
+    }
+    expect(await focused(selector), `Tab never reached ${selector}`).toBe(true);
+  };
+  await tabTo("button.replies-toggle");
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(toggle).toHaveText("Show fewer replies");
+  await expect(concluded.locator(".question-reply")).toHaveCount(6);
+  // Focus stays on the button that was pressed.
+  expect(await focused("button.replies-toggle")).toBe(true);
+  // A reply link is a tab stop; Enter opens that message in its conversation and focuses it.
+  await page.keyboard.press("Shift+Tab");
+  expect(await focused(".reply-link")).toBe(true);
+  const text = await page.evaluate(
+    () => document.activeElement?.querySelector(".reply-text")?.textContent ?? "",
+  );
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#conversation-heading")).toHaveText("#ops");
+  const message = page.locator(".message", { hasText: text });
+  await expect(message).toBeInViewport();
+  await expect(message).toBeFocused();
+  assertRequests();
+});
+
+for (const code of ["en", "ja", "zh-TW"] as const) {
+  test(`the Questions view badges and replies fit a phone in ${LOCALE_NAMES[code]} @csp`, async ({
+    page,
+  }) => {
+    const messages = catalogsByLocale[code];
+    await page.setViewportSize({ width: 390, height: 844 });
+    const assertRequests = await openViewer(page, "questions");
+    if (code !== "en") {
+      await page.getByRole("button", { name: /^(More|その他|更多)$/ }).click();
+      await page.getByRole("menuitemradio", { name: LOCALE_NAMES[code], exact: true }).click();
+    }
+    await expect(page.locator("html")).toHaveAttribute("lang", code);
+    await page.getByRole("button", { name: new RegExp(`^${messages["nav.questions"]}`) }).click();
+    // The overdue badge is always there: the question's due date is fixed in the past.
+    await expect(page.locator(".question-overdue").first()).toContainText(
+      messages["questions.overdue"].replace("{date}", "2026-10-09"),
+    );
+    await expectNoClipping(
+      page,
+      ".question-badges, .question-overdue, .question-waiting, .question-replies, .question-reply, .reply-head, .reply-text, .replies-toggle",
+    );
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    await saveScreenshot(page, `questions-replies-phone-${code}.png`);
+    assertRequests();
+  });
+}
+
 for (const scheme of ["light", "dark"] as const) {
   test(`message cards tell every type apart without color and fit a phone in ${scheme} @csp`, async ({
     page,
@@ -1322,7 +1450,22 @@ for (const scheme of ["light", "dark"] as const) {
       }),
     );
     const byKind = new Map(marks.map((mark) => [mark.kind, mark]));
-    expect([...byKind.keys()].sort()).toEqual(["ack", "answer", "info", "question", "reminder"]);
+    expect([...byKind.keys()].sort()).toEqual([
+      "ack",
+      "answer",
+      "decision-needed",
+      "info",
+      "question",
+      "reminder",
+    ]);
+    expect(Object.fromEntries([...byKind].map(([kind, mark]) => [kind, mark.border]))).toEqual({
+      ack: "dotted",
+      answer: "solid",
+      "decision-needed": "double",
+      info: "solid",
+      question: "solid",
+      reminder: "dashed",
+    });
     for (const mark of byKind.values()) expect(mark.glyph).not.toMatch(/^(none|normal|"")$/);
     expect(new Set([...byKind.values()].map((mark) => mark.glyph)).size).toBe(byKind.size);
     // The quote names what it answers and shows the parent's first line.
@@ -1334,6 +1477,72 @@ for (const scheme of ["light", "dark"] as const) {
     );
     expect(overflow).toBeLessThanOrEqual(0);
     await saveScreenshot(page, `cards-phone-${scheme}.png`);
+    assertRequests();
+  });
+}
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`type badges and the overdue badge keep their borders at 3:1 and their text at 4.5:1 in ${scheme}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    const assertRequests = await openViewer(page, "questions");
+    const checked: string[] = [];
+    const expectReadable = async (locator: Locator, what: string) => {
+      // The text on the badge's own background, the border on what surrounds the badge.
+      const { glyph, surface } = await surfaceAndGlyph(locator);
+      expect(
+        contrast(glyph, surface),
+        `${what} text: ${glyph} on ${surface}`,
+      ).toBeGreaterThanOrEqual(4.5);
+      const around = (await surfaceAndGlyph(locator.locator("xpath=.."))).surface;
+      const border = await locator.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return { color: style.borderTopColor, width: style.borderTopWidth };
+      });
+      const parsed = /rgba?\((\d+), (\d+), (\d+)(?:, ([\d.]+))?\)/.exec(border.color);
+      if (parsed === null || border.width === "0px") return;
+      const alpha = parsed[4] === undefined ? 1 : Number(parsed[4]);
+      // A transparent border draws nothing, so it needs no contrast (the badge keeps its text).
+      if (alpha === 0) return;
+      const behind = /rgb\((\d+), (\d+), (\d+)\)/.exec(around) ?? [];
+      const mixed = [1, 2, 3].map((index) =>
+        Math.round(Number(parsed[index]) * alpha + Number(behind[index] ?? 255) * (1 - alpha)),
+      );
+      const drawn = `rgb(${mixed.join(", ")})`;
+      expect(
+        contrast(drawn, around),
+        `${what} border: ${drawn} on ${around}`,
+      ).toBeGreaterThanOrEqual(3);
+      checked.push(what);
+    };
+
+    await page.getByRole("button", { name: /^All/ }).click();
+    const kinds = ["question", "answer", "ack", "info", "decision-needed", "reminder"];
+    for (const kind of kinds) {
+      await expectReadable(
+        page.locator(`.message .badge[data-kind="${kind}"]`).first(),
+        `chat ${kind}`,
+      );
+    }
+    await page.getByRole("button", { name: /^Questions/ }).click();
+    await expectReadable(page.locator(".question-overdue").first(), "overdue");
+    for (const kind of ["answer", "ack", "reminder"]) {
+      await expectReadable(
+        page.locator(`.question-reply .badge[data-kind="${kind}"]`).first(),
+        `reply ${kind}`,
+      );
+    }
+    // Every kind drew a border except the one that deliberately has none.
+    expect(checked).toEqual(
+      expect.arrayContaining([
+        "chat question",
+        "chat answer",
+        "chat ack",
+        "chat reminder",
+        "overdue",
+      ]),
+    );
     assertRequests();
   });
 }

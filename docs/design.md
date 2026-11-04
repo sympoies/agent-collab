@@ -233,7 +233,9 @@ Please review the field draft in refs and say which fields can become optional.
 
 The id timestamp is wall-clock time in the repository's configured time zone,
 which the viewer does not know. The viewer displays it as written and sorts by
-id, which is chronological by construction.
+id, which is chronological by construction. The one derived duration, how long a question has
+gone unanswered, compares only the date in the id with the viewer's local date and is shown in
+whole days (nothing under one day), so it is approximate by up to a day.
 
 ### Parsed model
 

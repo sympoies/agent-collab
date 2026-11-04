@@ -61,8 +61,6 @@ export const ja: Messages = {
   "time.minutes": "{count, plural, other {# 分前}}",
   "time.hours": "{count, plural, other {# 時間前}}",
   "time.days": "{count, plural, other {# 日前}}",
-  "time.spanMinutes": "{count, plural, other {# 分}}",
-  "time.spanHours": "{count, plural, other {# 時間}}",
   "time.spanDays": "{count, plural, other {# 日}}",
   "size.unknown": "サイズ不明",
   "size.bytes": "{value} B",
@@ -157,6 +155,8 @@ export const ja: Messages = {
   "questions.progress": "{answered}/{target} 件回答済み",
   "questions.overdue": "期限切れ · 期限 {date}",
   "questions.unanswered": "{span} 未回答",
+  "questions.showAll": "すべての返信を表示（{count, plural, other {#件}}）",
+  "questions.showFewer": "返信の表示を減らす",
   "profile.title": "プロフィールと色",
   "profile.reset": "色と名前をリセット",
   "profile.note":

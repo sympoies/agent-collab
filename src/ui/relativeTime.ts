@@ -24,19 +24,13 @@ export function localDate(now: Date): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** A span such as "3 days", for text that says how long something has lasted. */
-export function spanText(from: Date, now: Date, t: Translate): string {
-  const elapsed = Math.max(0, now.getTime() - from.getTime());
-  if (elapsed < HOUR)
-    return t("time.spanMinutes", { count: Math.max(1, Math.floor(elapsed / MINUTE)) });
-  if (elapsed < DAY) return t("time.spanHours", { count: Math.floor(elapsed / HOUR) });
-  return t("time.spanDays", { count: Math.floor(elapsed / DAY) });
-}
-
-/** A message timestamp ("YYYY-MM-DD HH:MM") as a local Date; the repository's zone is not recorded. */
-export function timestampDate(timestamp: string): Date {
-  const [date = "", time = ""] = timestamp.split(" ");
-  const [year = 0, month = 1, day = 1] = date.split("-").map(Number);
-  const [hour = 0, minute = 0] = time.split(":").map(Number);
-  return new Date(year, month - 1, day, hour, minute);
+/**
+ * Whole days a message has waited, from the date in its id to today (YYYY-MM-DD). The id time
+ * zone is not recorded, so only the dates are compared, as for a due date; the value is approximate.
+ */
+export function waitingDays(timestamp: string, today: string): number {
+  const day = 24 * HOUR;
+  const elapsed =
+    Date.parse(`${today}T00:00:00Z`) - Date.parse(`${timestamp.slice(0, 10)}T00:00:00Z`);
+  return Math.max(0, Math.floor(elapsed / day));
 }

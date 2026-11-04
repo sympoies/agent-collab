@@ -267,11 +267,54 @@ describe("receipts and the Questions view", () => {
       { to: "alice-agent", reply_to: DONE },
       "Done.",
     );
+    // Only carol answers, and she is not an addressee, so the question stays open.
+    const OUTSIDE = id(6, "alice-agent", "ship");
+    put(OUTSIDE, "alice-agent", "question", { to: "bob-agent" }, "Who owns this?");
+    put(
+      id(7, "carol-agent", "ship"),
+      "carol-agent",
+      "answer",
+      { to: "alice-agent", reply_to: OUTSIDE },
+      "I do.",
+    );
+    // Asked today, so it has waited less than a day.
+    put(
+      "2026-10-04T0900-alice-agent-ship-01",
+      "alice-agent",
+      "question",
+      { to: "carol-agent" },
+      "Fresh one?",
+    );
+    // Seven replies: the list shows the newest five and a button for the rest.
+    const BUSY = id(20, "alice-agent", "ship");
+    put(
+      BUSY,
+      "alice-agent",
+      "question",
+      { to: "bob-agent, carol-agent", replies: "any" },
+      "Busy one?",
+    );
+    for (let n = 1; n <= 6; n += 1) {
+      put(
+        id(20 + n, "alice-agent", "ship"),
+        "alice-agent",
+        "info",
+        { to: "carol-agent", reply_to: BUSY },
+        `Nudge ${String(n)}.`,
+      );
+    }
+    put(
+      id(30, "bob-agent", "ship"),
+      "bob-agent",
+      "answer",
+      { to: "alice-agent", reply_to: BUSY },
+      "Handled.",
+    );
 
     async function open(): Promise<HTMLElement> {
-      // 2026-10-01 11:10 local: the first question is 2 h 10 min old and past its due date.
+      // 2026-10-04 11:10 local: the first question is 3 days old and past its due date.
       vi.useFakeTimers({ toFake: ["Date"] });
-      vi.setSystemTime(new Date(2026, 9, 1, 11, 10));
+      vi.setSystemTime(new Date(2026, 9, 4, 11, 10));
       const host = await render([], repository);
       await click(button(host, "Questions"));
       return host;
@@ -309,23 +352,58 @@ describe("receipts and the Questions view", () => {
       expect(host.querySelector(`#msg-${ANSWER}`)).not.toBeNull();
     });
 
-    it("shows the overdue badge, the waiting time and the reminder count on an open question", async () => {
+    it("shows the overdue badge and the reminder count on a partly answered question, without a waiting time", async () => {
       const host = await open();
       const asked = item(host, "Ship it?");
       expect(asked?.querySelector(".question-overdue")?.textContent).toBe(
         "Overdue · due 2026-09-30",
       );
-      expect(asked?.querySelector(".question-waiting")?.textContent).toBe("Unanswered for 2 hours");
       expect(asked?.querySelector(".reminder-count")?.textContent).toBe(
         "1 reminder, last 2026-10-01 09:10",
       );
+      // It has an answer, so it is not "unanswered" even though it needs more.
+      expect(asked?.textContent).toContain("1/2 answered");
+      expect(asked?.querySelector(".question-waiting")).toBeNull();
     });
 
-    it("shows waiting time but no overdue badge when the question has no due date", async () => {
+    it("shows no waiting time when the only answer comes from someone not counted", async () => {
+      const host = await open();
+      const outside = item(host, "Who owns this?");
+      expect(outside?.closest("section")?.getAttribute("aria-label")).toBe("Open");
+      expect(outside?.textContent).toContain("0/1 answered");
+      expect(outside?.querySelector(".question-reply")?.textContent).toContain("I do.");
+      expect(outside?.querySelector(".question-waiting")).toBeNull();
+    });
+
+    it("shows waiting time in whole days, and none under a day, but no overdue badge without a due date", async () => {
       const host = await open();
       const quiet = item(host, "Any objection?");
-      expect(quiet?.querySelector(".question-waiting")?.textContent).toBe("Unanswered for 2 hours");
+      expect(quiet?.querySelector(".question-waiting")?.textContent).toBe("Unanswered for 3 days");
       expect(quiet?.querySelector(".question-overdue")).toBeNull();
+      const fresh = item(host, "Fresh one?");
+      expect(fresh?.closest("section")?.getAttribute("aria-label")).toBe("Open");
+      expect(fresh?.querySelector(".question-waiting")).toBeNull();
+    });
+
+    it("lists the newest five replies and a button that shows all of them", async () => {
+      const host = await open();
+      const busy = item(host, "Busy one?");
+      const texts = () =>
+        [...(busy?.querySelectorAll(".reply-text") ?? [])].map((node) => node.textContent);
+      // Newest last: replies 3 to 6 and the answer.
+      expect(texts()).toEqual(["Nudge 3.", "Nudge 4.", "Nudge 5.", "Nudge 6.", "Handled."]);
+      const more = busy?.querySelector<HTMLButtonElement>("button.replies-toggle");
+      expect(more?.textContent).toBe("Show all 7 replies");
+      expect(more?.getAttribute("aria-expanded")).toBe("false");
+      await click(more ?? undefined);
+      expect(texts()).toHaveLength(7);
+      expect(texts()[0]).toBe("Nudge 1.");
+      // The same button stays, now offering to collapse.
+      expect(busy?.querySelector("button.replies-toggle")).toBe(more);
+      expect(more?.getAttribute("aria-expanded")).toBe("true");
+      expect(more?.textContent).toBe("Show fewer replies");
+      // Few replies need no button.
+      expect(item(host, "Ship it?")?.querySelector("button.replies-toggle")).toBeNull();
     });
 
     it("shows neither badge once a question is answered", async () => {

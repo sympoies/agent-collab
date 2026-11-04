@@ -192,6 +192,18 @@ describe("deriveQuestionStates", () => {
     expect(state?.acks).toEqual([ack]);
   });
 
+  it("collects a reply by reply_to whatever its topic", () => {
+    const question = parsed(1, "alice-agent", "question", { replies: "any", to: "bob-agent" });
+    const elsewhere = {
+      ...parsed(2, "bob-agent", "answer", { reply_to: question.id }),
+      topic: "ops",
+    };
+    expect(derive([question, elsewhere])[0]).toMatchObject({
+      state: "answered",
+      answers: [elsewhere],
+    });
+  });
+
   it.each([["all"], [""]])("concludes on a broadcast info (to: %j)", (to) => {
     const question = parsed(1, "alice-agent", "question", { replies: "any" });
     const info = parsed(2, "alice-agent", "info", { reply_to: question.id, to }, "Decided.");

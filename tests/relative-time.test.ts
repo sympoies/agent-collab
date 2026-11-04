@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { relativeTime } from "../src/ui/relativeTime";
+import { relativeTime, waitingDays } from "../src/ui/relativeTime";
 import { tEn } from "./support";
 
 const NOW = new Date("2026-11-03T12:00:00Z");
@@ -30,5 +30,18 @@ describe("relativeTime", () => {
 
   it("treats a time slightly in the future (clock skew) as just now", () => {
     expect(relativeTime(new Date(NOW.getTime() + 30 * SECOND), NOW, tEn)).toBe("just now");
+  });
+});
+
+describe("waitingDays", () => {
+  // The id time zone is unknown, so only the date is compared, as the due date is.
+  it.each([
+    ["2026-10-08 23:59", "2026-10-08", 0],
+    ["2026-10-08 00:01", "2026-10-09", 1],
+    ["2026-10-08 12:00", "2026-10-15", 7],
+    ["2026-09-30 09:00", "2026-10-02", 2],
+    ["2026-10-09 09:00", "2026-10-08", 0],
+  ])("%s asked, today %s: %i days", (timestamp, today, days) => {
+    expect(waitingDays(timestamp, today)).toBe(days);
   });
 });
