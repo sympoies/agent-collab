@@ -4,7 +4,7 @@
 import { expect, test } from "@playwright/test";
 
 import { formatDateTime } from "../src/i18n/translate";
-import { LEGACY_API_ID, topicSnapshot } from "../tests/topic-snapshot-fixture";
+import { DIAGRAM, LEGACY_API_ID, topicSnapshot } from "../tests/topic-snapshot-fixture";
 
 test("the hosted demo opens a topic-layout snapshot without any API request", async ({ page }) => {
   const snapshot = await topicSnapshot();
@@ -40,6 +40,13 @@ test("the hosted demo opens a topic-layout snapshot without any API request", as
   await expect(page.getByText("API message").first()).toBeVisible();
   await expect(page.getByText("diagram.png")).toBeVisible();
   await expect(page.getByText("fields.csv")).toBeVisible();
+  // A listing-only attachment (the PNG) still resolves: its card shows the real size and path,
+  // not the "not in the repository" note.
+  const diagram = page.locator(".file-card", { hasText: "diagram.png" });
+  await diagram.locator("summary").click();
+  await expect(diagram.locator(".file-meta")).toContainText(`${String(DIAGRAM.length)} B`);
+  await expect(diagram.locator(".file-meta")).toContainText("topics/api/diagram.png");
+  await expect(diagram).not.toContainText("not in the repository");
   const legacy = page.getByText("Legacy kickoff.");
   for (let step = 0; step < 8 && !(await legacy.isVisible()); step += 1) {
     const before = await page.locator(".message").count();

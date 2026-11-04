@@ -8,6 +8,7 @@ import { SourceError } from "../src/source/types";
 import { presenterEn } from "./support";
 import {
   API_IDS,
+  DIAGRAM,
   LEGACY_API_ID,
   LEGACY_ONLY_ID,
   REFERENCING_ID,
@@ -47,7 +48,7 @@ describe("listing-only snapshot files", () => {
     const source = new DemoSnapshotSource(snapshot);
     const entries = await source.listDirectory(snapshot.revision, "topics/api");
     const png = entries.find((entry) => entry.name === "diagram.png");
-    expect(png).toMatchObject({ kind: "file", size: expect.any(Number) as number });
+    expect(png).toMatchObject({ kind: "file", size: DIAGRAM.length });
     expect(entries.find((entry) => entry.name === "fields.csv")).toMatchObject({ kind: "file" });
     const error = await source.readFile(png as NonNullable<typeof png>).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(SourceError);

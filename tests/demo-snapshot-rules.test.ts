@@ -46,7 +46,22 @@ describe("what enters the demo snapshot", () => {
     }
   });
 
+  it("refuses paths the page's snapshot parser would refuse", () => {
+    for (const path of [
+      "topics/../escape.md",
+      "topics/./a.md",
+      "topics//a.md",
+      "/topics/a.md",
+      "inbox/../index.md",
+    ]) {
+      expect(isSnapshotPath(path), path).toBe(false);
+    }
+  });
+
   it("takes regular files only", () => {
+    expect(isSnapshotEntry({ ...blob("topics/api/vendor"), type: "commit", mode: "160000" })).toBe(
+      false,
+    );
     expect(isSnapshotEntry(blob("index.md"))).toBe(true);
     expect(isSnapshotEntry({ ...blob("index.md"), type: "tree" })).toBe(false);
     expect(isSnapshotEntry({ ...blob("index.md"), mode: "120000" })).toBe(false);
@@ -113,6 +128,33 @@ describe("assembling the snapshot", () => {
     expect(readBytes).not.toHaveBeenCalledWith(expect.objectContaining({ path: "README.md" }));
     // The page accepts exactly what the script writes.
     expect(parseDemoSnapshot(json)).toEqual(snapshot);
+  });
+
+  it("keeps a topic's own index.md next to the root index.md", async () => {
+    const { snapshot } = await assembleSnapshot({
+      ...base,
+      entries: [blob(".agent-collab"), blob("index.md"), blob("topics/api/index.md")],
+      readBytes: (entry) => Promise.resolve(text(`content of ${entry.path}\n`)),
+    });
+    const byPath = new Map(snapshot.files.map((file) => [file.path, file.text]));
+    expect(byPath.get("index.md")).toBe("content of index.md\n");
+    expect(byPath.get("topics/api/index.md")).toBe("content of topics/api/index.md\n");
+  });
+
+  it("lists a binary TOPIC.md without content, like any other attachment", async () => {
+    const { snapshot } = await assembleSnapshot({
+      ...base,
+      entries: [blob(".agent-collab"), blob("topics/api/TOPIC.md")],
+      readBytes: (entry) =>
+        Promise.resolve(
+          entry.path === ".agent-collab" ? text("collab-protocol: 1\n") : pngBytes(2, 2),
+        ),
+    });
+    expect(snapshot.files[1]).toMatchObject({
+      path: "topics/api/TOPIC.md",
+      text: "",
+      omitted: true,
+    });
   });
 
   it("lists an oversized attachment without reading it, and drops an oversized or binary message", async () => {

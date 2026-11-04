@@ -5,6 +5,7 @@ import { assembleSnapshot, type TreeEntry } from "../scripts/demo-snapshot-rules
 import { parseDemoSnapshot, type DemoSnapshot } from "../src/settings/demo-snapshot";
 import { messageText, pngBytes } from "./support";
 
+export const DIAGRAM = pngBytes(4, 4);
 export const MARKER =
   "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent, bob-agent\n";
 
@@ -42,7 +43,7 @@ function repository(): Record<string, string | Uint8Array> {
     "topics/onboarding/TOPIC.md": "---\ntitle: Onboarding\nstatus: closed\n---\n",
     "topics/api/fields.csv": "id,title\nr-1,Tomato soup\n",
     "topics/api/fields.csv.md": "Synthetic sample rows; may be shared.\n",
-    "topics/api/diagram.png": pngBytes(4, 4),
+    "topics/api/diagram.png": DIAGRAM,
     "topics/api/diagram.png.md": "Synthetic placeholder image; may be shared.\n",
     [`inbox/${LEGACY_API_ID}.md`]: messageText(
       LEGACY_API_ID,

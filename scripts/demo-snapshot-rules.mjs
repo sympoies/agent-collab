@@ -18,6 +18,14 @@ const TOPIC_MESSAGE = /^topics\/[^/]+\/inbox\//;
  * (topic messages, generated files, TOPIC.md and attachments).
  */
 export function isSnapshotPath(path) {
+  // A path the viewer's snapshot parser would refuse (empty, ".", ".." or absolute) fails here,
+  // at build time, rather than as a broken page.
+  if (
+    path.startsWith("/") ||
+    path.split("/").some((part) => part === "" || part === "." || part === "..")
+  ) {
+    return false;
+  }
   return (
     path === MARKER ||
     path === "index.md" ||
@@ -40,7 +48,9 @@ export function isSnapshotEntry(entry) {
 /**
  * Attachments keep a listing-only entry when their content is not included, so a message's
  * `refs` still resolve; marker, index and message files do not (a message the viewer cannot read
- * is worse than a missing one).
+ * is worse than a missing one). A topic's TOPIC.md, generated files and attachments all fall in
+ * the first group: an unreadable TOPIC.md is not read by the viewer today, and `parseTopicFile`
+ * treats an unreadable one as an open topic without a title.
  */
 function keepsListing(path) {
   return path.startsWith("topics/") && !TOPIC_MESSAGE.test(path);
