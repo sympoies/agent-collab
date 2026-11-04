@@ -1,6 +1,6 @@
 # Topic folders and scale inside one repository
 
-**Status:** design proposal for owner review, 2026-11-04. Nothing in this document is implemented.
+**Status:** design, decided by the owner on 2026-11-04 (section 11). Nothing in this document is implemented.
 It answers [issue #32](https://github.com/sympoies/agent-collab/issues/32) and ends with a slice
 plan. Facts about the reference tool (the program that posts messages, checks a repository and
 regenerates its index files) were checked against its source and by running it on generated data; section 11 lists what could not be verified.
@@ -121,15 +121,19 @@ characters), `description` (one line, up to 200), `status` (`open` or `closed`, 
 The body is free text for humans and is not parsed. A topic without a file is open, untitled, and
 shown by its name.
 
-**The append-only rule.** The protocol says participants only add files. Closing a topic edits
-`TOPIC.md`. Two ways to reconcile this, for the owner to choose:
+**The append-only rule (decided: A).** The protocol says participants only add files, and closing a
+topic edits `TOPIC.md`. Decision: `TOPIC.md` is the one editable file in `topics/<topic>/`, and only
+the tool changes it (`topic close`, `topic reopen`), recorded in a commit like every other change.
+The history keeps who closed it and when. The append-only rule gains this one stated exception. (The
+alternative, append-only status files such as a `CLOSED` marker, was considered and not chosen.)
 
-- **A (recommended).** `TOPIC.md` is the one editable file in `topics/<topic>/`, and only the tool
-  changes it (`topic close`, `topic reopen`), recorded in a commit like every other change. The
-  history keeps who closed it and when. The append-only rule gains one stated exception.
-- **B.** Status is append-only too: a `status` message type or a `closed` marker file
-  `topics/<topic>/CLOSED`, and "reopen" adds `REOPENED`. The latest wins. No exception to the rule,
-  but more states to read and more ways to disagree.
+**Closing is optional and expected to be rare.** A long-running workstream never closes its topic. A
+topic in a quiet maintenance phase stays open and simply sorts down by recent activity; hiding,
+pinning and muting stay per-viewer, local choices (6.4) and change nothing in the repository. What
+closing buys is small: in the Attention view (6.3), a cold load of a private repository skips one
+`open.md` request per closed topic. Nothing else depends on it. For that reason the close and reopen
+commands and the digest below are built in the last tool slice (section 9), off the critical path of
+the layout itself.
 
 A **closed topic is immutable**: the tool refuses new messages and new attachments for it
 (`topic reopen` first). Immutability is checked with a digest, not with history. `topic close`
@@ -157,9 +161,8 @@ viewer cache a closed topic forever (section 6).
 - **Root** `open.md` is **dropped in the topic layout**. A shared file that every post may change is
   exactly the hotspot, and the aggregate is cheap to compute: the tool's `open` command prints it
   from the working tree, and a reader that wants it reads the per-topic `open.md` files of the
-  topics it cares about. (Alternative: keep a small root `open.md` and accept the conflict on that
-  one file; at a few hundred bytes with few open items the conflict is cheap to resolve. The
-  recommendation is to drop it so no per-post file is shared. Owner to choose.)
+  topics it cares about. (Decided; the alternative of keeping a small shared root `open.md` was
+  not chosen, so no per-post file is shared.)
 
 Generated files remain **derived, untrusted data** for every reader (section 6.5): the message
 files are the record.
@@ -215,14 +218,14 @@ counters from the loaded messages, as today. A name the new grammar accepts that
 under the root `inbox/` and count with the new ones. New messages for a name the grammar rejects are
 refused in the topic layout (4.5): the participant picks a valid topic.
 
-A later, optional `migrate` command may move legacy messages into topic folders. Ids do not change;
-only paths do, and `refs` that name ids keep working. It is not needed for the first slices.
+There is no `migrate` command (decided): legacy messages stay where they are, and nothing moves them
+into topic folders.
 
 ## 5. Proposed protocol text
 
 The text below is proposed for the protocol document of the reference tool. It is written to be
-copied once the owner approves this design. Nothing here has been applied to the tool or its
-documents.
+copied into the protocol document (slice P1). Nothing here has been applied to the tool or its
+documents yet.
 
 > ### Topic layout (`inbox-layout: topic`)
 >
@@ -255,8 +258,7 @@ documents.
 > - Readers must treat generated files as untrusted: parse defensively, cap their size, and prefer
 >   the message files when they disagree.
 
-Open choices inside this text are marked in section 4.3 (append-only exception) and 4.4 (root
-`open.md`).
+The choices inside this text are the owner's decisions in section 11.
 
 ## 6. Viewer design
 
@@ -285,11 +287,12 @@ repository metadata (1), ref (1), commit (1), root tree (1), `topics/` tree (1),
 for one with a full first page of 50 messages: today's open reads that page at once). Opening one
 topic adds its `inbox` tree, the month trees and the files of its first page.
 
-### 6.2 Caching and closed topics
+### 6.2 Caching
 
 Every tree and blob is immutable and keyed by object id. The tree id of `topics/<topic>` changes
-only when something in that topic changes, so **a closed topic is cacheable forever by its tree id**:
-if the id is unchanged, nothing is re-read. For the public demo the existing guarded cache of
+only when something in that topic changes, so **an unchanged topic, closed or not, is cacheable by its
+tree id**: if the id is unchanged, nothing is re-read. A closed topic is guaranteed not to change
+(4.3), which is all that closing adds here; it is not needed for the cache to work. For the public demo the existing guarded cache of
 immutable public blobs can hold a closed topic's trees and files; private repositories stay in
 memory only, as today. Polling stays one conditional request for the branch head; when the head
 changes, only topics whose tree id changed are revisited.
@@ -299,8 +302,11 @@ changes, only topics whose tree id changed are revisited.
 One view across topics answering "what needs me". **Default follow state: nothing is followed.**
 A viewer who has followed nothing still gets a useful Attention view, at a known cost:
 
-- For every **open** topic the viewer reads its per-topic `open.md` (one blob each, about 12 requests
-  for 12 topics, none for closed topics) and lists the rows addressed to the viewer. These rows are
+- For the **open** topics the viewer reads each per-topic `open.md` (one blob each, about 12 requests
+  for 12 topics, none for closed topics) and lists the rows addressed to the viewer. Attention reads
+  `open.md` for at most the 30 most recently active open topics and offers an explicit "load all"
+  action (the same pattern as search), so many quiet open topics do not make a cold open grow without
+  bound; the 30 is a chosen default, not a measured value. These rows are
   untrusted (6.5): opening one loads the message, whose front matter wins.
 - For every **followed** topic it also loads the newest page of messages (an `inbox` tree, the
   month trees and up to 50 files, so up to about 55 requests per followed topic), so messages
@@ -342,21 +348,12 @@ anything that matters (question state, who said what). Rules for the reader:
 
 ## 7. Roster larger than eight
 
-The palette has eight color slots, and slots currently wrap: the ninth person shares slot 0. With a
-roster of about eight this is rare but a growing team will hit it, and color alone must not be the
-only distinction.
-
-- Every message group already shows the sender's name and initials; that stays the primary
-  identity and is never replaced by color.
-- For participant nine onward, add a **second visual mark**: slots 0 to 7 keep the filled avatar;
-  slots 8 to 15 use an outlined avatar (a ring in the slot color), 16 to 23 a filled avatar with a
-  corner notch. That gives 24 distinguishable (color, mark) pairs; beyond that the name and initials
-  remain the distinction and the Profile panel says so. The mark is a `data-variant` attribute
-  mapped in the stylesheet, like `data-slot`: no inline styles.
-- The Profile & colors panel already lets a viewer choose a slot per person (a local preference);
-  it learns the variant as part of the same choice.
-- Tests assert that two people with the same slot have different variants, and that the contrast of
-  every (color, mark) pair on both themes stays at least 3:1, as for the avatars today.
+Decided: **no new variants.** The palette keeps its eight colors. A ninth and later participant
+repeats a color, and duplicates are accepted: slots wrap, as they do today. Every message group
+already shows the sender's name and initials, which stay the primary identity and are never replaced
+by color, so two people with the same color remain distinguishable. The Profile & colors panel keeps
+letting a viewer choose a slot per person (a local preference). Nothing in the viewer changes for this
+design.
 
 ## 8. Tool wake-ups filtered by topic
 
@@ -373,23 +370,21 @@ separate per-viewer preference and are not shared with the tool.
 | # | Slice | Repository | Depends on | Acceptance |
 | --- | --- | --- | --- | --- |
 | P1 | Protocol text for the topic layout (section 5) after owner approval, with the owner's choices for 4.3 and 4.4 | protocol and tool repository (not this one) | design approval | text reviewed by the owner |
-| P2 | Tool: layout marker, path rules, `check`, per-topic generated files, `topic new/close/reopen/list/use`, `show`, `inbox`, `watch`, `repair`, tests incl. flat, monthly, topic and mixed repositories | protocol and tool repository | P1 | the tool's own test suite and `check` pass on all three layouts |
-| P3 | `watch` filter (`follow`, `addressed`) | protocol and tool repository | P2 | wake-up tests |
+| P2 | Tool: layout marker, path rules, `check`, per-topic generated files, `topic new/list/use`, `show`, `inbox`, `watch`, `repair`, tests incl. flat, monthly, topic and mixed repositories | protocol and tool repository | P1 | the tool's own test suite and `check` pass on all three layouts |
+| P3 | The last tool slice: `watch` filter (`follow`, `addressed`); `topic close` and `topic reopen` with the closed digest and its `check` rule (4.3); closing is optional and off the critical path | protocol and tool repository | P2 | wake-up tests; close, reopen, close again; a file added to a closed topic fails `check` |
 | V1 | Viewer reader: marker value, `topics/` listing, root index, per-topic loading, legacy merge, request budget test | this repository | P1 text and the owner's choices for 4.3 (what `TOPIC.md` holds) and 4.4 (the index formats); no tool needed, fixtures suffice | topic fixtures load; flat and monthly fixtures unchanged; request count asserted |
 | V2 | Topic list UI: open and closed groups, titles, sorting by recent activity, phone drill-down | this repository | V1 | browser tests at desktop and phone, both themes |
 | V3 | Local state (follow, mute, pin, hide, last-seen), unread counters, Attention view | this repository | V1, V2 | unit and browser tests; storage failure still works |
-| V4 | Index fast path and closed-topic caching by tree id; untrusted-parsing rules of 6.5 | this repository | V1 | hostile index fixtures; unchanged tree makes no request |
-| V5 | More than eight participants: variants, Profile panel, contrast tests | this repository | none: independent of P1 and of every other slice, can start at any time (needs the owner's choice of mark, section 11) | contrast and uniqueness tests |
+| V4 | Index fast path and unchanged-tree caching by tree id; untrusted-parsing rules of 6.5 | this repository | V1 | hostile index fixtures; unchanged tree makes no request |
 | V6 | Search over loaded topics with the explicit "load all" action | this repository | V1, V2 | tests |
 | D1 | Demo repository rebuilt in the topic layout on a branch; the owner replaces its default branch | demo repository | P2, V1 | the live demo opens from the new layout |
 
-Order that gives the owner something visible early: V5 can run at any time (it depends on nothing
-here); P1 first (the decisions in 4.3 and 4.4 are part of it); then V1, then V2, P2 (the tool, for
-real repositories), D1, V3, V4, V6, P3. V1 can be built on fixtures before P2 exists, because the
-viewer reads files, not the tool, but it needs P1's text and the owner's 4.3 and 4.4 choices first.
+Order: P1, V1, V2, P2, D1, V3, V4, V6, P3. P1 comes first (the decisions in 4.3 and 4.4 are part of
+it). V1 can be built on fixtures before P2 exists, because the viewer reads files, not the tool, but
+it needs P1's text first.
 
 Each slice is one Draft PR in its repository; V-slices are expected to stay under about 1,500 lines
-each. Follow-up issues are created after the owner approves this design, not before.
+each. Follow-up issues are created per slice, when that slice is started.
 
 ## 10. Not planned: multiple repositories in one viewer
 
@@ -412,7 +407,7 @@ Recorded so the question does not have to be answered again.
   a cross-repository "waiting for me" view built from each repository's question state. This is a
   sketch for later, not a commitment.
 
-## 11. What could not be verified, and open decisions
+## 11. What could not be verified, and decisions
 
 **Viewer facts this design relies on, and their status**
 
@@ -420,7 +415,6 @@ Recorded so the question does not have to be answered again.
 | --- | --- |
 | The palette has eight color slots, and a ninth person wraps to slot 0 | Verified in the code (`PALETTE_SIZE`) and by a unit test |
 | A person's color is a `data-slot` attribute mapped in the stylesheet, with no inline style | Verified: merged, with unit and browser tests including WebKit |
-| Avatars and glyphs keep 3:1 contrast in both themes | Verified for the current palette by browser tests; **not verified** for the proposed variants of section 7 |
 | Identity preferences live in guarded browser storage that works when storage throws | Verified by unit and browser tests |
 | Trees and blobs are cached by object id for the session; the public demo has a guarded blob cache | Verified in the loader and cache code and its tests |
 | On a phone the topic list is the first screen and a topic is a drill-down with a back control | Verified in the code and browser tests |
@@ -441,17 +435,15 @@ Recorded so the question does not have to be answered again.
   tool regenerating the two root files on every post, which was read in the code, not timed.
 - Nothing here was tried with a real team; the sizes are chosen from the issue's description of one.
 
-**Decisions for the owner**
+**Decisions (owner, 2026-11-04)**
 
-1. Closed topics: append-only exception for `TOPIC.md` (A) or append-only status files (B), 4.3.
-2. Root `open.md`: drop it in the topic layout (recommended) or keep it as a small shared file, 4.4.
-3. Tightened topic grammar (single hyphens, no leading or trailing hyphen) for new topics, 4.2.
-4. Variants for participants nine and beyond (section 7): outlined and notched avatars, or another
-   mark.
-5. Whether a `migrate` command for legacy messages is wanted at all (4.6).
-6. The default follow state (section 6.3): none followed, Attention from each open topic's
-   `open.md` (recommended), or all open topics followed at a much higher request cost.
-7. The closed-topic mechanism (section 4.3): the digest recorded at closing (recommended), or no
-   automatic check and a documented convention only.
-8. Legacy-only topics whose names the new grammar rejects: refused for new messages in the topic
-   layout (proposed), or allowed to keep growing in the legacy `inbox/`.
+1. Closed topics: option A, `TOPIC.md` is edited only by the tool, with one stated exception to the
+   append-only rule (4.3).
+2. Root `open.md` is dropped in the topic layout (4.4).
+3. The tightened grammar (single hyphens, no leading or trailing hyphen) applies to new topics (4.2).
+4. No new participant variants: the eight palette colors stay, and a ninth and later participant
+   repeats a color; duplicates are accepted (section 7).
+5. No `migrate` command for legacy messages (4.6).
+6. The default follow state is none (6.3).
+7. The closed-topic check is the digest recorded at closing (4.3).
+8. Legacy-only names the new grammar rejects are refused for new messages in the topic layout (4.6).
