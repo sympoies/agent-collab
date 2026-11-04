@@ -22,3 +22,43 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+
+  # A separate job, so a browser outage or a browser failure is visible on its own and does not
+  # hide the result of `check`. Chromium runs every browser test; WebKit runs the CSP tests.
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4.2.3
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      # The version comes from the lockfile through `pnpm exec`, so the browsers match the library.
+      - run: pnpm exec playwright install --with-deps chromium webkit
+        if: steps.browsers.outputs.cache-hit != 'true'
+      - run: pnpm exec playwright install-deps chromium webkit
+        if: steps.browsers.outputs.cache-hit == 'true'
+      # The runner context is not available in job-level env, so the directory is set here.
+      - run: pnpm test:browser
+        env:
+          PLAYWRIGHT_SCREENSHOT_DIR: ${{ runner.temp }}/playwright-screenshots
+      # Only on failure, and only traces and failure output (screenshots of fixture data).
+      - uses: actions/upload-artifact@v4.6.2
+        if: failure()
+        with:
+          name: playwright-results
+          path: ${{ runner.temp }}/playwright-screenshots
+          retention-days: 7

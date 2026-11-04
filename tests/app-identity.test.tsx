@@ -170,9 +170,9 @@ describe("App identity controls", () => {
   it("changes a person's color and display name in Profile & colors, and Reset restores the defaults", async () => {
     const storage = memoryStorage();
     const host = await render(storage);
-    const aliceStyle = () =>
-      host.querySelector<HTMLElement>(".timeline .group")?.getAttribute("style");
-    expect(aliceStyle()).toContain("var(--person-0)");
+    const aliceSlot = () =>
+      host.querySelector<HTMLElement>(".timeline .group")?.getAttribute("data-slot");
+    expect(aliceSlot()).toBe("0");
 
     await click(button(host, "Profile & colors"));
     const swatch = [
@@ -180,7 +180,7 @@ describe("App identity controls", () => {
     ][4];
     expect(swatch?.getAttribute("aria-label")).toBe("Teal");
     await click(swatch);
-    expect(aliceStyle()).toContain("var(--person-4)");
+    expect(aliceSlot()).toBe("4");
 
     const nameInput = host.querySelector<HTMLInputElement>('input[placeholder="alice-agent"]');
     await act(async () => {
@@ -196,7 +196,7 @@ describe("App identity controls", () => {
     expect(storage.values.get(`agent-collab-viewer.identity:${KEY}`)).toContain('"Alice"');
 
     await click(button(host, "Reset colors and names"));
-    expect(aliceStyle()).toContain("var(--person-0)");
+    expect(aliceSlot()).toBe("0");
     expect(host.querySelector(".timeline .sender")?.textContent).toBe("alice-agent");
     expect(storage.values.get(`agent-collab-viewer.identity:${KEY}`)).not.toContain("Alice");
   });

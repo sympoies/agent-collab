@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { useT } from "../i18n/LocaleProvider";
 import { PALETTE_SIZE, type IdentityPreferences } from "../identity/preferences";
-import { personStyle, type People } from "./people";
+import { personSlot, type People } from "./people";
 
 /** Catalog keys of the palette slot names, for the color choices' accessible labels. */
 export const SLOT_NAMES = [
@@ -72,7 +72,7 @@ export function ProfilePanel({
             const slot = people.slot(person);
             return (
               <li key={`${person}-${String(resets)}`} className="profile-person">
-                <span className="profile-who" style={personStyle(slot)}>
+                <span className="profile-who" {...personSlot(slot)}>
                   <span className="avatar" aria-hidden="true">
                     {initials(person)}
                   </span>
@@ -96,7 +96,7 @@ export function ProfilePanel({
                 <fieldset className="swatches">
                   <legend>{t("profile.color", { name: person })}</legend>
                   {Array.from({ length: PALETTE_SIZE }, (_, index) => (
-                    <label key={index} className="swatch" style={personStyle(index)}>
+                    <label key={index} className="swatch" {...personSlot(index)}>
                       <input
                         type="radio"
                         aria-label={t(SLOT_NAMES[index] ?? "color.coral")}

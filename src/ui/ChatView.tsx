@@ -6,7 +6,7 @@ import type { MessageReceipts } from "../message/receipts";
 import type { Message } from "../message/types";
 import { useT, type Translate } from "../i18n/LocaleProvider";
 import { RefList, type AttachmentContext } from "./Attachments";
-import { personStyle, type People } from "./people";
+import { personSlot, type People } from "./people";
 import type { MessageView, Row } from "./timeline";
 
 function initials(name: string): string {
@@ -241,7 +241,7 @@ function RowView({
       );
     case "group":
       return (
-        <li className="group" data-own={row.own} style={personStyle(people.slot(row.from))}>
+        <li className="group" data-own={row.own} {...personSlot(people.slot(row.from))}>
           <span className="avatar" aria-hidden="true">
             {initials(row.from)}
           </span>

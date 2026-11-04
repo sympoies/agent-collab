@@ -895,6 +895,11 @@ button:hover {
   list-style: none;
 }
 
+.refs > li {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .chip {
   max-width: 100%;
   overflow-wrap: anywhere;
@@ -915,6 +920,8 @@ span.chip {
 }
 
 .file-card {
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
@@ -1010,6 +1017,7 @@ span.chip {
 .csv-preview th,
 .csv-preview td {
   padding: 3px 8px;
+  white-space: nowrap;
   border: 1px solid var(--border);
   text-align: left;
 }
@@ -1339,4 +1347,37 @@ span.chip {
   padding: 6px 10px 0;
   color: var(--muted);
   font-size: 0.75rem;
+}
+
+/* A person's palette slot, set as data-slot by the components (no inline styles). */
+[data-slot="0"] {
+  --person: var(--person-0);
+}
+
+[data-slot="1"] {
+  --person: var(--person-1);
+}
+
+[data-slot="2"] {
+  --person: var(--person-2);
+}
+
+[data-slot="3"] {
+  --person: var(--person-3);
+}
+
+[data-slot="4"] {
+  --person: var(--person-4);
+}
+
+[data-slot="5"] {
+  --person: var(--person-5);
+}
+
+[data-slot="6"] {
+  --person: var(--person-6);
+}
+
+[data-slot="7"] {
+  --person: var(--person-7);
 }
