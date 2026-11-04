@@ -364,7 +364,6 @@ export class Loader {
         const root = await this.source.listDirectory(head.revision, "");
         const participantData = await this.readMarker(root);
         const inbox = await this.listOrEmpty(head.revision, "inbox");
-        this.inbox = inbox;
         this.updateRetries(inbox);
         this.updatePending(inbox);
         const found: DirectoryEntry[] = inbox.filter(
@@ -405,6 +404,7 @@ export class Loader {
         for (const [name, objectId] of monthUpdates) this.listedMonths.set(name, objectId);
         for (const item of arrived) this.fresh.add(itemPath(item));
         this.head = head;
+        this.inbox = inbox;
         this.participants = participantData.participants;
         this.formerParticipants = participantData.formerParticipants;
         this.rosterKnown = true;

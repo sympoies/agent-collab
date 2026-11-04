@@ -390,6 +390,22 @@ describe("Loader.jumpTo", () => {
     });
   });
 
+  it("keeps the jump on the listing of the revision it has, after a refresh failed halfway", async () => {
+    const source = new FixtureSource(files);
+    const loader = await opened(source, 2);
+    const november = monthly("2026-11", 1, 1);
+    source.commit({ ...files, [november]: files[monthly("2026-10", 2, 1)] as string });
+    source.failListings(["inbox/2026-11"]);
+    await expect(loader.refresh()).rejects.toThrow();
+    source.failListings([]);
+    // The failed refresh did not move the loader to the new revision, so the jump does not know
+    // November and sees nothing newer than the chosen day.
+    await loader.jumpTo("2026-10-31");
+    expect(loader.getSnapshot().jumpedTo).toBeNull();
+    expect(await loader.refresh()).toBe(1);
+    expect(paths(loader.getSnapshot().items)).toContain(november);
+  });
+
   it("reports question topics as unknown while newer messages are not loaded", async () => {
     const loader = await opened(new FixtureSource(files), 50);
     expect(loader.getSnapshot().incompleteTopics).toEqual([]);
