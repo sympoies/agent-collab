@@ -61,6 +61,7 @@ export const zhTW: Messages = {
   "error.tooLarge": "內容太大，無法讀取。",
   "error.setupNoMarker": "這不是協作儲存庫（找不到 .agent-collab 檔案）。",
   "error.setupProtocol": "不支援的協作協定：{detail}",
+  "error.setupLayout": "不支援的收件匣版面：{detail}。需要更新檢視器。",
   "refresh.demoInterval": "即時示範每五分鐘更新一次。請等下次檢查後再重新整理。",
   "refresh.busy": "已有請求進行中，或正在等待請求上限解除。",
   "local.noFolder": "未選擇資料夾，或瀏覽器不允許此資料夾。",

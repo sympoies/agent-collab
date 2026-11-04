@@ -1,5 +1,6 @@
 // Message file parser (docs/design.md, section 4). Pure: never throws on file content.
 
+import { topicMessagePath } from "./topic-layout";
 import { MESSAGE_TYPES, type Body, type MessageType, type ParsedFile } from "./types";
 
 const FIELDS = [
@@ -152,6 +153,17 @@ export function parseMessageFile(path: string, raw: string): ParsedFile {
   const idMonth = `${year}-${month}`;
   if (folder !== undefined && folder !== idMonth) {
     issues.push(`month folder ${folder} does not match id month ${idMonth}`);
+  }
+
+  // In the topic layout the path names the topic and the month, and both must agree.
+  const placed = topicMessagePath(path);
+  if (placed !== null) {
+    if (placed.topic !== topic) {
+      issues.push(`topic folder ${placed.topic} does not match topic=${topic}`);
+    }
+    if (placed.month !== idMonth) {
+      issues.push(`month folder ${placed.month} does not match id month ${idMonth}`);
+    }
   }
 
   for (const [key, value] of [

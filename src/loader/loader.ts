@@ -2,6 +2,8 @@
 // newest-first paging and change detection (docs/design.md, sections 4 and 7).
 
 import { parseMessageFile } from "../message/parse";
+import { isKnownLayout, markerLayout } from "../message/topic-layout";
+import { TopicLayoutSource } from "../source/topic-layout";
 import { AttachmentReader } from "./attachments";
 import type { ParsedFile } from "../message/types";
 import {
@@ -48,7 +50,7 @@ export class SetupError extends Error {
   /** `code` and `detail` let the UI word the problem in the user's language. */
   constructor(
     message: string,
-    readonly code: "no-marker" | "protocol",
+    readonly code: "no-marker" | "protocol" | "layout",
     readonly detail = "",
   ) {
     super(message);
@@ -200,13 +202,14 @@ export class Loader {
   /** Files that messages reference, read on demand at the current revision. */
   readonly attachments: AttachmentReader;
 
-  constructor(
-    private readonly source: MessageSource,
-    options: LoaderOptions = {},
-  ) {
+  private readonly source: MessageSource;
+
+  constructor(source: MessageSource, options: LoaderOptions = {}) {
+    // A repository in the topic layout is read through one merged inbox; others pass through.
+    this.source = source instanceof TopicLayoutSource ? source : new TopicLayoutSource(source);
     this.pageSize = options.pageSize ?? 50;
     this.concurrency = options.concurrency ?? 6;
-    this.attachments = new AttachmentReader(source, () => this.head?.revision ?? null);
+    this.attachments = new AttachmentReader(this.source, () => this.head?.revision ?? null);
   }
 
   getSnapshot = (): LoaderSnapshot => this.snapshot;
@@ -241,6 +244,10 @@ export class Loader {
         firstLine,
       );
     }
+    const layout = markerLayout(text);
+    if (!isKnownLayout(layout)) {
+      throw new SetupError(`unsupported inbox layout: ${layout}`, "layout", layout);
+    }
     const participants = markerParticipants(text);
     this.markerCache = { objectId: entry.objectId, participants };
     return participants;
@@ -257,8 +264,8 @@ export class Loader {
         this.participants = participantData.participants;
         this.formerParticipants = participantData.formerParticipants;
         this.rosterKnown = true;
-        const hasInbox = root.some((entry) => entry.kind === "directory" && entry.name === "inbox");
-        const inbox = hasInbox ? await this.source.listDirectory(head.revision, "inbox") : [];
+        // The topic layout has no root inbox of its own; a missing one is an empty listing.
+        const inbox = await this.listOrEmpty(head.revision, "inbox");
         this.head = head;
         this.pending = inbox.filter(isMessageFile).sort(newestFirst);
         this.unlistedMonths = inbox.filter(isMonth).sort(newestFirst);

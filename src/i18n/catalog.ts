@@ -75,6 +75,7 @@ export const en = {
   "error.tooLarge": "This is too large to read.",
   "error.setupNoMarker": "This is not a collaboration repository (no .agent-collab file).",
   "error.setupProtocol": "Unsupported collaboration protocol: {detail}",
+  "error.setupLayout": "Unsupported inbox layout: {detail}. This viewer needs to be updated.",
   "refresh.demoInterval":
     "The live demo refreshes every five minutes. Wait for the next check before refreshing again.",
   "refresh.busy": "A request is already running or waiting for the rate limit reset.",

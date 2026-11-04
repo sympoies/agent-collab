@@ -29,8 +29,9 @@ export function errorText(
   if (typeof error === "string") return error;
   if (isMessageRef(error)) return t(error.key, error.params);
   if (error instanceof SetupError) {
-    return error.code === "no-marker"
-      ? t("error.setupNoMarker")
+    if (error.code === "no-marker") return t("error.setupNoMarker");
+    return error.code === "layout"
+      ? t("error.setupLayout", { detail: error.detail })
       : t("error.setupProtocol", { detail: error.detail });
   }
   if (error instanceof SourceError) {

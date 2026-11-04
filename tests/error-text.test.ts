@@ -153,6 +153,15 @@ const CASES: ReadonlyArray<readonly [string, unknown, Record<Locale, string>]> =
     },
   ],
   [
+    "setup: layout",
+    new SetupError("x", "layout", "weekly"),
+    {
+      en: "Unsupported inbox layout: weekly. This viewer needs to be updated.",
+      ja: "未対応の受信箱レイアウトです: weekly。ビューアの更新が必要です。",
+      "zh-TW": "不支援的收件匣版面：weekly。需要更新檢視器。",
+    },
+  ],
+  [
     "an unknown kind",
     new SourceError("nonsense" as SourceErrorKind, "x"),
     {

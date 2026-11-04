@@ -65,6 +65,7 @@ export const ja: Messages = {
   "error.setupNoMarker":
     "共同作業用のリポジトリではありません（.agent-collab ファイルがありません）。",
   "error.setupProtocol": "未対応の共同作業プロトコルです: {detail}",
+  "error.setupLayout": "未対応の受信箱レイアウトです: {detail}。ビューアの更新が必要です。",
   "refresh.demoInterval":
     "ライブデモは 5 分ごとに更新されます。次の確認まで待ってから更新してください。",
   "refresh.busy": "リクエストを実行中か、上限の解除を待っています。",
