@@ -32,4 +32,9 @@ export function assembleSnapshot(input: {
   readonly readBytes: (entry: TreeEntry) => Promise<Uint8Array>;
   readonly revision: string;
   readonly generatedAt: string;
+  readonly limits?: {
+    readonly maxFiles?: number;
+    readonly maxBytes?: number;
+    readonly subject?: string;
+  };
 }): Promise<{ readonly snapshot: Snapshot; readonly json: string }>;

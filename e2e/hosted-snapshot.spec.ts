@@ -1,0 +1,121 @@
+// A deployment that serves hosted-snapshot.json next to the app opens it without a token or a
+// folder, and follows the file as it is replaced. Synthetic data only. The "@csp" tag also runs
+// these in the WebKit project (see playwright.config.ts).
+
+import { expect, test, type Page } from "@playwright/test";
+
+import { en, LOCALE_NAMES, LOCALES } from "../src/i18n/catalog";
+import { ja } from "../src/i18n/ja";
+import { zhTW } from "../src/i18n/zh-TW";
+import { flat, MARKER, messageText } from "../tests/support";
+
+const catalogsByLocale = { en, ja, "zh-TW": zhTW } as const;
+const IDS = ["2026-10-01T0901-alice-agent-api-01", "2026-10-01T0902-alice-agent-api-01"];
+
+function snapshot(revision: string, bodies: readonly string[], generatedAt: string): string {
+  return JSON.stringify({
+    schemaVersion: 1,
+    generatedAt,
+    revision,
+    files: [
+      { path: ".agent-collab", text: MARKER },
+      ...bodies.map((body, n) => ({
+        path: flat("2026-10", 1, n + 1),
+        text: messageText(IDS[n] as string, "alice-agent", "api", {}, body),
+      })),
+    ],
+  });
+}
+
+/** Serves `current()` as the snapshot and fails any request that leaves the deployment's host. */
+async function deploy(page: Page, current: () => string | null): Promise<{ foreign: string[] }> {
+  const foreign: string[] = [];
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.hostname !== "127.0.0.1") {
+      foreign.push(route.request().url());
+      await route.abort();
+    } else if (url.pathname === "/hosted-snapshot.json") {
+      const body = current();
+      if (body === null) await route.fulfill({ status: 404, body: "" });
+      else await route.fulfill({ status: 200, contentType: "application/json", body });
+    } else {
+      await route.continue();
+    }
+  });
+  return { foreign };
+}
+
+test("a hosted snapshot opens by itself and follows the file @csp", async ({ page }) => {
+  let body = snapshot("r1", ["First hosted message."], "2026-11-04T09:00:00.000Z");
+  const { foreign } = await deploy(page, () => body);
+  await page.clock.install();
+  await page.goto("/");
+  await expect(page.getByText("First hosted message.")).toBeVisible();
+  await expect(page.getByText(en["bar.hostedSnapshot"])).toBeVisible();
+  await expect(page.locator(".last-changed")).toContainText("Snapshot updated");
+  await expect(page.locator("h1")).toHaveCount(1);
+
+  // The refresh interval picks up a replaced file.
+  body = snapshot("r2", ["First hosted message.", "Second by timer."], "2026-11-04T09:01:00.000Z");
+  await page.clock.fastForward(60_000);
+  await expect(page.getByText("Second by timer.")).toBeVisible();
+
+  // So does the refresh button, before any timer.
+  body = snapshot("r3", ["First hosted message.", "Third by button."], "2026-11-04T09:02:00.000Z");
+  await page.getByRole("button", { name: en["bar.refresh"], exact: true }).click();
+  await expect(page.getByText("Third by button.")).toBeVisible();
+  expect(foreign).toEqual([]);
+});
+
+test("a deployment without the file shows the normal welcome screen @csp", async ({ page }) => {
+  await deploy(page, () => null);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: en["welcome.openLiveDemo"] })).toBeVisible();
+  await expect(page.getByRole("button", { name: en["welcome.openHosted"] })).toHaveCount(0);
+  await expect(page.locator("h1")).toHaveCount(1);
+});
+
+for (const code of LOCALES) {
+  test(`the hosted snapshot fits a 390px screen in ${LOCALE_NAMES[code]} @csp`, async ({
+    page,
+  }) => {
+    const messages = catalogsByLocale[code];
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript((locale) => {
+      localStorage.setItem("agent-collab-viewer.locale", locale);
+    }, code);
+    await deploy(page, () => snapshot("r1", ["Hosted message."], "2026-11-04T09:00:00.000Z"));
+    await page.goto("/");
+    await expect(page.getByText(messages["bar.hostedSnapshot"])).toBeVisible();
+    await expect(page.locator("h1")).toHaveCount(1);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+  });
+}
+
+for (const code of LOCALES) {
+  test(`the welcome screen of an unreadable snapshot fits 390px in ${LOCALE_NAMES[code]} @csp`, async ({
+    page,
+  }) => {
+    const messages = catalogsByLocale[code];
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript((locale) => {
+      localStorage.setItem("agent-collab-viewer.locale", locale);
+    }, code);
+    // The page's probe finds the file; every later fetch (the one that opens it) does not.
+    let served = 0;
+    await deploy(page, () => {
+      served += 1;
+      return served === 1 ? snapshot("r1", ["Hosted message."], "2026-11-04T09:00:00.000Z") : null;
+    });
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: messages["welcome.openHosted"] })).toBeVisible();
+    await expect(page.getByRole("alert")).toContainText(messages["hosted.unreadable"]);
+    await expect(page.locator("h1")).toHaveCount(1);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+  });
+}

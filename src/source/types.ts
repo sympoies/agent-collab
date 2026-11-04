@@ -40,6 +40,10 @@ export interface MessageSource {
    * file modification time). Sources that cannot tell omit it.
    */
   lastChanged?(): Date | null;
+  /** For a served snapshot: when its newest successful fetch says it was generated. */
+  snapshotTime?(): Date | null;
+  /** For a served snapshot: when the latest fetch of it succeeded, on this computer's clock. */
+  checkedAt?(): Date | null;
   /** The path of the file that `lastChanged` is the modification time of, if known. */
   lastChangedPath?(): string | null;
   /** Bytes of a file entry, for image previews. Sources that cannot read bytes omit it. */

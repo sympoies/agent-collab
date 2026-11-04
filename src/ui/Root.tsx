@@ -1,7 +1,7 @@
 // Switches between the settings screen and the viewer. Secrets go straight from
 // the credential store into the message source; they are never kept in React state.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { Secret } from "../credentials/secret";
 import { Loader, SetupError } from "../loader/loader";
@@ -52,6 +52,8 @@ export interface RootProps extends SettingsDeps {
   readonly createLiveDemoSource: (token: Secret | null) => MessageSource;
   /** Opens the browser's folder picker; null when the browser has none. Needs a user gesture. */
   readonly openLocalFolder: (() => Promise<LocalFolderOpen>) | null;
+  /** Reads the snapshot this deployment serves next to the app; null when it serves none. */
+  readonly createHostedSource?: (() => MessageSource) | null;
 }
 
 interface ViewerScreen {
@@ -95,6 +97,7 @@ type Screen =
 export function Root(props: RootProps) {
   const { t, formatDateTime } = useLocale();
   const { createSource, createDemoSource, createLiveDemoSource, openLocalFolder } = props;
+  const createHostedSource = props.createHostedSource ?? null;
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
   const navigation = useRef(0);
@@ -394,6 +397,40 @@ export function Root(props: RootProps) {
     );
   };
 
+  /** Opens the snapshot this deployment serves; the welcome screen shows why when it fails. */
+  const showHosted = async (): Promise<void> => {
+    if (createHostedSource === null) return;
+    const operation = ++navigation.current;
+    const source = createHostedSource();
+    const loader = new Loader(source);
+    try {
+      await loader.open();
+    } catch {
+      if (operation === navigation.current) setLocalMessage({ key: "hosted.unreadable" });
+      return;
+    }
+    if (operation !== navigation.current) return;
+    setLocalMessage(null);
+    setScreen(
+      viewer(loader, { key: "app.hostedTitle" }, [], MEMORY_ONLY, null, undefined, null, {
+        label: "bar.hostedSnapshot",
+        experimental: false,
+        pointInTime: {
+          generatedAt: () => source.snapshotTime?.() ?? null,
+          checkedAt: () => source.checkedAt?.() ?? null,
+        },
+      }),
+    );
+  };
+
+  // A deployment that serves a snapshot goes straight to it; the welcome screen stays reachable
+  // through its button when the snapshot cannot be read.
+  useEffect(() => {
+    void showHosted();
+    // Once, on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const save = async (draft: SettingsDraft): Promise<DraftErrors | null> => {
     const operation = ++navigation.current;
     const result = await apply(props, draft);
@@ -415,6 +452,19 @@ export function Root(props: RootProps) {
               <ThemeToggle />
             </div>
           </header>
+          {createHostedSource !== null && (
+            <>
+              <h2>{t("welcome.hostedHeading")}</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  void showHosted();
+                }}
+              >
+                {t("welcome.openHosted")}
+              </button>
+            </>
+          )}
           <h2>{t("welcome.demoHeading")}</h2>
           <button
             type="button"
