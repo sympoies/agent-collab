@@ -1967,6 +1967,9 @@ test("cancelling the picker, choosing a non-clone folder and revoked permission 
  */
 async function expectNoClipping(page: Page, selectors: string) {
   for (const selector of selectors.split(",").map((part) => part.trim())) {
+    // A screen that was just opened may not have rendered yet; a selector that never appears
+    // still fails, with the message below.
+    await expect(page.locator(selector).first(), `"${selector}" matched nothing`).toBeAttached();
     const result = await page.$$eval(selector, (elements) => ({
       count: elements.length,
       clipped: elements
