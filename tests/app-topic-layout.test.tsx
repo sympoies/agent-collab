@@ -95,7 +95,7 @@ describe("topic list screen", () => {
     await settle();
   }
 
-  it("lists All, Questions and Files before the topics and reads no message until one is opened", async () => {
+  it("lists All, Questions and Files before the topics and reads no digest from a message", async () => {
     const source = new FixtureSource(files);
     await mount(source);
 
@@ -109,26 +109,194 @@ describe("topic list screen", () => {
     expect(rowLabels().slice(3)).toEqual(["Documentation", "Operations", "The API"]);
     expect(host.querySelector<HTMLDetailsElement>(".closed-topics")?.open).toBe(false);
     expect(host.querySelector(".closed-topics summary")?.textContent).toBe("Closed (1)");
-    expect(source.reads.filter((path) => path.includes("/inbox/"))).toEqual([]);
 
     await click(entry("The API"));
-    expect(source.reads).toContain(`topics/api/inbox/2026-10/${API_ID}.md`);
-    expect(source.reads).not.toContain(`topics/ops/inbox/2026-10/${OPS_ID}.md`);
     expect(host.querySelector("h2.topic-heading")?.textContent).toBe("The API");
-
-    await click(entry("Operations"));
-    expect(source.reads).toContain(`topics/ops/inbox/2026-10/${OPS_ID}.md`);
-    expect(source.reads).not.toContain(`topics/docs/inbox/2026-10/${DOCS_ID}.md`);
-
-    // All merges the topics that are loaded and loads no other.
-    await click(entry("All"));
-    expect(host.textContent).toContain(API_ID);
-    expect(host.textContent).toContain(OPS_ID);
-    expect(host.textContent).not.toContain(DOCS_ID);
-    expect(source.reads).not.toContain(`topics/docs/inbox/2026-10/${DOCS_ID}.md`);
     // Questions and Files read the same loaded messages.
+    await click(entry("All"));
     await click(entry("Files"));
     expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
+  });
+
+  describe("the All view", () => {
+    const text = () => host.querySelector("main")?.textContent ?? "";
+    const inOrder = (...ids: string[]) => {
+      const positions = ids.map((id) => text().indexOf(id));
+      expect(positions.every((position) => position >= 0)).toBe(true);
+      expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+    };
+
+    /** Holds every topic inbox listing until released, so the loading state can be observed. */
+    function gated(source: FixtureSource): () => void {
+      const list = source.listDirectory.bind(source);
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      source.listDirectory = async (revision, path) => {
+        if (/^topics\/[^/]+\/inbox$/.test(path)) await gate;
+        return list(revision, path);
+      };
+      return release;
+    }
+
+    it("shows every open topic right after a reload, and a loading state meanwhile", async () => {
+      const source = new FixtureSource(files);
+      const release = gated(source);
+      await mount(source);
+
+      expect(host.querySelector("p.empty")?.textContent).toBe("Loading messages…");
+      expect(host.querySelector('[role="status"].all-status')?.textContent).toBe(
+        "Loading topics: 0 of 3",
+      );
+      expect(text()).toContain("Loading messages");
+
+      release();
+      await settle();
+      inOrder(API_ID, OPS_ID, DOCS_ID);
+      expect(host.querySelector("p.empty")).toBeNull();
+      expect(host.querySelector(".all-status")?.textContent).toBe(
+        "Closed topics appear here once opened.",
+      );
+      expect(text()).not.toContain("2026-01-01T0900-alice-agent-archive-01");
+    });
+
+    it("is complete after opening topic A and going back to All", async () => {
+      const source = new FixtureSource(files);
+      await mount(source);
+      await click(entry("The API"));
+      await click(entry("All"));
+      inOrder(API_ID, OPS_ID, DOCS_ID);
+    });
+
+    it("holds the union, ordered by time, after opening topics A and B and going back to All", async () => {
+      const source = new FixtureSource(files);
+      await mount(source);
+      await click(entry("Operations"));
+      await click(entry("The API"));
+      await click(entry("All"));
+      inOrder(API_ID, OPS_ID, DOCS_ID);
+    });
+
+    it("adds a closed topic once it was opened", async () => {
+      const source = new FixtureSource(files);
+      await mount(source);
+      act(() => {
+        (host.querySelector(".closed-topics summary") as HTMLElement).click();
+      });
+      await settle();
+      await click(entry("Archive"));
+      await click(entry("All"));
+      inOrder("2026-01-01T0900-alice-agent-archive-01", API_ID);
+    });
+
+    /** Ten topics, one message each; `topic-NN` is the NNth. */
+    function many(): Record<string, string> {
+      const repository: Record<string, string> = { ".agent-collab": MARKER };
+      for (let index = 1; index <= 10; index += 1) {
+        const name = `topic-${String(index).padStart(2, "0")}`;
+        const id = `2026-10-${String(index).padStart(2, "0")}T0900-alice-agent-${name}-01`;
+        repository[`topics/${name}/inbox/2026-10/${id}.md`] = messageText(id, "alice-agent", name);
+      }
+      return repository;
+    }
+    const messagePath = (name: string) =>
+      `topics/${name}/inbox/2026-10/2026-10-${name.slice(-2)}T0900-alice-agent-${name}-01.md`;
+
+    /**
+     * Holds every message file read (the activity reads never read one); `topics()` are the topics
+     * whose messages were asked for so far.
+     */
+    function counted(source: FixtureSource) {
+      const read = source.readFile.bind(source);
+      const asked = new Set<string>();
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      source.readFile = async (entry) => {
+        const topic = /^topics\/([^/]+)\/inbox\//.exec(entry.path)?.[1];
+        if (topic !== undefined) {
+          asked.add(topic);
+          await gate;
+        }
+        return read(entry);
+      };
+      return { topics: () => asked.size, release };
+    }
+
+    it("reads four topics at a time and stops the queue when All is left", async () => {
+      const source = new FixtureSource(many());
+      const reads = counted(source);
+      await mount(source);
+      expect(reads.topics()).toBe(4);
+      expect(host.querySelector(".all-status")?.textContent).toBe("Loading topics: 0 of 10");
+
+      await click(entry("topic-01"));
+      reads.release();
+      await settle();
+      await settle();
+      // Only the four in flight finished; the six not yet started were never read.
+      expect(reads.topics()).toBe(4);
+    });
+
+    it("does not read a topic All has not reached when the topic list refreshes", async () => {
+      const files10 = many();
+      const source = new FixtureSource(files10);
+      const reads = counted(source);
+      await mount(source);
+      await click(entry("topic-01"));
+      // The reads in flight finish first; the Refresh button waits while a topic is opening.
+      reads.release();
+      await settle();
+
+      source.commit({
+        ...files10,
+        "topics/topic-10/inbox/2026-10/2026-10-20T0900-alice-agent-topic-10-01.md": messageText(
+          "2026-10-20T0900-alice-agent-topic-10-01",
+          "alice-agent",
+          "topic-10",
+        ),
+      });
+      await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
+      await settle();
+      expect(source.reads.filter((path) => path.includes("topics/topic-10/inbox/"))).toEqual([]);
+      expect(source.reads).toContain(messagePath("topic-01"));
+    });
+
+    it("keeps the count short and the error visible when a topic cannot be read, until the next refresh", async () => {
+      const source = new FixtureSource(files);
+      const list = source.listDirectory.bind(source);
+      let failing = true;
+      source.listDirectory = (revision, path) =>
+        failing && path === "topics/ops/inbox"
+          ? Promise.reject(new SourceError("unreachable", ""))
+          : list(revision, path);
+      await mount(source);
+      expect(host.querySelector(".all-status")?.textContent).toBe("Loading topics: 2 of 3");
+      expect(host.querySelector(".error")).not.toBeNull();
+      expect(text()).not.toContain(OPS_ID);
+
+      failing = false;
+      await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
+      expect(text()).toContain(OPS_ID);
+      expect(host.querySelector(".all-status")?.textContent).toBe(
+        "Closed topics appear here once opened.",
+      );
+    });
+
+    it("says there are no messages only when no topic has any", async () => {
+      const source = new FixtureSource({
+        ".agent-collab": MARKER,
+        "topics/quiet/TOPIC.md": "---\ntitle: Quiet\n---\n",
+      });
+      const release = gated(source);
+      await mount(source);
+      expect(host.querySelector("p.empty")?.textContent).toBe("Loading messages…");
+      release();
+      await settle();
+      expect(host.querySelector("p.empty")?.textContent).toBe("No messages yet.");
+    });
   });
 
   it("shows in All a message that arrived while its topic was open", async () => {
@@ -229,7 +397,8 @@ describe("topic list screen", () => {
     });
     await settle();
     expect(source.listings).toContain("topics/archive");
-    expect(source.reads.filter((path) => path.includes("/inbox/"))).toEqual([]);
+    // All reads the open topics; a closed topic's messages stay unread until it is opened.
+    expect(source.reads.filter((path) => path.includes("topics/archive/inbox/"))).toEqual([]);
   });
 
   it("shows the twelve most recent topics, a Show all button and always the selected topic", async () => {
@@ -375,6 +544,6 @@ describe("topic list screen", () => {
     await click(host.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement);
 
     expect(host.textContent).toContain("The API");
-    expect(source.reads.filter((path) => path.includes("/inbox/"))).toEqual([]);
+    expect(source.reads).toContain(`topics/api/inbox/2026-10/${API_ID}.md`);
   });
 });
