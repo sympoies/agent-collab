@@ -46,6 +46,7 @@ export const en = {
   "range.loaded": "Loaded {count, plural, one {# message} other {# messages}}, back to {date}",
   "range.loadedPast":
     "Loaded {count, plural, one {# message} other {# messages}} from {from} to {to}. Newer messages are not loaded.",
+  "range.noneUpTo": "No messages on or before {date}. Newer messages are not loaded.",
   "range.jumpLabel": "Jump to date",
   "range.jumpGo": "Go",
   "range.showNewest": "Show newest messages",

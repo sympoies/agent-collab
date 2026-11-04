@@ -557,7 +557,7 @@ export function App({
           {view !== "questions" && (
             <RangeBar
               messages={messages}
-              hasNewer={snapshot.hasNewer}
+              jumpedTo={snapshot.jumpedTo}
               disabled={busy || retryingAfterLimit}
               onJump={(date) => {
                 run(() => loader.jumpTo(date), 0, "jump");

@@ -33,6 +33,7 @@ export const zhTW: Messages = {
   "range.loaded": "已載入 {count, plural, other {# 則}}訊息，最早到 {date}",
   "range.loadedPast":
     "已載入 {from} 至 {to} 的 {count, plural, other {# 則}}訊息，較新的訊息尚未載入。",
+  "range.noneUpTo": "{date} 以前沒有訊息，較新的訊息尚未載入。",
   "range.jumpLabel": "跳到日期",
   "range.jumpGo": "前往",
   "range.showNewest": "顯示最新訊息",

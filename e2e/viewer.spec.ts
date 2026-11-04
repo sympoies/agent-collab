@@ -299,6 +299,31 @@ function historyThread(): MessageFixture[] {
   return result;
 }
 
+/** 30 messages each in July, August and September, in month folders; the last replies to the first. */
+function historyMonthlyThread(): MessageFixture[] {
+  const first = makeMessage("2026-07-01", "0900", "alice-agent", "api", 1, "question", "Opening.");
+  const result = [first];
+  for (let index = 1; index < 90; index += 1) {
+    const month = ["07", "08", "09"][Math.floor(index / 30)] ?? "09";
+    const day = `2026-${month}-${String(1 + Math.floor((index % 30) / 3)).padStart(2, "0")}`;
+    const reply = index === 89;
+    result.push(
+      makeMessage(
+        day,
+        `09${String(index % 3).padStart(2, "0")}`,
+        "bob-agent",
+        "api",
+        index + 1,
+        reply ? "answer" : "info",
+        reply ? "Late answer to the opening question." : `History message ${String(index)}.`,
+        "alice-agent",
+        reply ? first.id : "",
+      ),
+    );
+  }
+  return result;
+}
+
 function attachmentThread(): MessageFixture[] {
   const first = makeMessage(
     "2026-10-08",
@@ -353,7 +378,15 @@ function json(route: Route, value: unknown, status = 200, headers: Record<string
 
 async function installApiStub(
   page: Page,
-  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic" | "history",
+  mode:
+    | "long"
+    | "questions"
+    | "attachments"
+    | "empty"
+    | "error"
+    | "long-topic"
+    | "history"
+    | "history-monthly",
 ) {
   const messages =
     mode === "long"
@@ -366,7 +399,9 @@ async function installApiStub(
             ? longTopicThread()
             : mode === "history"
               ? historyThread()
-              : [];
+              : mode === "history-monthly"
+                ? historyMonthlyThread()
+                : [];
   const arrivalOne = makeMessage(
     "2026-10-09",
     "1030",
@@ -392,6 +427,7 @@ async function installApiStub(
   ]);
   const unhandled: string[] = [];
   const topicBlobRequests: string[] = [];
+  const apiRequests: string[] = [];
   let headCalls = 0;
   let completedHeadCalls = 0;
 
@@ -405,6 +441,7 @@ async function installApiStub(
       return;
     }
 
+    apiRequests.push(path.slice(path.indexOf("/git/")));
     if (path.endsWith("/git/ref/heads/main")) {
       headCalls += 1;
       if (mode === "error") {
@@ -445,6 +482,17 @@ async function installApiStub(
 
     if (["1", "2", "3"].some((version) => path.endsWith(`/git/trees/inbox-${version}`))) {
       const version = path.slice(path.lastIndexOf("-") + 1);
+      if (mode === "history-monthly") {
+        await json(route, {
+          truncated: false,
+          tree: [
+            treeEntry("2026-07", "month-2026-07", "tree"),
+            treeEntry("2026-08", "month-2026-08", "tree"),
+            treeEntry("2026-09", "month-2026-09", "tree"),
+          ],
+        });
+        return;
+      }
       const fixtureMessages =
         mode !== "long" || version === "1"
           ? messages
@@ -456,6 +504,19 @@ async function installApiStub(
         blobs.set(sha, message.text);
         return treeEntry(`${message.id}.md`, sha, "blob");
       });
+      await json(route, { truncated: false, tree: entries });
+      return;
+    }
+
+    const month = /\/git\/trees\/month-(2026-\d{2})$/.exec(path)?.[1];
+    if (month !== undefined) {
+      const entries = messages
+        .filter((message) => message.id.startsWith(month))
+        .map((message) => {
+          const sha = `message-m-${message.id}`;
+          blobs.set(sha, message.text);
+          return treeEntry(`${message.id}.md`, sha, "blob");
+        });
       await json(route, { truncated: false, tree: entries });
       return;
     }
@@ -505,13 +566,22 @@ async function installApiStub(
     {
       completedHeadCalls: () => completedHeadCalls,
       topicBlobRequests: () => topicBlobRequests.length,
+      apiRequests: () => apiRequests,
     },
   );
 }
 
 async function openViewer(
   page: Page,
-  mode: "long" | "questions" | "attachments" | "empty" | "error" | "long-topic" | "history",
+  mode:
+    | "long"
+    | "questions"
+    | "attachments"
+    | "empty"
+    | "error"
+    | "long-topic"
+    | "history"
+    | "history-monthly",
 ) {
   const assertRequests = await installApiStub(page, mode);
   await page.goto("/");
@@ -590,7 +660,7 @@ test("long chat adapts across themes and viewports", async ({ page, context }) =
   await refresh.click();
   await expect.poll(() => assertRequests.completedHeadCalls()).toBe(headsBeforeArrival + 1);
   await expect(refresh).toHaveAttribute("aria-busy", "false");
-  await expect(page.getByRole("status")).toHaveText(
+  await expect(page.locator(".sr-only[role=status]")).toHaveText(
     "1 new message arrived. 1 new message since opening this view.",
   );
   await expect(page.getByRole("separator", { name: "New messages" })).toBeVisible();
@@ -2526,6 +2596,7 @@ for (const code of LOCALES) {
       const date = page.getByLabel(messages["range.jumpLabel"]);
       await date.fill("2026-09-02");
       await date.press("Enter");
+      await expect(date).toBeFocused();
       await expect(line).toHaveText(
         translate(code, "range.loadedPast", { count: 6, from: "2026-09-01", to: "2026-09-02" }),
       );
@@ -2541,6 +2612,7 @@ for (const code of LOCALES) {
       await saveScreenshot(page, `range-jump-${code}-${view.label}.png`);
 
       await page.getByRole("button", { name: messages["range.showNewest"] }).click();
+      await expect(date).toBeFocused();
       await expect(line).toHaveText(
         translate(code, "range.loaded", { count: 50, date: "2026-09-04" }),
       );
@@ -2556,3 +2628,24 @@ for (const code of LOCALES) {
     });
   }
 }
+
+test("a jump in the monthly layout lists one month folder and reads one page", async ({ page }) => {
+  const assertRequests = await openViewer(page, "history-monthly");
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await expect(page.locator(".range-line")).toHaveText(
+    translate("en", "range.loaded", { count: 50, date: "2026-08-04" }),
+  );
+  assertRequests.apiRequests().length = 0;
+  const date = page.getByLabel("Jump to date");
+  await date.fill("2026-07-02");
+  await date.press("Enter");
+  await expect(page.locator(".message")).toHaveCount(6);
+  // Exactly the July folder and its six files: no root, inbox, other month or head request.
+  const requests = assertRequests.apiRequests();
+  expect(
+    requests.filter((path) => path.includes("/git/trees/")).map((path) => path.split("/").pop()),
+  ).toEqual(["month-2026-07"]);
+  expect(requests.filter((path) => path.includes("/git/blobs/"))).toHaveLength(6);
+  expect(requests).toHaveLength(7);
+  assertRequests();
+});

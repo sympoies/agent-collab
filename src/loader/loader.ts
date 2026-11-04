@@ -25,8 +25,8 @@ export interface LoaderSnapshot {
   readonly items: readonly TimelineItem[];
   /** True while older history has not been loaded. */
   readonly hasOlder: boolean;
-  /** True after a jump to a past day: messages newer than the loaded range exist and are not loaded. */
-  readonly hasNewer: boolean;
+  /** After a jump, the last day of the loaded range: newer messages may exist and are not loaded. */
+  readonly jumpedTo: string | null;
   /** Paths of items that arrived through refresh after open. */
   readonly fresh: ReadonlySet<string>;
   /** Participant roster from the repository marker. */
@@ -187,7 +187,7 @@ export class Loader {
   private snapshot: LoaderSnapshot = {
     items: [],
     hasOlder: false,
-    hasNewer: false,
+    jumpedTo: null,
     fresh: new Set(),
     participants: [],
     formerParticipants: [],
@@ -303,24 +303,39 @@ export class Loader {
     return this.serialize(async () => {
       if (this.head === null) return;
       const month = date?.slice(0, 7) ?? "";
-      // A month folder of the chosen day's month may hold newer days; it is not listed to find out.
-      const newer =
+      // Files and later month folders in the listing already tell whether newer messages exist.
+      let newer =
         date !== null &&
         this.inbox.some((entry) =>
           isMessageFile(entry)
             ? entry.name.slice(0, 10) > date
-            : isMonth(entry) && entry.name >= month,
+            : isMonth(entry) && entry.name > month,
         );
+      // Otherwise only the chosen day's own month folder can hold later days; it is the one
+      // listing the page needs anyway, so its names decide.
+      const own = this.inbox.find((entry) => isMonth(entry) && entry.name === month);
+      let ownFiles: readonly DirectoryEntry[] = [];
+      if (date !== null && own !== undefined) {
+        ownFiles = (await this.source.listDirectory(this.head.revision, own.path)).filter(
+          isMessageFile,
+        );
+        newer ||= ownFiles.some((entry) => entry.name.slice(0, 10) > date);
+      }
       this.cutoff = newer ? date : null;
       this.items.clear();
       this.loadedIds.clear();
       this.fresh.clear();
       this.unavailable.clear();
       this.listedMonths.clear();
-      this.pending = this.inbox.filter((entry) => isMessageFile(entry) && this.inRange(entry.name));
-      this.pending.sort(newestFirst);
+      if (own !== undefined && date !== null) this.listedMonths.set(own.name, own.objectId);
+      this.pending = [...this.inbox.filter(isMessageFile), ...ownFiles]
+        .filter((entry) => this.inRange(entry.name))
+        .sort(newestFirst);
       this.unlistedMonths = this.inbox
-        .filter((entry) => isMonth(entry) && (this.cutoff === null || entry.name <= month))
+        .filter(
+          (entry) =>
+            isMonth(entry) && entry !== own && (this.cutoff === null || entry.name <= month),
+        )
         .sort(newestFirst);
       await this.loadPage();
     });
@@ -520,7 +535,7 @@ export class Loader {
     this.snapshot = {
       items,
       hasOlder: this.pending.length > 0 || this.unlistedMonths.length > 0,
-      hasNewer: this.cutoff !== null,
+      jumpedTo: this.cutoff,
       fresh: new Set(this.fresh),
       participants: this.participants,
       formerParticipants: this.formerParticipants,

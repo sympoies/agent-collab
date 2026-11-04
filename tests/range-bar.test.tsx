@@ -34,6 +34,7 @@ const TEXTS = {
     jump: "Jump to date",
     go: "Go",
     newest: "Show newest messages",
+    none: "No messages on or before 2026-01-01. Newer messages are not loaded.",
     earlier: `Reply to ${OLD} (the original is earlier)`,
   },
   ja: {
@@ -42,6 +43,7 @@ const TEXTS = {
     jump: "日付へ移動",
     go: "移動",
     newest: "最新のメッセージを表示",
+    none: "2026-01-01以前のメッセージはありません。これより新しいメッセージは読み込まれていません。",
     earlier: `${OLD} への返信（元のメッセージはさらに前にあります）`,
   },
   "zh-TW": {
@@ -50,6 +52,7 @@ const TEXTS = {
     jump: "跳到日期",
     go: "前往",
     newest: "顯示最新訊息",
+    none: "2026-01-01 以前沒有訊息，較新的訊息尚未載入。",
     earlier: `回覆 ${OLD}（原訊息較早）`,
   },
 } as const;
@@ -95,6 +98,23 @@ describe("the loaded range line, the jump to a date and a reply whose original i
       for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
     });
 
+  const jumpTo = async (host: HTMLElement, day: string) => {
+    const input = host.querySelector<HTMLInputElement>('.range-jump input[type="date"]');
+    // Setting the value and submitting the form is what Enter in the field does.
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    act(() => {
+      setValue?.call(input, day);
+      input?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => {
+      host
+        .querySelector(".range-jump")
+        ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await settle();
+  };
+
   const click = (element: Element | null | undefined) => {
     act(() => {
       element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -118,26 +138,24 @@ describe("the loaded range line, the jump to a date and a reply whose original i
       expect(button(host, text.newest)).toBeUndefined();
 
       source.listings.length = 0;
-      // Setting the value and submitting the form is what Enter in the field does.
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-      act(() => {
-        setValue?.call(input, "2026-08-20");
-        input?.dispatchEvent(new Event("input", { bubbles: true }));
-      });
-      act(() => {
-        host
-          .querySelector(".range-jump")
-          ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-      });
-      await settle();
+      await jumpTo(host, "2026-08-20");
       expect(source.listings).toEqual(["inbox/2026-08"]);
       expect(host.querySelector(".range-line")?.textContent).toBe(text.past);
+      expect(host.querySelectorAll("h1")).toHaveLength(1);
+      // The question in the range may have been answered in the part that is not loaded.
+      expect(host.querySelector('.question-progress[data-state="unknown"]')).not.toBeNull();
+      expect(document.activeElement).toBe(input);
+
+      await jumpTo(host, "2026-01-01");
+      expect(host.querySelectorAll(".message")).toHaveLength(0);
+      expect(host.querySelector(".range-line")?.textContent).toBe(text.none);
 
       click(button(host, text.newest));
       await settle();
       expect(host.querySelector(".range-line")?.textContent).toBe(text.loaded);
       expect(button(host, text.newest)).toBeUndefined();
+      // The button the reader pressed is gone; focus is on the date field, not on the page.
+      expect(document.activeElement).toBe(input);
     });
 
     it(`offers to load an older original instead of calling it missing in ${locale}`, async () => {
@@ -158,6 +176,14 @@ describe("the loaded range line, the jump to a date and a reply whose original i
       expect(host.querySelector(".quote")?.getAttribute("href")).toBe(`#msg-${OLD}`);
     });
   }
+
+  it("does not jump to a date that is not a four-digit year", async () => {
+    const { host, source } = await open("en");
+    source.listings.length = 0;
+    await jumpTo(host, "10000-01-01");
+    expect(source.listings).toEqual([]);
+    expect(host.querySelector(".range-line")?.textContent).toBe(TEXTS.en.loaded);
+  });
 
   it("calls a reply's original not shown once nothing older can be loaded", async () => {
     const lonely = {

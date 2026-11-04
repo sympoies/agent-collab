@@ -33,6 +33,8 @@ export const ja: Messages = {
   "range.loaded": "{count, plural, other {#件}}のメッセージを読み込み済み（{date}まで）",
   "range.loadedPast":
     "{from}から{to}までの{count, plural, other {#件}}を読み込み済み。これより新しいメッセージは読み込まれていません。",
+  "range.noneUpTo":
+    "{date}以前のメッセージはありません。これより新しいメッセージは読み込まれていません。",
   "range.jumpLabel": "日付へ移動",
   "range.jumpGo": "移動",
   "range.showNewest": "最新のメッセージを表示",

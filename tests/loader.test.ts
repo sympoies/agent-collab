@@ -279,7 +279,7 @@ describe("Loader.jumpTo", () => {
       monthly("2026-08", 15, 1),
       monthly("2026-08", 15, 2),
     ]);
-    expect(loader.getSnapshot()).toMatchObject({ hasOlder: true, hasNewer: true });
+    expect(loader.getSnapshot()).toMatchObject({ hasOlder: true, jumpedTo: "2026-08-15" });
   });
 
   it("pages older from the chosen day with the usual Load older", async () => {
@@ -307,7 +307,7 @@ describe("Loader.jumpTo", () => {
   it("is not a jump when nothing is newer than the chosen day", async () => {
     const loader = await opened(new FixtureSource(files), 2);
     await loader.jumpTo("2026-12-31");
-    expect(loader.getSnapshot().hasNewer).toBe(false);
+    expect(loader.getSnapshot().jumpedTo).toBeNull();
     expect(paths(loader.getSnapshot().items)).toEqual([
       flat("2026-10", 1, 1),
       monthly("2026-10", 2, 1),
@@ -328,11 +328,66 @@ describe("Loader.jumpTo", () => {
       monthly("2026-08", 15, 2),
     ]);
     await loader.jumpTo(null);
-    expect(loader.getSnapshot().hasNewer).toBe(false);
+    expect(loader.getSnapshot().jumpedTo).toBeNull();
     expect(paths(loader.getSnapshot().items)).toEqual([
       monthly("2026-10", 2, 1),
       monthly("2026-10", 3, 1),
     ]);
+  });
+
+  it("is not a jump to a day after the newest message of the newest month", async () => {
+    const source = new FixtureSource(files);
+    const loader = await opened(source, 2);
+    source.listings.length = 0;
+    await loader.jumpTo("2026-10-31");
+    expect(source.listings).toEqual(["inbox/2026-10"]);
+    expect(loader.getSnapshot().jumpedTo).toBeNull();
+    expect(paths(loader.getSnapshot().items)).toEqual([
+      flat("2026-10", 1, 1),
+      monthly("2026-10", 2, 1),
+    ]);
+    // With the whole history loaded, question states stay known.
+    const small = await opened(new FixtureSource(repo([monthly("2026-10", 2, 1)])));
+    await small.jumpTo("2026-10-31");
+    expect(small.getSnapshot()).toMatchObject({ jumpedTo: null, incompleteTopics: [] });
+  });
+
+  it("continues in the next older month when the chosen month has nothing on or before the day", async () => {
+    const source = new FixtureSource(files);
+    const loader = await opened(source, 1);
+    source.listings.length = 0;
+    // The only message of 2026-10 on day 1 is a flat file; 2026-10/ holds day 2 only.
+    await loader.jumpTo("2026-10-01");
+    expect(source.listings).toEqual(["inbox/2026-10"]);
+    expect(paths(loader.getSnapshot().items)).toEqual([flat("2026-10", 1, 1)]);
+    await loader.jumpTo("2026-09-01");
+    expect(paths(loader.getSnapshot().items)).toEqual([monthly("2026-09", 1, 1)]);
+  });
+
+  it("starts in the next older month folder when the chosen month has no folder", async () => {
+    const sparse = repo([monthly("2026-08", 5, 1), monthly("2026-10", 5, 1)]);
+    const source = new FixtureSource(sparse);
+    const loader = await opened(source, 5);
+    source.listings.length = 0;
+    await loader.jumpTo("2026-09-15");
+    expect(source.listings).toEqual(["inbox/2026-08"]);
+    expect(paths(loader.getSnapshot().items)).toEqual([monthly("2026-08", 5, 1)]);
+    expect(loader.getSnapshot().jumpedTo).toBe("2026-09-15");
+  });
+
+  it("shows an empty range for a day before the first message, without a listing", async () => {
+    const source = new FixtureSource(files);
+    const loader = await opened(source, 2);
+    source.listings.length = 0;
+    source.reads.length = 0;
+    await loader.jumpTo("2026-06-01");
+    expect(source.listings).toEqual([]);
+    expect(source.reads).toEqual([]);
+    expect(loader.getSnapshot()).toMatchObject({
+      items: [],
+      hasOlder: false,
+      jumpedTo: "2026-06-01",
+    });
   });
 
   it("reports question topics as unknown while newer messages are not loaded", async () => {
