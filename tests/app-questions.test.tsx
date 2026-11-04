@@ -117,8 +117,9 @@ describe("receipts and the Questions view", () => {
   }
 
   const button = (host: HTMLElement, text: string) =>
-    [...host.querySelectorAll("button")].find((candidate) =>
-      candidate.textContent.startsWith(text),
+    [...host.querySelectorAll("button")].find(
+      (candidate) =>
+        candidate.textContent.startsWith(text) || candidate.getAttribute("aria-label") === text,
     );
 
   async function click(element: Element | undefined): Promise<void> {

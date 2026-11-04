@@ -98,7 +98,7 @@ describe("Root live demo", () => {
     expect(host.textContent).toContain(formatDateTime("en", new Date("2026-11-03T08:00:00.000Z")));
     expect(
       [...host.querySelectorAll("button")].some(
-        (button) => button.textContent === "Check live now",
+        (button) => button.getAttribute("aria-label") === "Check live now",
       ),
     ).toBe(true);
 

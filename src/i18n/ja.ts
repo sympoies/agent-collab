@@ -221,4 +221,5 @@ export const ja: Messages = {
     "ローカルフォルダーの権限をもう一度許可する必要があります。ツールバーからフォルダーを選び直してください。",
   "error.needsToken": "このリポジトリはトークンが必要か、存在しません。",
   "file.badgeOther": "ファイル",
+  "bar.more": "その他",
 };

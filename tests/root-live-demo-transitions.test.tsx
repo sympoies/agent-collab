@@ -110,7 +110,8 @@ describe("live demo transitions", () => {
 
   async function click(host: HTMLElement, label: string): Promise<void> {
     const button = [...host.querySelectorAll("button")].find(
-      (candidate) => candidate.textContent === label,
+      (candidate) =>
+        candidate.textContent === label || candidate.getAttribute("aria-label") === label,
     );
     expect(button, `button "${label}"`).toBeDefined();
     await act(async () => {
@@ -120,7 +121,9 @@ describe("live demo transitions", () => {
   }
 
   const hasButton = (host: HTMLElement, label: string) =>
-    [...host.querySelectorAll("button")].some((button) => button.textContent === label);
+    [...host.querySelectorAll("button")].some(
+      (button) => button.textContent === label || button.getAttribute("aria-label") === label,
+    );
 
   it("replaces an older snapshot with the live repository once, without re-reading the snapshot", async () => {
     const createLiveDemoSource = vi.fn(() => new FixtureSource(liveFiles));

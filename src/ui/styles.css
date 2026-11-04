@@ -1241,3 +1241,102 @@ span.chip {
     transition-duration: 0.01ms !important;
   }
 }
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  --glyph-size: 20px;
+}
+
+.glyph {
+  width: var(--glyph-size, 20px);
+  height: var(--glyph-size, 20px);
+  flex: 0 0 auto;
+}
+
+@media (pointer: coarse) {
+  .icon-button {
+    width: 40px;
+    height: 40px;
+  }
+}
+
+.icon-button:active,
+.menu-item:active {
+  background: var(--hover-strong);
+}
+
+.language-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.language-switcher .glyph {
+  color: var(--secondary);
+}
+
+.overflow-menu {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  min-width: 220px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--floating);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--popover-shadow);
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+}
+
+.menu-item[aria-checked="true"] {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--hover-strong);
+}
+
+.menu-icon {
+  display: inline-flex;
+  width: 20px;
+}
+
+.menu-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-heading {
+  padding: 6px 10px 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}

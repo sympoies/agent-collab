@@ -87,7 +87,10 @@ describe("App identity controls", () => {
   }
 
   const button = (host: HTMLElement, label: string) =>
-    [...host.querySelectorAll("button")].find((candidate) => candidate.textContent === label);
+    [...host.querySelectorAll("button")].find(
+      (candidate) =>
+        candidate.textContent === label || candidate.getAttribute("aria-label") === label,
+    );
 
   async function click(element: Element | undefined): Promise<void> {
     expect(element).toBeDefined();
@@ -112,7 +115,7 @@ describe("App identity controls", () => {
 
   it("puts Refresh first in the toolbar", async () => {
     const host = await render(memoryStorage());
-    expect(host.querySelector(".bar-actions button")?.textContent).toBe("Refresh");
+    expect(host.querySelector(".bar-actions button")?.getAttribute("aria-label")).toBe("Refresh");
   });
 
   it("marks the viewer's own messages and follows Viewing as, saving the choice per repository", async () => {
