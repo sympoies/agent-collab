@@ -28,7 +28,11 @@ const snapshot = JSON.stringify({
         id(n + 1),
         "alice-agent",
         "general",
-        n === 0 ? { type: "question", needs: "answer", to: "bob-agent" } : {},
+        n === 0
+          ? { type: "question", needs: "answer", to: "bob-agent" }
+          : n === 1
+            ? { reply_to: id(1) }
+            : {},
         `Message number ${String(n + 1)}.\n\nA second line so each message is tall enough to scroll.`,
       ),
     })),
@@ -228,5 +232,18 @@ test.describe("the phone topic bar @csp", () => {
     await expect(page.locator(".source-indicator")).toBeVisible();
     await expect(page.locator(".topic-menu")).toHaveCount(0);
     await expect(page.locator(".range-bar")).toBeVisible();
+  });
+
+  test("a quote link moves the focus to the quoted message without a history entry @csp", async ({
+    page,
+  }) => {
+    await openTopic(page);
+    const before = { length: await page.evaluate(() => history.length), url: page.url() };
+    const quote = page.locator(".quote").first();
+    await quote.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator(`#msg-${id(1)}`)).toBeFocused();
+    expect(await page.evaluate(() => history.length)).toBe(before.length);
+    expect(page.url()).toBe(before.url);
   });
 });
