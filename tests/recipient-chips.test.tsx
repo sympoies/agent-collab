@@ -18,10 +18,29 @@ const TO_BOB = "2026-10-01T0900-alice-agent-api-01";
 const TO_ALICE = "2026-10-01T0910-bob-agent-api-01";
 const TO_ALL = "2026-10-01T0920-bob-agent-ops-01";
 const TO_GHOST = "2026-10-01T0930-alice-agent-ops-01";
+const REPLY = "2026-10-01T0915-alice-agent-api-02";
+const ASK_BOB = "2026-10-01T0940-alice-agent-api-03";
+const ASK_ALICE = "2026-10-01T0950-bob-agent-api-02";
 const files = {
   ".agent-collab": "collab-protocol: 1\nparticipants: alice-agent, bob-agent\n",
   [`inbox/${TO_BOB}.md`]: messageText(TO_BOB, "alice-agent", "api", { to: "bob-agent" }),
   [`inbox/${TO_ALICE}.md`]: messageText(TO_ALICE, "bob-agent", "api", { to: "alice-agent" }),
+  // Alice replies to bob's message: the quote names bob, the parent's sender.
+  [`inbox/${REPLY}.md`]: messageText(REPLY, "alice-agent", "api", {
+    to: "bob-agent",
+    reply_to: TO_ALICE,
+  }),
+  // A question to bob and one to alice (the viewer): their receipts list the recipient.
+  [`inbox/${ASK_BOB}.md`]: messageText(ASK_BOB, "alice-agent", "api", {
+    to: "bob-agent",
+    type: "question",
+    needs: "answer",
+  }),
+  [`inbox/${ASK_ALICE}.md`]: messageText(ASK_ALICE, "bob-agent", "api", {
+    to: "alice-agent",
+    type: "question",
+    needs: "answer",
+  }),
   [`inbox/${TO_ALL}.md`]: messageText(TO_ALL, "bob-agent", "ops", { to: "all" }),
   [`inbox/${TO_GHOST}.md`]: messageText(TO_GHOST, "alice-agent", "ops", { to: "ghost-agent" }),
 };
@@ -95,6 +114,25 @@ describe("recipient chips, topic chips and avatar initials", () => {
     expect(chipFor(host, TO_BOB)?.getAttribute("data-self")).toBeNull();
     expect(chipFor(host, TO_ALICE)?.getAttribute("data-slot")).toBe("0");
     expect(chipFor(host, TO_ALICE)?.getAttribute("data-self")).toBe("true");
+  });
+
+  it("colors the quoted sender like that person, not like the replier", async () => {
+    const host = await render();
+    // The replier is alice (slot 0); the quote names bob (slot 1).
+    const from = host.querySelector(`#msg-${REPLY} .quote-from`);
+    expect(from?.textContent).toBe("bob-agent");
+    expect(from?.getAttribute("data-slot")).toBe("1");
+  });
+
+  it("lists each receipt recipient as a person chip, filled for the viewer", async () => {
+    const host = await render();
+    const chip = (id: string) => host.querySelector<HTMLElement>(`#msg-${id} .receipts .recipient`);
+    expect(chip(ASK_BOB)?.getAttribute("data-kind")).toBe("person");
+    expect(chip(ASK_BOB)?.getAttribute("data-slot")).toBe("1");
+    expect(chip(ASK_BOB)?.getAttribute("data-self")).toBeNull();
+    // The viewer is alice: the question to her marks her chip.
+    expect(chip(ASK_ALICE)?.getAttribute("data-slot")).toBe("0");
+    expect(chip(ASK_ALICE)?.getAttribute("data-self")).toBe("true");
   });
 
   it("keeps everyone and unknown recipients neutral, never emphasized", async () => {

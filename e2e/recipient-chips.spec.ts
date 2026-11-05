@@ -148,3 +148,24 @@ for (const scheme of ["light", "dark"] as const) {
     });
   }
 }
+
+// The narrowest phone of the acceptance criteria: chips wrap and the page does not scroll sideways.
+for (const scheme of ["light", "dark"] as const) {
+  test(`recipient chips wrap without sideways scrolling at 360 px, ${scheme} @csp`, async ({
+    page,
+  }) => {
+    await open(page, 360, scheme);
+    await expect(chip(page, TO_BOB)).toBeVisible();
+    await expect(chip(page, TO_GHOST)).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    const clipped = await page
+      .locator(".meta")
+      .evaluateAll(
+        (nodes) =>
+          nodes.filter((node) => node.getBoundingClientRect().right > window.innerWidth).length,
+      );
+    expect(clipped).toBe(0);
+  });
+}
