@@ -109,6 +109,12 @@ async function openRepository(
 /** The demos neither read nor write browser storage, so identity choices last for the view. */
 const MEMORY_ONLY = { storage: null, key: "demo" } as const;
 
+/**
+ * The hosted snapshot is a real repository's data, so the reader's choices are kept for the page's
+ * origin, like those of a GitHub repository; the demos keep nothing.
+ */
+const hostedIdentityKey = () => `hosted:${window.location.origin}`;
+
 type Screen =
   | { readonly kind: "welcome" }
   | {
@@ -527,7 +533,7 @@ export function Root(props: RootProps) {
         loader,
         { key: "app.hostedTitle" },
         [],
-        MEMORY_ONLY,
+        { storage: props.storage, key: hostedIdentityKey() },
         null,
         undefined,
         null,
