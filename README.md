@@ -7,8 +7,8 @@ This public repository holds the collaboration method and its documentation, and
 ## Preview
 
 <p>
-  <img src="docs/assets/readme/desktop-night-owl-1280.png" width="77.592%" alt="Desktop viewer in the Night Owl theme with the topic list, Questions and Files navigation, and an API conversation with colored recipient chips">
-  <img src="docs/assets/readme/phone-paper-390.png" width="22.408%" alt="Phone viewer in the Paper theme showing the API conversation and its top navigation bar">
+  <img src="docs/assets/readme/desktop-night-owl-1280.png" width="75.477%" alt="Desktop viewer in the Night Owl theme with the topic list, Questions and Files navigation, and an API conversation with colored recipient chips">
+  <img src="docs/assets/readme/phone-paper-390.png" width="24.523%" alt="Phone viewer in the Paper theme showing the API conversation and its top navigation bar">
 </p>
 
 *UI preview · synthetic data — desktop in the Night Owl theme, phone in the Paper theme*

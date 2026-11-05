@@ -14,7 +14,7 @@ describe("README UI previews", () => {
     const renderedHeights = [
       {
         path: "docs/assets/readme/desktop-night-owl-1280.png",
-        dimensions: [1280, 800],
+        dimensions: [1280, 900],
       },
       {
         path: "docs/assets/readme/phone-paper-390.png",

@@ -43,7 +43,7 @@ test("capture the fictional desktop and phone README previews", async ({ page })
     }
   });
 
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await openOfflineDemo(page);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night-owl");
   await expect(page.locator(".workspace")).toBeVisible();
@@ -55,7 +55,7 @@ test("capture the fictional desktop and phone README previews", async ({ page })
   await expect(question.locator(".shared-recipient").first()).toBeVisible();
   await page.getByRole("main").press("Home");
   await page.getByRole("main").evaluate((main) => {
-    main.scrollTop += 52;
+    main.scrollTop = 0;
   });
   await expect(question).toBeInViewport();
   await page.evaluate(() => {
@@ -79,7 +79,7 @@ test("capture the fictional desktop and phone README previews", async ({ page })
   await expect(page.locator(".topic-bar")).toBeVisible();
   await page.getByRole("main").press("Home");
   await page.getByRole("main").evaluate((main) => {
-    main.scrollTop += 32;
+    main.scrollTop = 0;
   });
   await expect(question).toBeInViewport();
   await page.evaluate(() => {
