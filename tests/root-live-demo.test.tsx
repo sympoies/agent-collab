@@ -148,7 +148,10 @@ describe("Root live demo", () => {
       );
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(storage.getItem).not.toHaveBeenCalled();
+    // Only the marker of what the reader last used is read at start; no saved settings.
+    expect(storage.getItem.mock.calls.map(([key]) => key)).toEqual([
+      "agent-collab-viewer.last-source",
+    ]);
     expect(memoryGet).not.toHaveBeenCalled();
     expect(encryptedGet).not.toHaveBeenCalled();
 
@@ -163,7 +166,9 @@ describe("Root live demo", () => {
 
     expect(createLiveDemoSource).toHaveBeenCalledOnce();
     expect(host.textContent).toContain("Live demo");
-    expect(storage.getItem).not.toHaveBeenCalled();
+    expect(storage.getItem.mock.calls.map(([key]) => key)).toEqual([
+      "agent-collab-viewer.last-source",
+    ]);
     expect(memoryGet).not.toHaveBeenCalled();
     expect(encryptedGet).not.toHaveBeenCalled();
     expect(storage.setItem).not.toHaveBeenCalled();

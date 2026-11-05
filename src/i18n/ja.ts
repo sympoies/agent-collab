@@ -259,6 +259,8 @@ export const ja: Messages = {
     "トークンはこのタブのメモリ内にだけ保持されます。再読み込みすると、もう一度入力が必要です。",
   "settings.saveOpen": "保存して開く",
   "settings.cancel": "キャンセル",
+  "settings.reopenMissing":
+    "保存したリポジトリを開き直せませんでした。このリポジトリ用のアクセストークンが保存されていません。下で入力し直してください。",
   "sources.heading": "データの取得元",
   "sources.intro": "ビューアーがメッセージを読み込む場所を選びます。",
   "sources.hostedText": "このサイトと一緒に公開された会話です。",

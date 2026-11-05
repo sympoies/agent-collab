@@ -182,6 +182,16 @@ describe("Root with a remembered local folder", () => {
     expect(host.textContent).toContain("From the local clone.");
   });
 
+  it("opens the remembered folder, not the GitHub repository, when the folder was the last viewer", async () => {
+    const { memory } = memoryWith({ name: "my-clone", active: true, permission: "granted" });
+    const storage = {
+      getItem: (key: string) => (key === "agent-collab-viewer.last-source" ? "github" : null),
+      setItem: () => undefined,
+    };
+    const host = await render(memory, null, storage);
+    expect(host.querySelector("h1")?.textContent).toBe("Local folder: my-clone");
+  });
+
   it("offers Reopen on the welcome screen when the folder is not the last view or needs a prompt", async () => {
     const { memory, calls } = memoryWith({ name: "my-clone", active: true, permission: "prompt" });
     const host = await render(memory);
