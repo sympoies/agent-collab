@@ -25,7 +25,13 @@ describe("view state", () => {
   });
 
   it("ignores damaged or foreign values", () => {
-    for (const text of ["{", "[]", '{"view":"x","topic":"../etc"}', '{"view":"chat","topic":7}']) {
+    for (const text of [
+      "{",
+      "[]",
+      '{"view":"x","topic":null}',
+      '{"view":"chat","topic":"../etc"}',
+      '{"view":"chat","topic":7}',
+    ]) {
       const storage = memory({ "agent-collab-viewer.view:k": text });
       expect(readViewState(storage, "k")).toEqual({ view: "chat", topic: null });
     }

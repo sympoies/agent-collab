@@ -239,16 +239,23 @@ describe("Root with a served snapshot", () => {
       }
     });
 
-    it("returns to the Files view after a reload and ignores a topic that is gone", async () => {
+    it("returns to the Files view after a reload", async () => {
       const storage = memoryStorage();
       let host = await open(storage);
-      await click(topicButton(host, "All"));
       await click(topicButton(host, "Files"));
+      host = await reload(storage);
+      expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
+      expect(topicButton(host, "Files").getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it("ignores a saved topic that is gone and keeps the saved view", async () => {
+      const storage = memoryStorage();
       storage.values.set(
-        [...storage.values.keys()].find((key) => key.includes(".view:")) as string,
+        [...storage.values.keys()].find((key) => key.includes(".view:")) ??
+          `agent-collab-viewer.view:hosted:${window.location.origin}${import.meta.env.BASE_URL}`,
         JSON.stringify({ view: "files", topic: "removed" }),
       );
-      host = await reload(storage);
+      const host = await open(storage);
       expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
     });
 
