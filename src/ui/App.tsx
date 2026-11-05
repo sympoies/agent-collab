@@ -568,7 +568,10 @@ export function App({
     () => resolveViewer(preferences, viewingAsParticipants, [...selfNames]),
     [preferences, selfNames, viewingAsParticipants],
   );
-  const people = useMemo(() => buildPeople(order, preferences), [order, preferences]);
+  const people = useMemo(
+    () => buildPeople(order, preferences, viewer),
+    [order, preferences, viewer],
+  );
   // Nothing saved and no configured own name is a participant: ask once who the viewer is.
   const showIdentityHint =
     snapshot.rosterKnown &&
@@ -1070,6 +1073,7 @@ export function App({
               {view === "chat" && (
                 <ChatView
                   rows={rows}
+                  showTopic={topic === null}
                   loading={allLoading}
                   people={people}
                   attachments={attachments}

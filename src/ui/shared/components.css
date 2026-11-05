@@ -33,8 +33,40 @@
   overflow-wrap: anywhere;
 }
 
+/* One neutral outline for every topic: person colors are the only per-entity colors. */
 .shared-topic-chip {
-  color: var(--link);
+  color: var(--secondary);
+}
+
+/* Who a message is for: a person's color, filled for the viewer; everyone and unknown are neutral. */
+.shared-recipient {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  border: var(--border-width) solid var(--chip-border);
+  border-radius: 10px;
+  padding: 0 7px;
+  color: var(--muted);
+  font-size: var(--font-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.shared-recipient[data-kind="person"] {
+  border-color: var(--person);
+  color: var(--person);
+  font-weight: 650;
+}
+
+.shared-recipient[data-self="true"] {
+  background: var(--person);
+  color: var(--on-person);
+}
+
+.shared-recipient[data-kind="everyone"],
+.shared-recipient[data-kind="unknown"] {
+  border-style: dashed;
+  font-style: italic;
 }
 
 .shared-status-chip[data-tone="attention"] {

@@ -7,15 +7,6 @@ function withClass(base: string, additional: string | undefined): string {
   return additional === undefined ? base : [base, additional].join(" ");
 }
 
-function initials(name: string): string {
-  return name
-    .split("-")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
 /** A participant label using the same theme-aware palette slot as chat. */
 export function ParticipantIdentity({
   name,
@@ -43,13 +34,69 @@ export function ParticipantIdentity({
     >
       {avatar && (
         <span className="shared-avatar avatar" aria-hidden="true">
-          {initials(name)}
+          {people.initials(name)}
         </span>
       )}
       <span className={labelClassName} title={title}>
         {people.label(name)}
       </span>
     </span>
+  );
+}
+
+/** Who a message is for: `null` means everyone. */
+export function RecipientChip({
+  name,
+  people,
+}: {
+  readonly name: string | null;
+  readonly people: People;
+}) {
+  const t = useT();
+  if (name === null) {
+    return (
+      <span className="shared-recipient recipient" data-kind="everyone">
+        {t("chat.everyone")}
+      </span>
+    );
+  }
+  if (!people.has(name)) {
+    return (
+      <span className="shared-recipient recipient" data-kind="unknown">
+        {name}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="shared-recipient recipient"
+      data-kind="person"
+      title={name}
+      {...personSlot(people.slot(name))}
+      {...(people.viewer === name ? { "data-self": "true" } : {})}
+    >
+      {people.label(name)}
+    </span>
+  );
+}
+
+/** The recipients of a message as chips; no recipient or "all" is everyone. */
+export function Recipients({
+  to,
+  people,
+}: {
+  readonly to: readonly string[];
+  readonly people: People;
+}) {
+  if (to.length === 0 || (to.length === 1 && to[0] === "all")) {
+    return <RecipientChip name={null} people={people} />;
+  }
+  return (
+    <>
+      {to.map((name, index) => (
+        <RecipientChip key={`${String(index)}-${name}`} name={name} people={people} />
+      ))}
+    </>
   );
 }
 

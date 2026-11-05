@@ -35,6 +35,7 @@ async function render(): Promise<string> {
   const people = buildPeople([...participants, ...formerParticipants], EMPTY_PREFERENCES);
   return renderToStaticMarkup(
     <ChatView
+      showTopic
       rows={rows}
       people={people}
       attachments={{ reader: loader.attachments, loadedIds: new Set(), onJump: () => undefined }}
@@ -75,7 +76,7 @@ describe("ChatView with the demo repository", () => {
         html,
       )?.[1];
     expect(quote).toMatch(
-      /^<span class="quote-label">In reply to <span class="quote-from">bob-agent<\/span> · <span class="quote-type">[a-z]+<\/span><\/span><span class="quote-text">The beta build passed the smoke tests\.<\/span>$/,
+      /^<span class="quote-label">In reply to <span class="quote-from" data-slot="\d+">bob-agent<\/span> · <span class="quote-type">[a-z]+<\/span><\/span><span class="quote-text">The beta build passed the smoke tests\.<\/span>$/,
     );
   });
 
@@ -112,6 +113,7 @@ describe("a reply whose parent is not loaded", () => {
     const html = renderToStaticMarkup(
       <LocaleProvider storage={{ getItem: () => locale, setItem: () => undefined }}>
         <ChatView
+          showTopic
           rows={rows}
           people={buildPeople(["alice-agent"], EMPTY_PREFERENCES)}
           attachments={{
@@ -153,6 +155,7 @@ describe("the type of a message card", () => {
     });
     const html = renderToStaticMarkup(
       <ChatView
+        showTopic
         rows={rows}
         people={buildPeople(["alice-agent", "bob-agent"], EMPTY_PREFERENCES)}
         attachments={{

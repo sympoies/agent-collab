@@ -7,9 +7,39 @@ export interface People {
   slot(name: string): number;
   /** The local display name, or the participant name when none was set. */
   label(name: string): string;
+  /** The letters of the avatar: from the display name when one was set, else from the name. */
+  initials(name: string): string;
+  /** Whether the person is on the roster or has sent a message (an unknown recipient is not). */
+  has(name: string): boolean;
+  /** The person the viewer is, or null for Observer. */
+  readonly viewer: string | null;
 }
 
-export function buildPeople(order: readonly string[], preferences: IdentityPreferences): People {
+/** The first letters of up to two words of a display name; one word gives its first character. */
+function displayInitials(display: string): string {
+  const words = display.split(/\s+/).filter(Boolean);
+  const letters =
+    words.length > 1
+      ? words.slice(0, 2).map((word) => Array.from(word)[0] ?? "")
+      : [Array.from(words[0] ?? "")[0] ?? ""];
+  return letters.join("").toUpperCase();
+}
+
+/** The first letters of up to two parts of a participant name such as "alice-agent". */
+function nameInitials(name: string): string {
+  return name
+    .split("-")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+export function buildPeople(
+  order: readonly string[],
+  preferences: IdentityPreferences,
+  viewer: string | null = null,
+): People {
   const slots = assignSlots(order, preferences);
   // A display name that equals another person's shown name or id would make two people look
   // alike, so it gets the participant name appended. A person without a display name always
@@ -26,6 +56,12 @@ export function buildPeople(order: readonly string[], preferences: IdentityPrefe
   return {
     slot: (name) => slots.get(name) ?? 0,
     label: (name) => labels.get(name) ?? preferences.names[name] ?? name,
+    initials: (name) => {
+      const display = preferences.names[name];
+      return display === undefined ? nameInitials(name) : displayInitials(display);
+    },
+    has: (name) => slots.has(name),
+    viewer,
   };
 }
 

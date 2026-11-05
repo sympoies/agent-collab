@@ -7,13 +7,8 @@ import type { Message } from "../message/types";
 import { useT, type Translate } from "../i18n/LocaleProvider";
 import { RefList, type AttachmentContext } from "./Attachments";
 import { personSlot, type People } from "./people";
-import { ParticipantIdentity, TopicChip } from "./shared/components";
+import { ParticipantIdentity, RecipientChip, Recipients, TopicChip } from "./shared/components";
 import type { MessageView, Row } from "./timeline";
-
-function recipients(to: readonly string[], people: People, t: Translate): readonly string[] {
-  if (to.length === 0 || (to.length === 1 && to[0] === "all")) return [t("chat.everyone")];
-  return to.map((name) => people.label(name));
-}
 
 function typeLabel(type: Message["type"], t: Translate): string {
   switch (type) {
@@ -68,7 +63,7 @@ function replyMissing(
   );
 }
 
-function Quote({ view }: { view: MessageView }) {
+function Quote({ view, people }: { view: MessageView; people: People }) {
   const t = useT();
   const earlier = useContext(EarlierContext);
   const replyTo = view.message.replyTo;
@@ -89,7 +84,10 @@ function Quote({ view }: { view: MessageView }) {
   return (
     <a className="quote" href={`#msg-${view.parent.id}`}>
       <span className="quote-label">
-        {t("chat.inReplyTo")} <span className="quote-from">{view.parent.from}</span>
+        {t("chat.inReplyTo")}{" "}
+        <span className="quote-from" {...personSlot(people.slot(view.parent.from))}>
+          {people.label(view.parent.from)}
+        </span>
         {" \u00b7 "}
         <span className="quote-type">{typeLabel(view.parent.type, t)}</span>
       </span>
@@ -154,7 +152,7 @@ function Receipts({ receipts, people }: { receipts: MessageReceipts; people: Peo
           <ul>
             {recipients.map((recipient) => (
               <li key={recipient.name} data-state={recipient.state}>
-                <span className="recipient-name">{people.label(recipient.name)}</span>{" "}
+                <RecipientChip name={recipient.name} people={people} />{" "}
                 {recipient.state === "waiting"
                   ? t("receipt.recipientWaiting")
                   : t(
@@ -213,11 +211,7 @@ function MessageRow({
           </span>
         </time>
         <span className="to-label">{t("chat.to")}</span>
-        {recipients(message.to, people, t).map((name, index) => (
-          <span key={`${String(index)}-${name}`} className="to">
-            {name}
-          </span>
-        ))}
+        <Recipients to={message.to} people={people} />
         {message.issues.length > 0 && (
           <details className="issues">
             <summary title={t("chat.issueTitle")}>
@@ -231,7 +225,7 @@ function MessageRow({
           </details>
         )}
       </header>
-      <Quote view={view} />
+      <Quote view={view} people={people} />
       {message.body.state === "locked" ? (
         <p className="body" data-body="locked">
           {t("chat.encryptedLong")}
@@ -265,10 +259,12 @@ function RowView({
   row,
   people,
   attachments,
+  showTopic,
 }: {
   row: Row;
   people: People;
   attachments: AttachmentContext;
+  showTopic: boolean;
 }) {
   const t = useT();
   switch (row.kind) {
@@ -296,7 +292,7 @@ function RowView({
                 labelClassName="sender"
               />
               {row.own && <span className="you">{t("chat.you")}</span>}
-              <TopicChip topic={row.topic} className="topic" />
+              {showTopic && <TopicChip topic={row.topic} className="topic" />}
             </div>
             {row.messages.map((view) => (
               <MessageRow
@@ -351,10 +347,13 @@ export function ChatView({
   people,
   attachments,
   earlier,
+  showTopic,
   loading = false,
 }: {
   /** Topics are still being read, so no rows is not yet "no messages". */
   loading?: boolean;
+  /** The topic chip is shown where messages of several topics mix; one topic needs none. */
+  showTopic: boolean;
   rows: readonly Row[];
   people: People;
   attachments: AttachmentContext;
@@ -379,7 +378,7 @@ export function ChatView({
                   <span>{t("a11y.newMessages")}</span>
                 </li>
               )}
-              <RowView row={row} people={people} attachments={attachments} />
+              <RowView row={row} people={people} attachments={attachments} showTopic={showTopic} />
             </Fragment>
           );
         })}
