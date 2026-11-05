@@ -224,9 +224,13 @@ test("the All view shows every topic after a reload and on a phone @csp", async 
 test("a hosted snapshot keeps Viewing as and the selected topic across a reload @csp", async ({
   page,
 }) => {
-  const ids = ["2026-11-04T0901-alice-agent-api-01", "2026-11-04T0902-bob-agent-ops-01"];
-  const topics = ["api", "ops"];
-  const from = ["alice-agent", "bob-agent"];
+  // A topic long enough to scroll: 59 older messages and the one the test looks for last.
+  const opsIds = Array.from(
+    { length: 60 },
+    (_, n) =>
+      `2026-11-04T${String(Math.floor(n / 60) + 10).padStart(2, "0")}${String(n % 60).padStart(2, "0")}-bob-agent-ops-01`,
+  );
+  const apiId = "2026-11-04T0901-alice-agent-api-01";
   const body = JSON.stringify({
     schemaVersion: 1,
     generatedAt: "2026-11-04T09:00:00.000Z",
@@ -236,14 +240,18 @@ test("a hosted snapshot keeps Viewing as and the selected topic across a reload 
         path: ".agent-collab",
         text: "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent, bob-agent\n",
       },
-      ...ids.map((id, n) => ({
-        path: `topics/${topics[n] as string}/inbox/2026-11/${id}.md`,
+      {
+        path: `topics/api/inbox/2026-11/${apiId}.md`,
+        text: messageText(apiId, "alice-agent", "api", {}, "Message in api."),
+      },
+      ...opsIds.map((id, n) => ({
+        path: `topics/ops/inbox/2026-11/${id}.md`,
         text: messageText(
           id,
-          from[n] as string,
-          topics[n] as string,
+          "bob-agent",
+          "ops",
           {},
-          `Message in ${topics[n] as string}.`,
+          n === opsIds.length - 1 ? "Message in ops." : `Older ops message ${String(n)}.`,
         ),
       })),
     ],
@@ -253,6 +261,11 @@ test("a hosted snapshot keeps Viewing as and the selected topic across a reload 
   await page.getByRole("button", { name: "#ops", exact: true }).click();
   await expect(page.getByText("Message in ops.")).toBeVisible();
   await page.getByLabel(en["bar.viewingAs"]).selectOption("bob-agent");
+  // Scrolled to the top before the reload, the restored topic still opens at its latest message.
+  const pane = page.getByRole("main");
+  await pane.evaluate((node) => {
+    node.scrollTop = 0;
+  });
 
   await page.reload();
   await expect(page.getByLabel(en["bar.viewingAs"])).toHaveValue("bob-agent");
@@ -262,6 +275,10 @@ test("a hosted snapshot keeps Viewing as and the selected topic across a reload 
   );
   await expect(page.getByText("Message in ops.")).toBeVisible();
   await expect(page.getByText("Message in api.")).toHaveCount(0);
+  await expect
+    .poll(() => pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
+    .toBeLessThanOrEqual(1);
+  expect(await pane.evaluate((node) => node.scrollHeight - node.clientHeight)).toBeGreaterThan(500);
 
   // The Files view comes back too, and the choices stay in this browser only.
   await page.getByRole("button", { name: en["nav.files"], exact: true }).click();

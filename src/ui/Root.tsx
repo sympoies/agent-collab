@@ -85,6 +85,8 @@ interface ViewerScreen {
   readonly limitHit: boolean;
   /** The viewer reads with a token. */
   readonly signedIn: boolean;
+  /** The open view and topic are kept across a reload (hosted snapshot and local folder). */
+  readonly rememberView: boolean;
   /** The source to check for the topic layout first; null for the demos, which are flat. */
   readonly topicSource: MessageSource | null;
   /** A topic session already opened on `topicSource`, when the root checked the layout. */
@@ -166,7 +168,10 @@ export function Root(props: RootProps) {
     liveDemo: StaticDemoView | null = null,
     source: SourceIndicator | null = null,
     extras: Partial<
-      Pick<ViewerScreen, "demo" | "limitHit" | "signedIn" | "topicSource" | "initialTopicSession">
+      Pick<
+        ViewerScreen,
+        "demo" | "limitHit" | "signedIn" | "rememberView" | "topicSource" | "initialTopicSession"
+      >
     > = {},
   ): ViewerScreen => {
     viewers.current += 1;
@@ -184,6 +189,7 @@ export function Root(props: RootProps) {
       demo: extras.demo ?? false,
       limitHit: extras.limitHit ?? false,
       signedIn: extras.signedIn ?? false,
+      rememberView: extras.rememberView ?? false,
       topicSource: extras.topicSource ?? null,
       initialTopicSession: extras.initialTopicSession ?? null,
     };
@@ -453,7 +459,7 @@ export function Root(props: RootProps) {
           ...(opened.snapshot === true ? { actionLabel: "bar.localFolderSnapshot" as const } : {}),
           experimental: true,
         },
-        { topicSource: opened.source, initialTopicSession: session },
+        { topicSource: opened.source, initialTopicSession: session, rememberView: true },
       ),
     );
   };
@@ -546,7 +552,7 @@ export function Root(props: RootProps) {
             checkedAt: () => source.checkedAt?.() ?? null,
           },
         },
-        { topicSource: source, initialTopicSession: session },
+        { topicSource: source, initialTopicSession: session, rememberView: true },
       ),
     );
   };
@@ -729,6 +735,7 @@ export function Root(props: RootProps) {
             title={screen.title}
             selfNames={screen.selfNames}
             identity={screen.identity}
+            rememberView={screen.rememberView}
             notice={screen.notice}
             {...(screen.pollIntervalMs === undefined
               ? {}

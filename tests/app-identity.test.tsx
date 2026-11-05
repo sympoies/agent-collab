@@ -113,6 +113,26 @@ describe("App identity controls", () => {
   const youGroups = (host: HTMLElement) =>
     [...host.querySelectorAll('.group[data-own="true"] .sender')].map((node) => node.textContent);
 
+  it("keeps no view for a repository: Files is not restored and nothing is written for it", async () => {
+    const storage = memoryStorage();
+    let host = await render(storage);
+    const files = button(host, "Files");
+    expect(files).toBeDefined();
+    await act(async () => {
+      files?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+    expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
+    expect([...storage.values.keys()].filter((key) => key.includes(".view:"))).toEqual([]);
+
+    act(() => {
+      mounted?.root.unmount();
+    });
+    document.body.replaceChildren();
+    host = await render(storage);
+    expect(host.querySelector("#conversation-heading")?.textContent).toBe("All conversations");
+  });
+
   it("puts Refresh first in the toolbar", async () => {
     const host = await render(memoryStorage());
     expect(host.querySelector(".bar-actions button")?.getAttribute("aria-label")).toBe("Refresh");

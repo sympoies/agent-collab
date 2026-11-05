@@ -143,6 +143,11 @@ export interface AppProps {
   /** Chooses another local folder; omitted when the browser cannot open folders. */
   readonly onPickLocalFolder?: () => void;
   readonly onOpenSettings: () => void;
+  /**
+   * Keep the open view and topic across a reload. Set for a hosted snapshot and a local folder
+   * only; a GitHub repository and the demos start on All and write nothing.
+   */
+  readonly rememberView?: boolean;
   /** Opens the token section of Settings; offered when the API limit is the problem. */
   readonly onUseToken?: () => void;
   /** The API limit is why a static copy stays on screen (live demo notices). */
@@ -161,6 +166,7 @@ export function App({
   notice,
   pollIntervalMs,
   onOpenSettings,
+  rememberView = false,
   onCheckLiveNow,
   source,
   onPickLocalFolder,
@@ -182,7 +188,7 @@ export function App({
   const [topicSyncs, setTopicSyncs] = useState(0);
   // The view and topic the reader had before a reload; a topic that is gone is dropped.
   const [saved] = useState(() => {
-    const state = readViewState(identity.storage, identity.key);
+    const state = readViewState(rememberView ? identity.storage : null, identity.key);
     const known = initialTopicSession?.topics().some((summary) => summary.name === state.topic);
     return known === true ? state : { ...state, topic: null };
   });
@@ -226,8 +232,8 @@ export function App({
   const [topic, setTopic] = useState<string | null>(saved.topic);
   const [view, setView] = useState<ViewName>(saved.view);
   useEffect(() => {
-    writeViewState(identity.storage, identity.key, { view, topic });
-  }, [identity.key, identity.storage, topic, view]);
+    if (rememberView) writeViewState(identity.storage, identity.key, { view, topic });
+  }, [identity.key, identity.storage, rememberView, topic, view]);
   const now = useNow(
     (source !== undefined && (source.pointInTime !== undefined || snapshot.lastChanged !== null)) ||
       view === "questions",
