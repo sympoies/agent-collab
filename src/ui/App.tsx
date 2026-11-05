@@ -648,7 +648,10 @@ export function App({
     ) : null;
 
   return (
-    <div className="app app-shell">
+    <div
+      className="app app-shell"
+      data-mobile-view={mobileConversation ? "conversation" : "topics"}
+    >
       <header className="bar">
         <h1>{typeof title === "string" ? title : t(title.key, title.params)}</h1>
         {source !== undefined && (
@@ -930,7 +933,6 @@ export function App({
                 </>
               }
             />
-            {!narrow && range}
             {topicLayout && loadedTopics.length === 0 && (
               <p className="topic-prompt">{t("topic.selectPrompt")}</p>
             )}
@@ -949,6 +951,7 @@ export function App({
                 onOpen={openQuestion}
               />
             )}
+            {!narrow && range}
             {view !== "questions" && selectedLoader !== null && paging.hasOlder && (
               <button
                 type="button"

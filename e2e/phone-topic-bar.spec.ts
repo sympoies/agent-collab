@@ -28,7 +28,7 @@ const snapshot = JSON.stringify({
         id(n + 1),
         "alice-agent",
         "general",
-        {},
+        n === 0 ? { type: "question", needs: "answer", to: "bob-agent" } : {},
         `Message number ${String(n + 1)}.\n\nA second line so each message is tall enough to scroll.`,
       ),
     })),
@@ -115,5 +115,82 @@ test.describe("the phone topic bar @csp", () => {
       button.y < last.y + last.height &&
       button.y + button.height > last.y;
     expect(overlaps).toBe(false);
+  });
+
+  test("leaves no history entry behind after Jump to latest and back @csp", async ({ page }) => {
+    await openTopic(page);
+    await page.getByRole("link", { name: en["nav.jumpLatest"] }).click();
+    await page.locator(".topic-bar").getByRole("button", { name: en["nav.back"] }).click();
+    await expect(page.locator(".conversation")).toBeHidden();
+    // The next system back leaves the viewer; it must not reopen the topic.
+    await page.goBack();
+    await expect(page.locator(".conversation")).toBeHidden();
+  });
+
+  test("opening a question from Questions and going back leaves no entry behind @csp", async ({
+    page,
+  }) => {
+    await openTopic(page);
+    await page.locator(".topic-bar").getByRole("button", { name: en["nav.back"] }).click();
+    await page.getByRole("button", { name: /^Questions/ }).click();
+    await page.locator(".question-link").first().click();
+    await expect(page.locator("#conversation-heading")).toHaveText("#general");
+    await page.locator(".topic-bar").getByRole("button", { name: en["nav.back"] }).click();
+    await expect(page.locator(".conversation")).toBeHidden();
+    await page.goBack();
+    await expect(page.locator(".conversation")).toBeHidden();
+  });
+
+  test("system back from inside a topic after a link keeps the topic open @csp", async ({
+    page,
+  }) => {
+    await openTopic(page);
+    await page.getByRole("link", { name: en["nav.jumpLatest"] }).click();
+    await page.goBack();
+    await expect(page.locator(".conversation")).toBeVisible();
+    await page.goBack();
+    await expect(page.locator(".conversation")).toBeHidden();
+    await expect(page.getByRole("button", { name: "#general", exact: true })).toBeVisible();
+  });
+
+  test("two fragment entries do not close the topic on system back @csp", async ({ page }) => {
+    await openTopic(page);
+    await page.evaluate(() => {
+      window.location.hash = "#first";
+    });
+    await page.evaluate(() => {
+      window.location.hash = "#second";
+    });
+    await page.goBack();
+    await expect(page.locator(".conversation")).toBeVisible();
+    await page.goBack();
+    await expect(page.locator(".conversation")).toBeVisible();
+  });
+
+  test("the global header shrinks while a topic is open and returns on the list @csp", async ({
+    page,
+  }) => {
+    await openTopic(page);
+    await expect(page.locator(".bar h1")).toBeHidden();
+    await expect(page.locator(".source-indicator")).toBeHidden();
+    await page.locator(".topic-bar").getByRole("button", { name: en["nav.back"] }).click();
+    await expect(page.locator(".bar h1")).toBeVisible();
+    await expect(page.locator(".source-indicator")).toBeVisible();
+  });
+
+  test("a wide screen keeps the global header and the status line above the range @csp", async ({
+    page,
+  }) => {
+    await page.route("**/hosted-snapshot.json", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: snapshot }),
+    );
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/");
+    await page.getByRole("button", { name: "#general", exact: true }).click();
+    await expect(page.locator(".conversation")).toBeVisible();
+    await expect(page.locator(".bar h1")).toBeVisible();
+    await expect(page.locator(".source-indicator")).toBeVisible();
+    await expect(page.locator(".topic-menu")).toHaveCount(0);
+    await expect(page.locator(".range-bar")).toBeVisible();
   });
 });

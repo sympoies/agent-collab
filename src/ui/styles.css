@@ -1656,8 +1656,8 @@ span.chip {
   }
 
   /* Only the toolbar stays in the global header while a topic is open. */
-  .app-shell:has(.workspace[data-mobile-view="conversation"]) .bar h1,
-  .app-shell:has(.workspace[data-mobile-view="conversation"]) .source-indicator {
+  .app-shell[data-mobile-view="conversation"] .bar h1,
+  .app-shell[data-mobile-view="conversation"] .source-indicator {
     display: none;
   }
 
