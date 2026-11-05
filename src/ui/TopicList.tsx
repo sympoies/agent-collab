@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import { visibleTopics } from "../loader/topic-activity";
 import type { TopicSummary } from "../message/topic-layout";
 import { useLocale } from "../i18n/LocaleProvider";
-import { TopicChip } from "./shared/components";
 
 interface TopicListProps {
   /** Sorted: pinned topics first (not built yet), then by recent activity, closed topics last. */
@@ -48,7 +47,7 @@ export function TopicList({
         onSelect(topic, event.currentTarget);
       }}
     >
-      <TopicChip topic={topic.name} className="topic-name" />
+      <span className="topic-name">{t("topic.label", { topic: topic.name })}</span>
     </button>
   );
 

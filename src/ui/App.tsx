@@ -4,7 +4,19 @@ import type { Loader } from "../loader/loader";
 import { Poller } from "../loader/poller";
 import { sameTopics, sortTopicSummaries } from "../loader/topic-activity";
 import { TopicSession } from "../loader/topic-session";
-import { readViewState, writeViewState, type ViewName } from "../identity/view-state";
+import {
+  DEFAULT_QUESTIONS,
+  readViewState,
+  writeViewState,
+  type QuestionsViewState,
+  type ViewName,
+} from "../identity/view-state";
+import {
+  applyFilter,
+  filterIsCurrent,
+  questionTree,
+  type QuestionFilter,
+} from "../message/question-filter";
 import {
   colorOrder,
   EMPTY_PREFERENCES,
@@ -28,7 +40,7 @@ import { ChatView } from "./ChatView";
 import type { MessageKey } from "../i18n/catalog";
 import { useLocale } from "../i18n/LocaleProvider";
 import type { MessageRef, Params } from "../i18n/translate";
-import { buildPeople } from "./people";
+import { buildPeople, personSlot } from "./people";
 import { errorText, say } from "./errorText";
 import { IconButton } from "./IconButton";
 import { RefreshIcon } from "./icons";
@@ -50,7 +62,6 @@ import {
 } from "./question-expansion";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
-import { TopicChip } from "./shared/components";
 import { mergeRosterSnapshot, useMergedSnapshot } from "./merged-snapshot";
 import { mapLimit } from "../source/map-limit";
 import { useTopicDigests } from "./useTopicDigests";
@@ -258,15 +269,28 @@ export function App({
   );
   const [topic, setTopic] = useState<string | null>(saved.topic);
   const [view, setView] = useState<ViewName>(saved.view);
+  // The Questions node of the list: expanded or not, and the filter of the Questions page.
+  const [questionsNode, setQuestionsNode] = useState<QuestionsViewState>(
+    saved.questions ?? DEFAULT_QUESTIONS,
+  );
   useEffect(() => {
     if (rememberView) {
       writeViewState(identity.storage, identity.key, {
         view,
         topic,
         conversation: mobileConversation,
+        questions: questionsNode,
       });
     }
-  }, [identity.key, identity.storage, mobileConversation, rememberView, topic, view]);
+  }, [
+    identity.key,
+    identity.storage,
+    mobileConversation,
+    questionsNode,
+    rememberView,
+    topic,
+    view,
+  ]);
   const [filesTopic, setFilesTopic] = useState<string | null>(null);
   const [questionExpansions, setQuestionExpansions] = useState<QuestionExpansionChoices>(() =>
     readQuestionExpansionChoices(identity.storage, identity.key),
@@ -620,6 +644,19 @@ export function App({
     () => groupQuestions(questionStates, viewer),
     [questionStates, viewer],
   );
+  const isKnown = useCallback((name: string) => people.has(name), [people]);
+  const tree = useMemo(() => questionTree(questionGroups, isKnown), [questionGroups, isKnown]);
+  // A saved person who no longer owes an answer shows the unfiltered page; the choice is kept.
+  const activeFilter: QuestionFilter | null =
+    questionsNode.filter !== null && filterIsCurrent(questionsNode.filter, tree)
+      ? questionsNode.filter
+      : null;
+  // Only questions with a known state have filters; until then the node has nothing to expand.
+  const hasQuestionFilters = tree.open + tree.answered > 0;
+  const shownGroups = useMemo(
+    () => applyFilter(questionGroups, activeFilter, isKnown),
+    [questionGroups, activeFilter, isKnown],
+  );
   const rows = useMemo(
     () =>
       buildRows(snapshot.items, {
@@ -720,6 +757,22 @@ export function App({
       clearTimeout(timer);
     };
   }, [retryAt]);
+  /** Opens the Questions page with `filter` (null shows every question) and expands the node. */
+  const openQuestions = (filter: QuestionFilter | null, button: HTMLButtonElement) => {
+    pendingJump.current = null;
+    setView("questions");
+    setQuestionsNode({ open: true, filter });
+    lastTopicButton.current = button;
+    setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+  };
+  const filterLabel = (filter: QuestionFilter): string =>
+    filter.kind === "open"
+      ? t("questions.filterOpen")
+      : filter.kind === "answered"
+        ? t("questions.filterAnswered")
+        : t("questions.filterOpenFor", {
+            name: people.has(filter.person) ? people.label(filter.person) : filter.person,
+          });
   const retryingAfterLimit = retryAt !== null && readyRetryAt?.getTime() !== retryAt.getTime();
 
   const range =
@@ -900,7 +953,6 @@ export function App({
         >
           <div className="pane-frame topics-frame">
             <aside className="topics-pane">
-              <h2>{t(topicLayout ? "nav.topics" : "nav.conversations")}</h2>
               <nav
                 className="topics"
                 aria-label={t("nav.topics")}
@@ -934,12 +986,21 @@ export function App({
                 </button>
                 <button
                   type="button"
-                  aria-pressed={view === "questions"}
+                  aria-expanded={hasQuestionFilters ? questionsNode.open : undefined}
+                  aria-controls={
+                    hasQuestionFilters && questionsNode.open ? "questions-tree" : undefined
+                  }
+                  aria-current={view === "questions" && activeFilter === null ? "page" : undefined}
+                  className={hasQuestionFilters ? "tree-node" : undefined}
                   onClick={(event) => {
-                    pendingJump.current = null;
-                    setView("questions");
-                    lastTopicButton.current = event.currentTarget;
-                    setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+                    // Pressing the row of the page that is open collapses or expands the node;
+                    // any other press opens the page with every question and expands it.
+                    const pageShown = !narrow || mobileConversation;
+                    if (view === "questions" && activeFilter === null && pageShown) {
+                      setQuestionsNode({ ...questionsNode, open: !questionsNode.open });
+                      return;
+                    }
+                    openQuestions(null, event.currentTarget);
                   }}
                 >
                   <span>{t("nav.questions")}</span>
@@ -947,6 +1008,60 @@ export function App({
                     {t("nav.questionsOpen", { count: questionGroups.open.length })}
                   </span>
                 </button>
+                {hasQuestionFilters && questionsNode.open && (
+                  <div
+                    id="questions-tree"
+                    className="questions-tree"
+                    role="group"
+                    aria-label={t("questions.filters")}
+                  >
+                    <button
+                      type="button"
+                      aria-pressed={activeFilter?.kind === "open"}
+                      onClick={(event) => {
+                        openQuestions({ kind: "open" }, event.currentTarget);
+                      }}
+                    >
+                      <span>{t("questions.open")}</span>
+                      <span className="count">{tree.open}</span>
+                    </button>
+                    {tree.people.map((entry) => (
+                      <button
+                        key={entry.name}
+                        type="button"
+                        className="tree-child"
+                        aria-pressed={
+                          activeFilter?.kind === "person" && activeFilter.person === entry.name
+                        }
+                        onClick={(event) => {
+                          openQuestions(
+                            { kind: "person", person: entry.name },
+                            event.currentTarget,
+                          );
+                        }}
+                      >
+                        <span
+                          {...(people.has(entry.name)
+                            ? { className: "tree-name", ...personSlot(people.slot(entry.name)) }
+                            : { className: "tree-name" })}
+                        >
+                          {people.has(entry.name) ? people.label(entry.name) : entry.name}
+                        </span>
+                        <span className="count">{entry.count}</span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      aria-pressed={activeFilter?.kind === "answered"}
+                      onClick={(event) => {
+                        openQuestions({ kind: "answered" }, event.currentTarget);
+                      }}
+                    >
+                      <span>{t("questions.answered")}</span>
+                      <span className="count">{tree.answered}</span>
+                    </button>
+                  </div>
+                )}
                 <button
                   type="button"
                   aria-pressed={view === "files"}
@@ -959,6 +1074,7 @@ export function App({
                 >
                   <span>{t("nav.files")}</span>
                 </button>
+                <h2 className="topics-heading">{t("nav.topics")}</h2>
                 {topicLayout ? (
                   <TopicList
                     topics={listedTopics}
@@ -982,7 +1098,9 @@ export function App({
                         setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
                       }}
                     >
-                      <TopicChip topic={summary.topic} className="topic-name" />
+                      <span className="topic-name">
+                        {t("topic.label", { topic: summary.topic })}
+                      </span>
                       <span className="count">{summary.count}</span>
                       {summary.fresh > 0 && (
                         <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>
@@ -1045,7 +1163,17 @@ export function App({
               )}
               {view === "questions" && (
                 <QuestionsView
-                  groups={questionGroups}
+                  groups={shownGroups}
+                  filter={
+                    activeFilter === null
+                      ? null
+                      : {
+                          label: filterLabel(activeFilter),
+                          onClear: () => {
+                            setQuestionsNode({ open: questionsNode.open, filter: null });
+                          },
+                        }
+                  }
                   people={people}
                   now={now}
                   rosterKnown={snapshot.rosterKnown}

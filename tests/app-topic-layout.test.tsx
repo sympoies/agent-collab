@@ -113,6 +113,16 @@ describe("topic list screen", () => {
     await settle();
   }
 
+  it("renders each topic row as plain text, not as an outlined chip", async () => {
+    await mount(new FixtureSource(files));
+    const rows = [...host.querySelectorAll<HTMLButtonElement>(".topics > button")].filter(
+      (button) => button.textContent.startsWith("#"),
+    );
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.querySelector(".shared-topic-chip")).toBeNull();
+    expect(rowLabels()).toContain("#api");
+  });
+
   it("lists All, Questions and Files before the topics and reads no digest from a message", async () => {
     const source = new FixtureSource(files);
     await mount(source);
