@@ -453,6 +453,7 @@ describe("Root with a remembered local folder", () => {
       expect(JSON.parse(values.get("agent-collab-viewer.view:local:my-clone") ?? "{}")).toEqual({
         view: "chat",
         topic: null,
+        conversation: false,
       });
       expect(values.get("agent-collab-viewer.identity:local:other")).toContain("bob-agent");
     });

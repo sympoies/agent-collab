@@ -193,7 +193,10 @@ export function App({
   const [saved] = useState(() => {
     const state = readViewState(rememberView ? identity.storage : null, identity.key);
     const known = initialTopicSession?.topics().some((summary) => summary.name === state.topic);
-    return known === true ? state : { ...state, topic: null };
+    // A topic that is gone falls back to the list, not to a screen of a different view.
+    return state.topic === null || known === true
+      ? state
+      : { view: state.view, topic: null, conversation: false };
   });
   const [openedTopics, setOpenedTopics] = useState<readonly string[]>(
     saved.topic === null ? [] : [saved.topic],
@@ -232,17 +235,26 @@ export function App({
       ? reported
       : null;
   const pollerRef = useRef<Poller | null>(null);
+  // On a phone, a reload returns to the screen that was open (the list when none was).
+  const [mobileConversation, setMobileConversation] = useState(
+    () => saved.conversation && window.matchMedia("(max-width: 720px)").matches,
+  );
   const [topic, setTopic] = useState<string | null>(saved.topic);
   const [view, setView] = useState<ViewName>(saved.view);
   useEffect(() => {
-    if (rememberView) writeViewState(identity.storage, identity.key, { view, topic });
-  }, [identity.key, identity.storage, rememberView, topic, view]);
+    if (rememberView) {
+      writeViewState(identity.storage, identity.key, {
+        view,
+        topic,
+        conversation: mobileConversation,
+      });
+    }
+  }, [identity.key, identity.storage, mobileConversation, rememberView, topic, view]);
   const now = useNow(
     (source !== undefined && (source.pointInTime !== undefined || snapshot.lastChanged !== null)) ||
       view === "questions",
   );
   const pendingJump = useRef<string | null>(null);
-  const [mobileConversation, setMobileConversation] = useState(false);
   usePhoneHistory(mobileConversation, setMobileConversation);
   useInPageLinks();
   // State, not a ref: the pane renders once the topics are known, and landing waits for it.
