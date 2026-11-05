@@ -195,7 +195,7 @@ describe("attachments", () => {
       chip?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await Promise.resolve();
     });
-    expect(window.location.hash).toBe(`#msg-${SECOND}`);
+    expect(document.getElementById(`msg-${SECOND}`)?.hasAttribute("data-jumped")).toBe(true);
     expect(host.querySelector(`#msg-${SECOND}`)).not.toBeNull();
   });
 
@@ -450,7 +450,7 @@ describe("attachments", () => {
       await Promise.resolve();
     });
     expect(host.querySelector("#conversation-heading")?.textContent).toBe("#ops");
-    expect(window.location.hash).toBe(`#msg-${SECOND}`);
+    expect(document.getElementById(`msg-${SECOND}`)?.hasAttribute("data-jumped")).toBe(true);
   });
 
   it("jumps from the Files view back to the message that references a file", async () => {
@@ -469,7 +469,7 @@ describe("attachments", () => {
     });
     expect(host.querySelector("#conversation-heading")?.textContent).toBe("All conversations");
     expect(host.querySelector(".files")).toBeNull();
-    expect(window.location.hash).toBe(`#msg-${FIRST}`);
+    expect(document.getElementById(`msg-${FIRST}`)?.hasAttribute("data-jumped")).toBe(true);
   });
 
   it("drops a jump whose target is not rendered instead of keeping it for later", async () => {

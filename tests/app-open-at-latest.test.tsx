@@ -224,7 +224,11 @@ describe("a conversation opens at its latest message", () => {
       candidate.textContent.includes("Is it final?"),
     );
     await click(open);
-    expect(window.location.hash).toBe("#msg-2026-09-01T0900-alice-agent-api-01");
+    expect(
+      document
+        .getElementById("msg-2026-09-01T0900-alice-agent-api-01")
+        ?.hasAttribute("data-jumped"),
+    ).toBe(true);
     expect(scrollTo).not.toHaveBeenCalled();
     expect(scrollY).toBe(0);
   });

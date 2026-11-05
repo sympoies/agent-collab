@@ -414,6 +414,14 @@ lists its topics from a few requests and reads messages only for the view that n
   so far. On a phone the list is the first screen, a topic is a drill-down with a back control, and
   All reads nothing until it is chosen.
 
+On a phone the open view has a bar that stays at the top of the message pane: the back control, the
+name (`#<topic>`) and an options menu holding the loaded range and the jump to a date. The global
+header keeps only its toolbar while a view is open. Opening a view adds one history entry; the back
+control and the system back gesture both pop it, so the system back returns to the list. Links
+inside the viewer (to a message, to the latest message) scroll in place and add no history entry,
+so none is ever left behind. A reload shows the list. Wide screens
+keep the single layout, with the range controls above the messages.
+
 A repository in any other layout, and the demos, keep the single conversation list built from the
 loaded messages.
 

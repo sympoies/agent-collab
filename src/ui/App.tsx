@@ -37,6 +37,9 @@ import { Toolbar, useNarrow } from "./Toolbar";
 import { RangeBar } from "./RangeBar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
+import { jumpInPage, useInPageLinks } from "./in-page-jump";
+import { usePhoneHistory } from "./phone-history";
+import { TopicBar } from "./TopicBar";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
 import { useMergedSnapshot } from "./merged-snapshot";
@@ -240,6 +243,8 @@ export function App({
   );
   const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
+  usePhoneHistory(mobileConversation, setMobileConversation);
+  useInPageLinks();
   // State, not a ref: the pane renders once the topics are known, and landing waits for it.
   const [messagePane, setMessagePane] = useState<HTMLElement | null>(null);
   const [dateLanding, setDateLanding] = useState<DateLanding | null>(null);
@@ -575,11 +580,9 @@ export function App({
     dateLanding,
   );
   const showMessage = (id: string) => {
-    // The hash scrolls to the message and styles it through :target.
-    if (window.location.hash === `#msg-${id}`) window.location.hash = "";
-    window.location.hash = `msg-${id}`;
+    jumpInPage(`msg-${id}`);
     // The activated chip may be gone (another topic) or keep focus on itself; either way the
-    // reader lands on the message, which the hash has already scrolled to.
+    // reader lands on the message, which has already been scrolled to.
     document.getElementById(`msg-${id}`)?.focus({ preventScroll: true });
   };
   /** Shows a message in the chat, in `nextTopic` (null shows every topic). */
@@ -653,8 +656,30 @@ export function App({
   }, [retryAt]);
   const retryingAfterLimit = retryAt !== null && readyRetryAt?.getTime() !== retryAt.getTime();
 
+  const range =
+    view !== "questions" && selectedLoader !== null ? (
+      <RangeBar
+        messages={pagedMessages}
+        jumpedTo={paging.jumpedTo}
+        disabled={busy || retryingAfterLimit}
+        onJump={(date) => {
+          run(
+            async () => {
+              await selectedLoader.jumpTo(date);
+              setDateLanding({ date });
+            },
+            0,
+            "jump",
+          );
+        }}
+      />
+    ) : null;
+
   return (
-    <div className="app app-shell">
+    <div
+      className="app app-shell"
+      data-mobile-view={mobileConversation ? "conversation" : "topics"}
+    >
       <header className="bar">
         <h1>{typeof title === "string" ? title : t(title.key, title.params)}</h1>
         {source !== undefined && (
@@ -915,31 +940,27 @@ export function App({
             tabIndex={0}
             ref={setMessagePane}
           >
-            <button
-              type="button"
-              className="back-to-topics"
-              onClick={() => {
+            <TopicBar
+              headingClass={topicLayout && topic !== null ? "topic-heading" : undefined}
+              headingRef={conversationHeading}
+              onBack={() => {
                 setMobileConversation(false);
               }}
-            >
-              {t("nav.back")}
-            </button>
-            <h2
-              id="conversation-heading"
-              className={topicLayout && topic !== null ? "topic-heading" : undefined}
-              ref={conversationHeading}
-              tabIndex={-1}
-            >
-              {view === "questions"
-                ? t("heading.questions")
-                : view === "files"
-                  ? topic === null
-                    ? t("heading.files")
-                    : t("heading.filesIn", { topic })
-                  : topic === null
-                    ? t("heading.all")
-                    : `#${topic}`}
-            </h2>
+              menu={narrow ? range : null}
+              heading={
+                <>
+                  {view === "questions"
+                    ? t("heading.questions")
+                    : view === "files"
+                      ? topic === null
+                        ? t("heading.files")
+                        : t("heading.filesIn", { topic })
+                      : topic === null
+                        ? t("heading.all")
+                        : `#${topic}`}
+                </>
+              }
+            />
             {topicLayout && loadedTopics.length === 0 && (
               <p className="topic-prompt">{t("topic.selectPrompt")}</p>
             )}
@@ -958,23 +979,7 @@ export function App({
                 onOpen={openQuestion}
               />
             )}
-            {view !== "questions" && selectedLoader !== null && (
-              <RangeBar
-                messages={pagedMessages}
-                jumpedTo={paging.jumpedTo}
-                disabled={busy || retryingAfterLimit}
-                onJump={(date) => {
-                  run(
-                    async () => {
-                      await selectedLoader.jumpTo(date);
-                      setDateLanding({ date });
-                    },
-                    0,
-                    "jump",
-                  );
-                }}
-              />
-            )}
+            {!narrow && range}
             {view !== "questions" && selectedLoader !== null && paging.hasOlder && (
               <button
                 type="button"
@@ -1019,13 +1024,15 @@ export function App({
           </main>
         </div>
       )}
-      <a
-        className="jump-to-latest"
-        data-mobile-view={mobileConversation ? "conversation" : "topics"}
-        href="#latest-message"
-      >
-        {t("nav.jumpLatest")}
-      </a>
+      {view === "chat" && (
+        <a
+          className="jump-to-latest"
+          data-mobile-view={mobileConversation ? "conversation" : "topics"}
+          href="#latest-message"
+        >
+          {t("nav.jumpLatest")}
+        </a>
+      )}
     </div>
   );
 }

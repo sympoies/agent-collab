@@ -3052,6 +3052,8 @@ for (const code of LOCALES) {
       }
       await expect(page.locator("html")).toHaveAttribute("lang", code);
       await page.getByRole("button", { name: messages["nav.all"], exact: true }).click();
+      // On a phone the loaded range and the jump to a date sit in the topic bar's menu.
+      if (view.size.width < 721) await page.locator(".topic-menu summary").click();
       const line = page.locator(".range-line");
       // The newest page: 50 messages, back to the day the 11th message was sent.
       await expect(line).toHaveText(
