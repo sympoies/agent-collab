@@ -20,6 +20,16 @@ const files = {
 };
 const clone = (name: string) => ({ source: new FixtureSource(files), name });
 
+/** The same folder, but its first listing waits for the gate. */
+function gated(open: { source: FixtureSource; name: string }, gate: Promise<void>) {
+  const list = open.source.listDirectory.bind(open.source);
+  open.source.listDirectory = async (revision, path) => {
+    await gate;
+    return list(revision, path);
+  };
+  return open;
+}
+
 type Permission = "granted" | "prompt" | "denied";
 
 /** An in-memory FolderMemory whose remembered folder asks for the given permission. */
@@ -31,10 +41,18 @@ function memoryWith(
     onRequest?: Permission;
     /** The folder opens to something that is not a collaboration clone (deleted or moved). */
     unreadable?: boolean;
+    /** Reading the folder waits for this, like a slow disk. */
+    gate?: Promise<void>;
   } | null,
 ) {
   let kept = start;
-  const calls = { request: 0, forget: 0, active: [] as boolean[], saved: [] as string[] };
+  const calls = {
+    request: 0,
+    forget: 0,
+    active: [] as boolean[],
+    marks: [] as [boolean, string | null][],
+    saved: [] as string[],
+  };
   const memory: FolderMemory = {
     load: () => {
       const now = kept;
@@ -47,16 +65,20 @@ function memoryWith(
           calls.request += 1;
           return Promise.resolve(now.onRequest ?? "granted");
         },
-        open: () =>
-          now.unreadable === true
-            ? { source: new FixtureSource({ "README.md": "moved" }), name: now.name }
-            : clone(now.name),
+        open: () => {
+          const base =
+            now.unreadable === true
+              ? { source: new FixtureSource({ "README.md": "moved" }), name: now.name }
+              : clone(now.name);
+          return now.gate === undefined ? base : gated(base, now.gate);
+        },
       };
       return Promise.resolve(found);
     },
     save: () => Promise.resolve(),
     setActive: (active, folder) => {
       calls.active.push(active);
+      calls.marks.push([active, folder]);
       if (kept !== null && (folder === null || folder === kept.name)) kept = { ...kept, active };
       return Promise.resolve();
     },
@@ -304,6 +326,63 @@ describe("Root with a remembered local folder", () => {
       );
     });
 
+    it("marks the folder that failed, and the error stays with it", async () => {
+      const { memory, calls } = memoryWith({
+        name: "my-clone",
+        active: true,
+        permission: "granted",
+        unreadable: true,
+      });
+      const host = await render(memory, null, undefined, { hosted: snapshot });
+      expect(calls.marks).toContainEqual([false, "my-clone"]);
+      expect(host.querySelector("h1")?.textContent).toBe("Collaboration snapshot");
+    });
+
+    it("shows why Reopen failed in Settings, until Forget clears it", async () => {
+      const { memory } = memoryWith({
+        name: "my-clone",
+        active: false,
+        permission: "granted",
+        unreadable: true,
+      });
+      const host = await render(memory, null, undefined, { hosted: snapshot });
+      await openSettings(host);
+      await click(button(host, "Reopen my-clone"));
+      expect(host.querySelector(".remembered-folder [role='alert']")?.textContent).toContain(
+        "not a collaboration clone",
+      );
+      await click(button(host, "Forget this folder"));
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it("does not replace what the reader opened while the folder was still being read", async () => {
+      let release: () => void = () => undefined;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const { memory, calls } = memoryWith({
+        name: "my-clone",
+        active: true,
+        permission: "granted",
+        unreadable: true,
+        gate,
+      });
+      const host = await render(memory, () => Promise.resolve(clone("other")), undefined, {
+        hosted: snapshot,
+      });
+      await click(button(host, "Open local folder"));
+      expect(host.querySelector("h1")?.textContent).toBe("Local folder: other");
+
+      release();
+      await act(async () => {
+        for (let round = 0; round < 6; round += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      });
+      expect(host.querySelector("h1")?.textContent).toBe("Local folder: other");
+      expect(calls.marks).not.toContainEqual([false, "my-clone"]);
+    });
+
     it("says so in Settings when the permission is refused", async () => {
       const { memory } = memoryWith({
         name: "my-clone",
@@ -358,6 +437,21 @@ describe("Root with a remembered local folder", () => {
       });
       expect(values.get("agent-collab-viewer.identity:local:other")).toContain("bob-agent");
     });
+  });
+
+  it("without a snapshot, the failed folder stops being the one to return to and says why", async () => {
+    const { memory, calls } = memoryWith({
+      name: "my-clone",
+      active: true,
+      permission: "granted",
+      unreadable: true,
+    });
+    const host = await render(memory);
+    expect(host.querySelector("h1")?.textContent).toBe("Collab Viewer");
+    expect(calls.marks).toContainEqual([false, "my-clone"]);
+    expect(host.querySelector(".remembered-folder [role='alert']")?.textContent).toContain(
+      "not a collaboration clone",
+    );
   });
 
   it("keeps the message of a cancelled pick out of the remembered-folder section", async () => {

@@ -634,7 +634,9 @@ export function Root(props: RootProps) {
           operation,
           setReopenMessage,
         );
-        if (reopenedFolder) return;
+        // Fall through only when the folder really failed; a choice the reader made meanwhile
+        // has its own navigation and stays.
+        if (reopenedFolder || operation !== navigation.current) return;
         // A folder that was deleted or moved must not keep the reader off the snapshot, now or
         // on the next reload.
         await folderMemory?.setActive(false, found.name);
