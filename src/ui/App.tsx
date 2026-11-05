@@ -4,6 +4,7 @@ import type { Loader } from "../loader/loader";
 import { Poller } from "../loader/poller";
 import { sameTopics, sortTopicSummaries } from "../loader/topic-activity";
 import { TopicSession } from "../loader/topic-session";
+import { readViewState, writeViewState, type ViewName } from "../identity/view-state";
 import {
   colorOrder,
   EMPTY_PREFERENCES,
@@ -142,6 +143,11 @@ export interface AppProps {
   /** Chooses another local folder; omitted when the browser cannot open folders. */
   readonly onPickLocalFolder?: () => void;
   readonly onOpenSettings: () => void;
+  /**
+   * Keep the open view and topic across a reload. Set for a hosted snapshot and a local folder
+   * only; a GitHub repository and the demos start on All and write nothing.
+   */
+  readonly rememberView?: boolean;
   /** Opens the token section of Settings; offered when the API limit is the problem. */
   readonly onUseToken?: () => void;
   /** The API limit is why a static copy stays on screen (live demo notices). */
@@ -160,6 +166,7 @@ export function App({
   notice,
   pollIntervalMs,
   onOpenSettings,
+  rememberView = false,
   onCheckLiveNow,
   source,
   onPickLocalFolder,
@@ -179,7 +186,15 @@ export function App({
   const [topicLayout, setTopicLayout] = useState(initialTopicSession?.inboxLayout === "topic");
   // Counts reads of the topic list, so a failed activity read is tried again after each one.
   const [topicSyncs, setTopicSyncs] = useState(0);
-  const [openedTopics, setOpenedTopics] = useState<readonly string[]>([]);
+  // The view and topic the reader had before a reload; a topic that is gone is dropped.
+  const [saved] = useState(() => {
+    const state = readViewState(rememberView ? identity.storage : null, identity.key);
+    const known = initialTopicSession?.topics().some((summary) => summary.name === state.topic);
+    return known === true ? state : { ...state, topic: null };
+  });
+  const [openedTopics, setOpenedTopics] = useState<readonly string[]>(
+    saved.topic === null ? [] : [saved.topic],
+  );
   const [closedOpen, setClosedOpen] = useState(false);
   // What is loaded: the topics opened so far in the topic layout, the one loader otherwise.
   // The topics the All view has read so far. Only a topic that was read is registered with the
@@ -214,8 +229,11 @@ export function App({
       ? reported
       : null;
   const pollerRef = useRef<Poller | null>(null);
-  const [topic, setTopic] = useState<string | null>(null);
-  const [view, setView] = useState<"chat" | "questions" | "files">("chat");
+  const [topic, setTopic] = useState<string | null>(saved.topic);
+  const [view, setView] = useState<ViewName>(saved.view);
+  useEffect(() => {
+    if (rememberView) writeViewState(identity.storage, identity.key, { view, topic });
+  }, [identity.key, identity.storage, rememberView, topic, view]);
   const now = useNow(
     (source !== undefined && (source.pointInTime !== undefined || snapshot.lastChanged !== null)) ||
       view === "questions",
@@ -248,6 +266,16 @@ export function App({
   const paging = useMergedSnapshot(pagedLoaders);
   const [checkingLive, setCheckingLive] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  // A restored topic still has to read its first page.
+  useEffect(() => {
+    if (saved.topic === null || topicSession === null) return;
+    topicSession
+      .loader(saved.topic)
+      .openWithHead(topicSession.currentHead)
+      .catch((reason: unknown) => {
+        setError(reason);
+      });
+  }, [saved.topic, topicSession]);
   const [readyRetryAt, setReadyRetryAt] = useState<Date | null>(null);
   const [preferences, setPreferences] = useState<IdentityPreferences>(() =>
     identity.storage === null ? EMPTY_PREFERENCES : readPreferences(identity.storage, identity.key),

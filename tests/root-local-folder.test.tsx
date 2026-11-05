@@ -46,7 +46,10 @@ describe("Root with a local folder", () => {
 
   async function render(
     openLocalFolder: (() => Promise<LocalFolderOpen>) | null,
-    storage = { getItem: () => null, setItem: () => undefined },
+    storage: {
+      getItem(key: string): string | null;
+      setItem(key: string, value: string): void;
+    } = { getItem: () => null, setItem: () => undefined },
     openLocalFileList?: (selection: LocalFolderSelection) => Promise<LocalFolderOpen>,
   ): Promise<HTMLElement> {
     const host = document.createElement("div");
@@ -346,6 +349,90 @@ describe("Root with a local folder", () => {
         await vi.advanceTimersByTimeAsync(10 * 60_000);
       });
       expect(calls.head).toBe(stopped);
+    });
+  });
+
+  describe("viewer choices kept per folder name", () => {
+    const withRoster = {
+      ".agent-collab": `${MARKER}participants: alice-agent, bob-agent\n`,
+      [flat("2026-10", 1, 1)]: messageText(ID, "alice-agent", "api", {}, "From the local clone."),
+    };
+    function storageMap() {
+      const values = new Map<string, string>();
+      return {
+        values,
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+      };
+    }
+    async function openFolder(storage: ReturnType<typeof storageMap>, name: string) {
+      const host = await render(
+        () => Promise.resolve({ source: folder(() => null, withRoster), name }),
+        storage,
+      );
+      await click(button(host, "Open local folder"));
+      return host;
+    }
+    const viewingAs = (host: HTMLElement) =>
+      host.querySelector<HTMLSelectElement>(".viewing-as select");
+
+    it("returns to the topic and the Files view of a topic-layout folder after a reload", async () => {
+      const storage = storageMap();
+      const layout = {
+        ".agent-collab": "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent\n",
+        [`topics/api/inbox/2026-10/${ID}.md`]: messageText(ID, "alice-agent", "api", {}, "Api."),
+        "topics/ops/inbox/2026-10/2026-10-01T1000-alice-agent-ops-01.md": messageText(
+          "2026-10-01T1000-alice-agent-ops-01",
+          "alice-agent",
+          "ops",
+          {},
+          "Ops.",
+        ),
+      };
+      const mount = async () => {
+        const host = await render(
+          () => Promise.resolve({ source: folder(() => null, layout), name: "clone-t" }),
+          storage,
+        );
+        await click(button(host, "Open local folder"));
+        return host;
+      };
+      let host = await mount();
+      await click(button(host, "#ops"));
+      await click(button(host, "Files"));
+      act(() => {
+        mounted?.root.unmount();
+      });
+      document.body.replaceChildren();
+      host = await mount();
+      expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files in #ops");
+    });
+
+    it("returns to the chosen person after a reload, and folders stay apart", async () => {
+      const storage = storageMap();
+      let host = await openFolder(storage, "clone-a");
+      const select = viewingAs(host);
+      act(() => {
+        if (select === null) return;
+        select.value = "alice-agent";
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      expect([...storage.values.keys()].some((key) => key.endsWith("local:clone-a"))).toBe(true);
+      expect([...storage.values.keys()].every((key) => !key.includes("/"))).toBe(true);
+
+      act(() => {
+        mounted?.root.unmount();
+      });
+      document.body.replaceChildren();
+      host = await openFolder(storage, "clone-a");
+      expect(viewingAs(host)?.value).toBe("alice-agent");
+
+      act(() => {
+        mounted?.root.unmount();
+      });
+      document.body.replaceChildren();
+      host = await openFolder(storage, "clone-b");
+      expect(viewingAs(host)?.value).toBe("");
     });
   });
 });

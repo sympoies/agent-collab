@@ -85,6 +85,8 @@ interface ViewerScreen {
   readonly limitHit: boolean;
   /** The viewer reads with a token. */
   readonly signedIn: boolean;
+  /** The open view and topic are kept across a reload (hosted snapshot and local folder). */
+  readonly rememberView: boolean;
   /** The source to check for the topic layout first; null for the demos, which are flat. */
   readonly topicSource: MessageSource | null;
   /** A topic session already opened on `topicSource`, when the root checked the layout. */
@@ -108,6 +110,13 @@ async function openRepository(
 
 /** The demos neither read nor write browser storage, so identity choices last for the view. */
 const MEMORY_ONLY = { storage: null, key: "demo" } as const;
+
+/**
+ * The hosted snapshot is a real repository's data, so the reader's choices are kept for this
+ * deployment (origin and base path, which tell two deployments on one origin apart), like those
+ * of a GitHub repository; the demos keep nothing.
+ */
+const hostedIdentityKey = () => `hosted:${window.location.origin}${import.meta.env.BASE_URL}`;
 
 type Screen =
   | { readonly kind: "welcome" }
@@ -159,7 +168,10 @@ export function Root(props: RootProps) {
     liveDemo: StaticDemoView | null = null,
     source: SourceIndicator | null = null,
     extras: Partial<
-      Pick<ViewerScreen, "demo" | "limitHit" | "signedIn" | "topicSource" | "initialTopicSession">
+      Pick<
+        ViewerScreen,
+        "demo" | "limitHit" | "signedIn" | "rememberView" | "topicSource" | "initialTopicSession"
+      >
     > = {},
   ): ViewerScreen => {
     viewers.current += 1;
@@ -177,6 +189,7 @@ export function Root(props: RootProps) {
       demo: extras.demo ?? false,
       limitHit: extras.limitHit ?? false,
       signedIn: extras.signedIn ?? false,
+      rememberView: extras.rememberView ?? false,
       topicSource: extras.topicSource ?? null,
       initialTopicSession: extras.initialTopicSession ?? null,
     };
@@ -430,7 +443,7 @@ export function Root(props: RootProps) {
         loader,
         { key: "app.localTitle", params: { name: opened.name } },
         [],
-        MEMORY_ONLY,
+        { storage: props.storage, key: `local:${opened.name}` },
         opened.snapshot === true
           ? {
               key:
@@ -446,7 +459,7 @@ export function Root(props: RootProps) {
           ...(opened.snapshot === true ? { actionLabel: "bar.localFolderSnapshot" as const } : {}),
           experimental: true,
         },
-        { topicSource: opened.source, initialTopicSession: session },
+        { topicSource: opened.source, initialTopicSession: session, rememberView: true },
       ),
     );
   };
@@ -527,7 +540,7 @@ export function Root(props: RootProps) {
         loader,
         { key: "app.hostedTitle" },
         [],
-        MEMORY_ONLY,
+        { storage: props.storage, key: hostedIdentityKey() },
         null,
         undefined,
         null,
@@ -539,7 +552,7 @@ export function Root(props: RootProps) {
             checkedAt: () => source.checkedAt?.() ?? null,
           },
         },
-        { topicSource: source, initialTopicSession: session },
+        { topicSource: source, initialTopicSession: session, rememberView: true },
       ),
     );
   };
@@ -722,6 +735,7 @@ export function Root(props: RootProps) {
             title={screen.title}
             selfNames={screen.selfNames}
             identity={screen.identity}
+            rememberView={screen.rememberView}
             notice={screen.notice}
             {...(screen.pollIntervalMs === undefined
               ? {}

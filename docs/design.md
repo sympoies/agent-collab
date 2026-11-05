@@ -456,8 +456,10 @@ public blobs.
   marker) plus "Observer". With a participant selected, that person's groups
   show a "You" tag and an accent bar, and messages that name the person in
   `to` are highlighted (a broadcast does not count). As Observer nothing is
-  marked. The viewer never posts. The choice is saved per repository in
-  guarded browser storage; a saved person who is not a participant is ignored
+  marked. The viewer never posts. The choice is saved per source in
+  guarded browser storage (a GitHub repository, `hosted:<origin><base path>` for the served
+  snapshot, `local:<folder name>` for a local folder); the hosted snapshot and local folders also
+  keep the selected view and topic across a reload; a saved person who is not a participant is ignored
   (not forgotten). Without a saved choice the default is the first of the
   settings' "my names" that is a participant, else Observer. The demos keep
   the choice in memory only and do not touch browser storage. If a browser omits

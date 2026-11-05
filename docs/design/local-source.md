@@ -101,8 +101,10 @@ No fallback helper or topic preview is part of this spike.
   never stored; reloading means picking again. A revoked permission stops the read with the
   `forbidden` message and keeps the messages on screen; choosing the folder again recovers.
 - **Label.** The source is shown as "Local folder · experimental" until the dedicated-origin and CSP
-  slice lands. The viewer keeps no identity preferences for a local folder, so the folder name is
-  never written to browser storage.
+  slice lands. The viewer keeps the reader's choices for a local folder
+  (Viewing as, colours, local names, the selected view and topic) under `local:<folder name>` in
+  the guarded browser storage; two folders with the same name share them. The key holds the
+  display name only, never a path, and the folder handle itself is not stored.
 - **One scan per poll.** A poll walks the root, the inbox and its month folders once and reads each
   file's metadata once; deeper directories are listed but not walked. At most 50,000 entries are
   enumerated per scan: a larger or hostile folder (very deep, or hundreds of thousands of files)
