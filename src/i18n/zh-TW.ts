@@ -242,6 +242,7 @@ export const zhTW: Messages = {
   "settings.memoryNote": "權杖只會保留在此分頁的記憶體中。重新載入後需要再次輸入。",
   "settings.saveOpen": "儲存並開啟",
   "settings.cancel": "取消",
+  "settings.reopenMissing": "無法重新開啟已儲存的儲存庫：沒有為它儲存存取權杖。請在下方重新輸入。",
   "sources.heading": "資料來源",
   "sources.intro": "選擇檢視器要從哪裡讀取訊息。",
   "sources.hostedText": "此網站隨附發布的對話。",

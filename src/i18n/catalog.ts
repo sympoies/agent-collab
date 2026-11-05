@@ -264,6 +264,8 @@ export const en = {
     "The token stays in memory for this tab only. You will enter it again after a reload.",
   "settings.saveOpen": "Save and open",
   "settings.cancel": "Cancel",
+  "settings.reopenMissing":
+    "The saved repository could not be reopened: no access token is stored for it. Enter it again below.",
   "sources.heading": "Data source",
   "sources.intro": "Choose where the viewer reads messages from.",
   "sources.hostedText": "The conversation this site was published with.",

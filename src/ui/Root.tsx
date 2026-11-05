@@ -35,11 +35,12 @@ import { demoFiles } from "../demo/fixtures";
 import type { MessageRef } from "../i18n/translate";
 import { SourceError, type MessageSource } from "../source/types";
 import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
-import { say } from "./errorText";
+import { errorText, say } from "./errorText";
 import { App, type AppProps, type SourceIndicator } from "./App";
 import { EMPTY_PREFERENCES, writePreferences } from "../identity/preferences";
 import { writeViewState } from "../identity/view-state";
 import type { FolderMemory, RememberedFolder } from "../source/folder-memory";
+import { readLastSource, writeLastSource } from "../settings/last-source";
 import { DataSources, ForgetSection } from "./DataSources";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
@@ -97,6 +98,8 @@ interface ViewerScreen {
   readonly signedIn: boolean;
   /** The open view and topic are kept across a reload (hosted snapshot and local folder). */
   readonly rememberView: boolean;
+  /** A GitHub repository from the reader's settings, which a reload reopens. */
+  readonly github: boolean;
   /** The name of the local folder this browser can reopen after a reload; null for any other. */
   readonly folder: string | null;
   /** The source to check for the topic layout first; null for the demos, which are flat. */
@@ -168,6 +171,8 @@ type Screen =
       readonly back: ViewerScreen | null;
       /** Scroll to the token section and focus its field. */
       readonly focusToken: boolean;
+      /** Why the saved repository could not be reopened. */
+      readonly message: string | MessageRef | null;
     }
   | ViewerScreen;
 
@@ -220,6 +225,7 @@ export function Root(props: RootProps) {
         | "limitHit"
         | "signedIn"
         | "rememberView"
+        | "github"
         | "folder"
         | "topicSource"
         | "initialTopicSession"
@@ -242,16 +248,25 @@ export function Root(props: RootProps) {
       limitHit: extras.limitHit ?? false,
       signedIn: extras.signedIn ?? false,
       rememberView: extras.rememberView ?? false,
+      github: extras.github ?? false,
       folder: extras.folder ?? null,
       topicSource: extras.topicSource ?? null,
       initialTopicSession: extras.initialTopicSession ?? null,
     };
   };
 
-  const open = ({ settings, token }: OpenSettings, notice: string | MessageRef | null = null) => {
-    const source = createSource(settings, token);
+  const open = (
+    { settings, token }: OpenSettings,
+    notice: string | MessageRef | null = null,
+    prepared?: {
+      readonly source: MessageSource;
+      readonly loader: Loader;
+      readonly session: TopicSession;
+    },
+  ) => {
+    const source = prepared?.source ?? createSource(settings, token);
     return viewer(
-      new Loader(source),
+      prepared?.loader ?? new Loader(source),
       settings.repository,
       settings.selfNames,
       {
@@ -262,7 +277,12 @@ export function Root(props: RootProps) {
       undefined,
       null,
       null,
-      { signedIn: true, topicSource: source },
+      {
+        signedIn: true,
+        github: true,
+        topicSource: source,
+        ...(prepared === undefined ? {} : { initialTopicSession: prepared.session }),
+      },
     );
   };
 
@@ -303,7 +323,11 @@ export function Root(props: RootProps) {
 
   const showSettings = async (
     back: ViewerScreen | null,
-    options: { readonly focusToken?: boolean; readonly demo?: boolean } = {},
+    options: {
+      readonly focusToken?: boolean;
+      readonly demo?: boolean;
+      readonly message?: string | MessageRef;
+    } = {},
   ) => {
     const operation = ++navigation.current;
     const settings = loadSettings(props.storage);
@@ -320,6 +344,7 @@ export function Root(props: RootProps) {
       storedEndpoints: stored,
       back,
       focusToken: options.focusToken === true,
+      message: options.message ?? null,
     });
   };
 
@@ -624,6 +649,32 @@ export function Root(props: RootProps) {
     );
   };
 
+  /**
+   * After a reload: the saved repository, read before the viewer is shown so a bad token or a
+   * missing repository lands on Settings with the usual error instead of a blank screen.
+   */
+  const reopenGithub = async (): Promise<void> => {
+    const operation = ++navigation.current;
+    const refuse = async (message: string | MessageRef) => {
+      if (operation !== navigation.current) return;
+      await showSettings(null, { message });
+    };
+    try {
+      const opened = await restore(props);
+      if (opened === null) {
+        await refuse({ key: "settings.reopenMissing" });
+        return;
+      }
+      const source = createSource(opened.settings, opened.token);
+      const { loader, session } = await openRepository(source);
+      if (operation !== navigation.current) return;
+      rememberToken(opened);
+      setScreen(open(opened, null, { source, loader, session }));
+    } catch (error) {
+      await refuse(errorText(error, t, formatDateTime));
+    }
+  };
+
   // A deployment that serves a snapshot goes straight to it; the welcome screen stays reachable
   // through its button when the snapshot cannot be read.
   useEffect(() => {
@@ -646,11 +697,25 @@ export function Root(props: RootProps) {
         // on the next reload.
         await folderMemory?.setActive(false, found.name);
       }
+      // The reader last had a GitHub repository open: reopen it with the token saved for it.
+      if (readLastSource(props.storage) === "github") {
+        await reopenGithub();
+        return;
+      }
       await showHosted();
     })();
     // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Mark what the reader is looking at, for the next reload. The demos write nothing.
+  useEffect(() => {
+    if (screen.kind === "viewer" && (screen.github || screen.rememberView)) {
+      writeLastSource(props.storage, screen.github ? "github" : "other");
+    }
+    // The storage prop is fixed for the page.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen]);
 
   // Mark whether the viewer on screen is the folder to return to after a reload.
   useEffect(() => {
@@ -870,6 +935,11 @@ export function Root(props: RootProps) {
             </div>
           </header>
           <h2 className="settings-title">{t("settings.title")}</h2>
+          {screen.message !== null && (
+            <p className="error" role="alert">
+              {say(screen.message, t)}
+            </p>
+          )}
           <DataSources
             hosted={createHostedSource === null ? null : () => void showHosted()}
             local={{
