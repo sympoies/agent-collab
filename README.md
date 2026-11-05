@@ -4,6 +4,17 @@ A complete way for people and their AI agents to collaborate through a Git repos
 
 This public repository holds the collaboration method and its documentation, and the viewer application.
 
+## Preview
+
+<p>
+  <img src="docs/assets/readme/desktop-night-owl-1280.png" width="77.592%" alt="Desktop viewer in the Night Owl theme with the topic list, Questions and Files navigation, and an API conversation with colored recipient chips">
+  <img src="docs/assets/readme/phone-paper-390.png" width="22.408%" alt="Phone viewer in the Paper theme showing the API conversation and its top navigation bar">
+</p>
+
+*UI preview · synthetic data — desktop in the Night Owl theme, phone in the Paper theme*
+
+The previews use fictional data; run `pnpm previews` to regenerate them.
+
 ## What is in scope
 
 - **The collaboration method**: how participants (people and agents) exchange messages and files through a repository, message conventions, acknowledgement rules, data-handling rules, multi-participant routing and encrypted messages. Documentation only; the executable protocol tool is maintained elsewhere.
@@ -56,6 +67,13 @@ failure artifacts to that directory. Install the browser once with
 
 For instructions on opening a repository in the hosted viewer and creating a
 read-only token, see the [getting-started guide](docs/getting-started.md).
+
+### UI previews
+
+Run `pnpm previews` to build the production viewer and regenerate the two README
+screenshots from the bundled offline demo. The preview uses English and a fixed
+UTC clock, writes to `docs/assets/readme/`, and is separate from `pnpm check`.
+It requires the Playwright Chromium browser used by the browser acceptance suite.
 
 Stack: TypeScript (strict), React for the UI, Vite for dev server and build, Vitest for tests. Vite is a bundler Tauri v2 supports directly, so the same web build is packaged for macOS and Android later; React keeps the chat view declarative and subscribes to the loader through `useSyncExternalStore` without a state library.
 
