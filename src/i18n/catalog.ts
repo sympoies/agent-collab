@@ -114,7 +114,7 @@ export const en = {
   "welcome.forgetLocal": "Forget this folder",
   "settings.rememberedHeading": "Remembered local folder",
   "settings.forgetNote":
-    "Forget removes the permission this browser keeps for {name} and the choices made in it: Viewing as, colors, names and the open topic.",
+    "Forget deletes the folder saved for {name} and resets the choices kept for it: Viewing as, colors, names and the open topic. The browser may keep its read permission until every tab of this site is closed, or until you remove it in the browser's site settings.",
   "local.reopenDenied": "Permission to read {name} was not granted. Choose the folder again.",
   "local.snapshotNotice":
     "This is a snapshot of the selected folder. After a git pull, choose the folder again to see updates. This browser cannot remember it: after a reload, choose the folder again.",

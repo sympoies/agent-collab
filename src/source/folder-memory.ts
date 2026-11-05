@@ -27,8 +27,13 @@ export interface FolderMemory {
   load(): Promise<RememberedFolder | null>;
   /** Remembers this folder in place of any other, as the last viewer shown. */
   save(handle: LocalDirectoryHandle): Promise<void>;
-  setActive(active: boolean): Promise<void>;
-  forget(): Promise<void>;
+  /**
+   * Marks the remembered folder as the last viewer shown or not. `folder` names the folder the
+   * caller means; when another tab has since replaced it, nothing changes. Null means whichever.
+   */
+  setActive(active: boolean, folder: string | null): Promise<void>;
+  /** Deletes the record of the folder named `folder`; false when it is not the one stored. */
+  forget(folder: string): Promise<boolean>;
 }
 
 interface Stored {
@@ -103,17 +108,23 @@ export function folderMemory(records: RecordStore): FolderMemory {
   return {
     load: () => serial(load),
     save: (handle) => serial(() => write({ handle, name: handle.name, active: true })),
-    setActive: (active) =>
+    setActive: (active, folder) =>
       serial(async () => {
         const stored = await read();
-        if (stored !== null && stored.active !== active) await write({ ...stored, active });
+        if (stored === null || stored.active === active) return;
+        if (folder !== null && stored.name !== folder) return;
+        await write({ ...stored, active });
       }),
-    forget: () =>
+    forget: (folder) =>
       serial(async () => {
+        const stored = await read();
+        if (stored?.name !== folder) return false;
         try {
           await records.delete(RECORD);
+          return true;
         } catch {
-          // Already gone, or storage is blocked: either way nothing is remembered.
+          // Storage is blocked: the record stays, and so does what it holds.
+          return false;
         }
       }),
   };

@@ -45,15 +45,16 @@ function memoryWith(
       return Promise.resolve(found);
     },
     save: () => Promise.resolve(),
-    setActive: (active) => {
+    setActive: (active, folder) => {
       calls.active.push(active);
-      if (kept !== null) kept = { ...kept, active };
+      if (kept !== null && (folder === null || folder === kept.name)) kept = { ...kept, active };
       return Promise.resolve();
     },
-    forget: () => {
+    forget: (folder) => {
       calls.forget += 1;
+      if (kept?.name !== folder) return Promise.resolve(false);
       kept = null;
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
   };
   /** What a successful pick does to the store (the real `remember` closure saves the handle). */
@@ -229,13 +230,52 @@ describe("Root with a remembered local folder", () => {
         expect(host.querySelector("h1")?.textContent).toBe("Collaboration snapshot");
         await openSettings(host);
         expect(button(host, "Reopen my-clone")).toBeDefined();
-        expect(host.textContent).toContain("Forget removes");
+        expect(host.textContent).toContain("Forget deletes");
 
         await click(button(host, "Reopen my-clone"));
         expect(host.querySelector("h1")?.textContent).toBe("Local folder: my-clone");
         expect(calls.active.at(-1)).toBe(true);
       });
     }
+
+    it("opens the snapshot without waiting for a folder store that never answers", async () => {
+      {
+        const never: FolderMemory = {
+          load: () => new Promise(() => undefined),
+          save: () => Promise.resolve(),
+          setActive: () => Promise.resolve(),
+          forget: () => Promise.resolve(false),
+        };
+        const host = document.createElement("div");
+        document.body.append(host);
+        const root = createRoot(host);
+        mounted = root;
+        act(() => {
+          root.render(
+            <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+              <Root
+                storage={{ getItem: () => null, setItem: () => undefined }}
+                stores={{ memory: new MemoryStore(), "browser-encrypted": new MemoryStore() }}
+                createSource={() => new FixtureSource({})}
+                createDemoSource={() => new FixtureSource({})}
+                createLiveDemoSource={() => new FixtureSource({})}
+                openLocalFolder={null}
+                folderMemory={never}
+                createHostedSource={snapshot}
+              />
+            </ThemeProvider>,
+          );
+        });
+        // The page waits about two seconds for the store, then opens the snapshot.
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 2300));
+          for (let round = 0; round < 6; round += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }
+        });
+        expect(host.querySelector("h1")?.textContent).toBe("Collaboration snapshot");
+      }
+    }, 8000);
 
     it("says so in Settings when the permission is refused", async () => {
       const { memory } = memoryWith({

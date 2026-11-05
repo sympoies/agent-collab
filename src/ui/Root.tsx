@@ -94,8 +94,8 @@ interface ViewerScreen {
   readonly signedIn: boolean;
   /** The open view and topic are kept across a reload (hosted snapshot and local folder). */
   readonly rememberView: boolean;
-  /** A local folder this browser can reopen after a reload. */
-  readonly folder: boolean;
+  /** The name of the local folder this browser can reopen after a reload; null for any other. */
+  readonly folder: string | null;
   /** The source to check for the topic layout first; null for the demos, which are flat. */
   readonly topicSource: MessageSource | null;
   /** A topic session already opened on `topicSource`, when the root checked the layout. */
@@ -115,6 +115,28 @@ async function openRepository(
   await session.open();
   if (session.inboxLayout !== "topic") await loader.openWithHead(session.currentHead);
   return { loader, session };
+}
+
+/** How long the page waits for the remembered folder before it opens as if none were kept. */
+const FOLDER_LOAD_MS = 2000;
+
+/** The remembered folder, or null when the store says none or does not answer in time. */
+function loadWithin(memory: FolderMemory, ms: number): Promise<RememberedFolder | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve(null);
+    }, ms);
+    void memory.load().then(
+      (found) => {
+        clearTimeout(timer);
+        resolve(found);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      },
+    );
+  });
 }
 
 /** A remembered folder opens like a picked one, and stays the folder to return to. */
@@ -213,7 +235,7 @@ export function Root(props: RootProps) {
       limitHit: extras.limitHit ?? false,
       signedIn: extras.signedIn ?? false,
       rememberView: extras.rememberView ?? false,
-      folder: extras.folder ?? false,
+      folder: extras.folder ?? null,
       topicSource: extras.topicSource ?? null,
       initialTopicSession: extras.initialTopicSession ?? null,
     };
@@ -487,7 +509,7 @@ export function Root(props: RootProps) {
           topicSource: opened.source,
           initialTopicSession: session,
           rememberView: true,
-          folder: opened.remember !== undefined,
+          folder: opened.remember === undefined ? null : opened.name,
         },
       ),
     );
@@ -595,7 +617,7 @@ export function Root(props: RootProps) {
   // through its button when the snapshot cannot be read.
   useEffect(() => {
     void (async () => {
-      const found = folderMemory === null ? null : await folderMemory.load();
+      const found = folderMemory === null ? null : await loadWithin(folderMemory, FOLDER_LOAD_MS);
       setRemembered(found);
       // The last visit ended on this folder: go back to it when no click is needed.
       if (found?.active === true && (await found.permission()) === "granted") {
@@ -612,7 +634,7 @@ export function Root(props: RootProps) {
   // Mark whether the viewer on screen is the folder to return to after a reload.
   useEffect(() => {
     if (folderMemory !== null && screen.kind === "viewer")
-      void folderMemory.setActive(screen.folder);
+      void folderMemory.setActive(screen.folder !== null, screen.folder);
   }, [folderMemory, screen]);
 
   /** The click on Reopen: the permission may need a prompt, which needs this gesture. */
@@ -630,10 +652,13 @@ export function Root(props: RootProps) {
 
   /** Forgets the folder handle and, with it, the choices made in that folder. */
   const forgetRemembered = async (found: RememberedFolder): Promise<void> => {
-    await folderMemory?.forget();
-    writePreferences(props.storage, `local:${found.name}`, EMPTY_PREFERENCES);
-    writeViewState(props.storage, `local:${found.name}`, { view: "chat", topic: null });
-    setRemembered(null);
+    // Another tab may have replaced the folder since this page loaded it: only reset the choices
+    // of the folder that was actually deleted.
+    if (await folderMemory?.forget(found.name)) {
+      writePreferences(props.storage, `local:${found.name}`, EMPTY_PREFERENCES);
+      writeViewState(props.storage, `local:${found.name}`, { view: "chat", topic: null });
+    }
+    setRemembered((await folderMemory?.load()) ?? null);
     setLocalMessage(null);
   };
 

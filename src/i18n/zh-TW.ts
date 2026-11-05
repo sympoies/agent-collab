@@ -98,7 +98,7 @@ export const zhTW: Messages = {
   "welcome.forgetLocal": "忘記此資料夾",
   "settings.rememberedHeading": "已記住的本機資料夾",
   "settings.forgetNote":
-    "按「忘記」會移除此瀏覽器為 {name} 保留的權限，以及在其中所做的選擇：檢視身分、顏色、名稱和開啟的主題。",
+    "按「忘記」會刪除為 {name} 儲存的資料夾，並重設在其中所做的選擇：檢視身分、顏色、名稱和開啟的主題。瀏覽器可能會保留讀取權限，直到關閉此網站的所有分頁，或在瀏覽器的網站設定中移除為止。",
   "local.reopenDenied": "未取得讀取 {name} 的權限。請重新選取資料夾。",
   "local.snapshotNotice":
     "目前顯示所選資料夾的快照。執行 git pull 後，請重新選取資料夾以查看更新。此瀏覽器無法記住資料夾，重新載入後請重新選取。",

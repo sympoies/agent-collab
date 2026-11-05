@@ -69,9 +69,9 @@ describe("folder memory", () => {
     await memory.save(handle("clone-a"));
     await memory.save(handle("clone-b"));
     expect((await memory.load())?.name).toBe("clone-b");
-    await memory.setActive(false);
+    await memory.setActive(false, "clone-b");
     expect((await memory.load())?.active).toBe(false);
-    await memory.forget();
+    expect(await memory.forget("clone-b")).toBe(true);
     expect(await memory.load()).toBeNull();
   });
 
@@ -106,8 +106,8 @@ describe("folder memory", () => {
     const memory = folderMemory(throwing);
     expect(await memory.load()).toBeNull();
     await expect(memory.save(handle("clone"))).resolves.toBeUndefined();
-    await expect(memory.setActive(false)).resolves.toBeUndefined();
-    await expect(memory.forget()).resolves.toBeUndefined();
+    await expect(memory.setActive(false, null)).resolves.toBeUndefined();
+    await expect(memory.forget("clone")).resolves.toBe(false);
   });
 
   it("keeps the last of two overlapping setActive calls even when the store is slow", async () => {
@@ -120,8 +120,25 @@ describe("folder memory", () => {
     };
     const memory = folderMemory(store);
     await memory.save(handle("clone"));
-    await memory.setActive(false);
-    await Promise.all([memory.setActive(true), memory.setActive(false)]);
+    await memory.setActive(false, null);
+    await Promise.all([memory.setActive(true, "clone"), memory.setActive(false, "clone")]);
     expect((await memory.load())?.active).toBe(false);
+  });
+
+  it("leaves a folder picked in another tab alone when a stale tab forgets or marks the old one", async () => {
+    const memory = folderMemory(records());
+    await memory.save(handle("clone-a"));
+    // This tab still believes clone-a is remembered; another tab then picks clone-b.
+    await memory.save(handle("clone-b"));
+    await memory.setActive(false, null);
+
+    expect(await memory.forget("clone-a")).toBe(false);
+    await memory.setActive(true, "clone-a");
+    const found = await memory.load();
+    expect(found?.name).toBe("clone-b");
+    expect(found?.active).toBe(false);
+
+    expect(await memory.forget("clone-b")).toBe(true);
+    expect(await memory.load()).toBeNull();
   });
 });
