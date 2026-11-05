@@ -160,12 +160,16 @@ for (const scheme of ["light", "dark"] as const) {
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
     ).toBeLessThanOrEqual(0);
-    const clipped = await page
-      .locator(".meta")
-      .evaluateAll(
-        (nodes) =>
-          nodes.filter((node) => node.getBoundingClientRect().right > window.innerWidth).length,
-      );
-    expect(clipped).toBe(0);
+    // The page can hide an overflow inside the conversation pane, so measure the chips and the
+    // pane itself: every chip ends inside the viewport and the pane has nothing to scroll sideways.
+    const rights = await page
+      .locator(".meta .recipient")
+      .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().right));
+    expect(rights.length).toBeGreaterThan(0);
+    for (const right of rights) expect(right).toBeLessThanOrEqual(360);
+    const pane = await page
+      .locator(".conversation")
+      .evaluate((node) => node.scrollWidth - node.clientWidth);
+    expect(pane).toBeLessThanOrEqual(0);
   });
 }
