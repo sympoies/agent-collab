@@ -135,8 +135,35 @@ test.describe("the phone topic bar @csp", () => {
     await page.goBack();
     await expect(page.locator(".conversation")).toBeHidden();
     await expect(listRow(page)).toBeVisible();
+    const inApp = page.url();
     await page.goBack();
+    expect(page.url()).not.toBe(inApp);
     expect(page.url()).toMatch(/^data:/);
+  });
+
+  test("Questions and Files have no Jump to latest link to leave the topic with @csp", async ({
+    page,
+  }) => {
+    await openTopic(page, true);
+    await barBack(page).click();
+    for (const name of [/^Questions/, /^Files/]) {
+      await page.getByRole("button", { name }).click();
+      await expect(barBack(page)).toBeVisible();
+      await expect(page.getByRole("link", { name: en["nav.jumpLatest"] })).toHaveCount(0);
+      const before = await page.evaluate(() => history.length);
+      // A plain link to a missing target does nothing: no entry, the view stays.
+      await page.evaluate(() => {
+        const link = document.createElement("a");
+        link.href = "#missing";
+        link.textContent = "missing";
+        document.querySelector(".conversation")?.append(link);
+        link.click();
+      });
+      expect(await page.evaluate(() => history.length)).toBe(before);
+      await expect(page.locator(".conversation")).toBeVisible();
+      await barBack(page).click();
+      await expect(listRow(page)).toBeVisible();
+    }
   });
 
   test("the bar's back after Jump to latest leaves the history as it was @csp", async ({
@@ -144,6 +171,7 @@ test.describe("the phone topic bar @csp", () => {
   }) => {
     await openTopic(page, true);
     await page.getByRole("link", { name: en["nav.jumpLatest"] }).click();
+    await expect(barBack(page)).toBeVisible();
     await barBack(page).click();
     await expect(listRow(page)).toBeVisible();
     // Opening the topic again and going back twice stays in the viewer the first time.
@@ -155,7 +183,9 @@ test.describe("the phone topic bar @csp", () => {
     await page.goBack();
     await expect(listRow(page)).toBeVisible();
     expect(new URL(page.url()).pathname).toBe("/");
+    const inApp = page.url();
     await page.goBack();
+    expect(page.url()).not.toBe(inApp);
     expect(page.url()).toMatch(/^data:/);
   });
 
@@ -165,6 +195,7 @@ test.describe("the phone topic bar @csp", () => {
     await page.getByRole("button", { name: /^Questions/ }).click();
     await page.locator(".question-link").first().click();
     await expect(page.locator("#conversation-heading")).toHaveText("#general");
+    await expect(barBack(page)).toBeVisible();
     await barBack(page).click();
     await expect(page.locator(".conversation")).toBeHidden();
     await listRow(page).click();

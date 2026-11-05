@@ -996,13 +996,15 @@ export function App({
           </main>
         </div>
       )}
-      <a
-        className="jump-to-latest"
-        data-mobile-view={mobileConversation ? "conversation" : "topics"}
-        href="#latest-message"
-      >
-        {t("nav.jumpLatest")}
-      </a>
+      {view === "chat" && (
+        <a
+          className="jump-to-latest"
+          data-mobile-view={mobileConversation ? "conversation" : "topics"}
+          href="#latest-message"
+        >
+          {t("nav.jumpLatest")}
+        </a>
+      )}
     </div>
   );
 }
