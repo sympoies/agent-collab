@@ -24,7 +24,14 @@ type Permission = "granted" | "prompt" | "denied";
 
 /** An in-memory FolderMemory whose remembered folder asks for the given permission. */
 function memoryWith(
-  start: { name: string; active: boolean; permission: Permission; onRequest?: Permission } | null,
+  start: {
+    name: string;
+    active: boolean;
+    permission: Permission;
+    onRequest?: Permission;
+    /** The folder opens to something that is not a collaboration clone (deleted or moved). */
+    unreadable?: boolean;
+  } | null,
 ) {
   let kept = start;
   const calls = { request: 0, forget: 0, active: [] as boolean[], saved: [] as string[] };
@@ -40,7 +47,10 @@ function memoryWith(
           calls.request += 1;
           return Promise.resolve(now.onRequest ?? "granted");
         },
-        open: () => clone(now.name),
+        open: () =>
+          now.unreadable === true
+            ? { source: new FixtureSource({ "README.md": "moved" }), name: now.name }
+            : clone(now.name),
       };
       return Promise.resolve(found);
     },
@@ -277,6 +287,23 @@ describe("Root with a remembered local folder", () => {
       }
     }, 8000);
 
+    it("falls back to the snapshot when the remembered folder can no longer be read", async () => {
+      const { memory, calls } = memoryWith({
+        name: "my-clone",
+        active: true,
+        permission: "granted",
+        unreadable: true,
+      });
+      const host = await render(memory, null, undefined, { hosted: snapshot });
+      expect(host.querySelector("h1")?.textContent).toBe("Collaboration snapshot");
+      expect(calls.active.at(-1)).toBe(false);
+      await openSettings(host);
+      expect(button(host, "Reopen my-clone")).toBeDefined();
+      expect(host.querySelector(".remembered-folder [role='alert']")?.textContent).toContain(
+        "not a collaboration clone",
+      );
+    });
+
     it("says so in Settings when the permission is refused", async () => {
       const { memory } = memoryWith({
         name: "my-clone",
@@ -331,6 +358,17 @@ describe("Root with a remembered local folder", () => {
       });
       expect(values.get("agent-collab-viewer.identity:local:other")).toContain("bob-agent");
     });
+  });
+
+  it("keeps the message of a cancelled pick out of the remembered-folder section", async () => {
+    const { memory } = memoryWith({ name: "my-clone", active: false, permission: "prompt" });
+    const host = await render(memory, () =>
+      Promise.reject(new DOMException("closed", "AbortError")),
+    );
+    await click(button(host, "Open local folder"));
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("No folder selected");
+    expect(host.querySelector(".remembered-folder [role='alert']")).toBeNull();
+    expect(button(host, "Reopen my-clone")).toBeDefined();
   });
 
   it("offers Reopen for a folder that was just picked, without a reload", async () => {

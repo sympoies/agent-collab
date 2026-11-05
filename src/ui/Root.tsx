@@ -191,6 +191,8 @@ export function Root(props: RootProps) {
   const liveSignedIn = useRef(false);
   /** Why a folder could not be opened, shown on the welcome screen. */
   const [localMessage, setLocalMessage] = useState<MessageRef | null>(null);
+  /** Why Reopen failed; shown with the remembered folder, apart from the other folder messages. */
+  const [reopenMessage, setReopenMessage] = useState<MessageRef | null>(null);
   const localFileInput = useRef<HTMLInputElement>(null);
   const pendingFilePick = useRef<{
     readonly operation: number;
@@ -441,10 +443,11 @@ export function Root(props: RootProps) {
     openSource: () => Promise<LocalFolderOpen>,
     current: ViewerScreen | null,
     operation: number,
-  ): Promise<void> => {
+    report: (message: MessageRef) => void = setLocalMessage,
+  ): Promise<boolean> => {
     const refuse = (message: MessageRef) => {
       if (operation !== navigation.current) return;
-      if (current === null) setLocalMessage(message);
+      if (current === null) report(message);
       else {
         setScreen((previous) =>
           previous.kind === "viewer" && previous.id === current.id
@@ -466,7 +469,7 @@ export function Root(props: RootProps) {
             ? { key: "local.tooLarge" }
             : { key: "local.noFolder" },
       );
-      return;
+      return false;
     }
     let loader: Loader;
     let session: TopicSession;
@@ -480,10 +483,11 @@ export function Root(props: RootProps) {
             ? { key: "local.tooLarge" }
             : { key: "local.unreadable" },
       );
-      return;
+      return false;
     }
-    if (operation !== navigation.current) return;
+    if (operation !== navigation.current) return false;
     setLocalMessage(null);
+    setReopenMessage(null);
     setScreen(
       viewer(
         loader,
@@ -513,11 +517,13 @@ export function Root(props: RootProps) {
         },
       ),
     );
-    if (folderMemory === null) return;
-    void (async () => {
-      await opened.remember?.();
-      setRemembered(await folderMemory.load());
-    })();
+    if (folderMemory !== null) {
+      void (async () => {
+        await opened.remember?.();
+        setRemembered(await folderMemory.load());
+      })();
+    }
+    return true;
   };
 
   /**
@@ -622,8 +628,16 @@ export function Root(props: RootProps) {
       // The last visit ended on this folder: go back to it when no click is needed.
       if (found?.active === true && (await found.permission()) === "granted") {
         const operation = ++navigation.current;
-        await openLocalSource(() => Promise.resolve(reopened(found)), null, operation);
-        return;
+        const reopenedFolder = await openLocalSource(
+          () => Promise.resolve(reopened(found)),
+          null,
+          operation,
+          setReopenMessage,
+        );
+        if (reopenedFolder) return;
+        // A folder that was deleted or moved must not keep the reader off the snapshot, now or
+        // on the next reload.
+        await folderMemory?.setActive(false, found.name);
       }
       await showHosted();
     })();
@@ -644,10 +658,15 @@ export function Root(props: RootProps) {
     if (permission !== "granted") permission = await found.request();
     if (operation !== navigation.current) return;
     if (permission !== "granted") {
-      setLocalMessage({ key: "local.reopenDenied", params: { name: found.name } });
+      setReopenMessage({ key: "local.reopenDenied", params: { name: found.name } });
       return;
     }
-    await openLocalSource(() => Promise.resolve(reopened(found)), null, operation);
+    await openLocalSource(
+      () => Promise.resolve(reopened(found)),
+      null,
+      operation,
+      setReopenMessage,
+    );
   };
 
   /** Forgets the folder handle and, with it, the choices made in that folder. */
@@ -659,7 +678,7 @@ export function Root(props: RootProps) {
       writeViewState(props.storage, `local:${found.name}`, { view: "chat", topic: null });
     }
     setRemembered((await folderMemory?.load()) ?? null);
-    setLocalMessage(null);
+    setReopenMessage(null);
   };
 
   /** Reopen and Forget for the remembered folder, on the welcome and the settings screens. */
@@ -683,9 +702,9 @@ export function Root(props: RootProps) {
       >
         {t("welcome.forgetLocal")}
       </button>
-      {localMessage !== null && (
+      {reopenMessage !== null && (
         <p className="error" role="alert">
-          {say(localMessage, t)}
+          {say(reopenMessage, t)}
         </p>
       )}
     </section>
@@ -772,7 +791,7 @@ export function Root(props: RootProps) {
               <p className="local-unsupported note">{t("welcome.localUnsupported")}</p>
             )}
             {openLocalFileList !== undefined && <p className="note">{t("welcome.localDrop")}</p>}
-            {localMessage !== null && remembered === null && (
+            {localMessage !== null && (
               <p className="error" role="alert">
                 {say(localMessage, t)}
               </p>
