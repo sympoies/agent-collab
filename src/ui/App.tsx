@@ -861,197 +861,206 @@ export function App({
           className="workspace"
           data-mobile-view={mobileConversation ? "conversation" : "topics"}
         >
-          <aside className="topics-pane">
-            <h2>{t(topicLayout ? "nav.topics" : "nav.conversations")}</h2>
-            <nav
-              className="topics"
-              aria-label={t("nav.topics")}
-              onPointerEnter={() => {
-                setListHeld((held) => ({ ...held, pointer: true }));
-              }}
-              onPointerLeave={() => {
-                setListHeld((held) => ({ ...held, pointer: false }));
-              }}
-              onFocus={() => {
-                setListHeld((held) => ({ ...held, focus: true }));
-              }}
-              onBlur={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget)) {
-                  setListHeld((held) => ({ ...held, focus: false }));
-                }
-              }}
-            >
-              <button
-                type="button"
-                aria-pressed={view === "chat" && topic === null}
-                onClick={(event) => {
-                  pendingJump.current = null;
-                  setView("chat");
-                  setTopic(null);
-                  lastTopicButton.current = event.currentTarget;
-                  setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+          <div className="pane-frame topics-frame">
+            <aside className="topics-pane">
+              <h2>{t(topicLayout ? "nav.topics" : "nav.conversations")}</h2>
+              <nav
+                className="topics"
+                aria-label={t("nav.topics")}
+                onPointerEnter={() => {
+                  setListHeld((held) => ({ ...held, pointer: true }));
+                }}
+                onPointerLeave={() => {
+                  setListHeld((held) => ({ ...held, pointer: false }));
+                }}
+                onFocus={() => {
+                  setListHeld((held) => ({ ...held, focus: true }));
+                }}
+                onBlur={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) {
+                    setListHeld((held) => ({ ...held, focus: false }));
+                  }
                 }}
               >
-                {t("nav.all")}
-              </button>
-              <button
-                type="button"
-                aria-pressed={view === "questions"}
-                onClick={(event) => {
-                  pendingJump.current = null;
-                  setView("questions");
-                  lastTopicButton.current = event.currentTarget;
-                  setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
-                }}
-              >
-                <span>{t("nav.questions")}</span>
-                <span className="count">
-                  {t("nav.questionsOpen", { count: questionGroups.open.length })}
-                </span>
-              </button>
-              <button
-                type="button"
-                aria-pressed={view === "files"}
-                onClick={(event) => {
-                  pendingJump.current = null;
-                  setView("files");
-                  lastTopicButton.current = event.currentTarget;
-                  setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
-                }}
-              >
-                <span>{t("nav.files")}</span>
-              </button>
-              {topicLayout ? (
-                <TopicList
-                  topics={listedTopics}
-                  selected={topic}
-                  pressed={view === "chat" ? topic : null}
-                  closedOpen={closedOpen}
-                  onClosedOpenChange={setClosedOpen}
-                  onSelect={openTopic}
-                />
-              ) : (
-                topics.map((summary) => (
-                  <button
-                    key={summary.topic}
-                    type="button"
-                    aria-pressed={view === "chat" && topic === summary.topic}
-                    onClick={(event) => {
-                      pendingJump.current = null;
-                      setView("chat");
-                      setTopic(summary.topic);
-                      lastTopicButton.current = event.currentTarget;
-                      setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
-                    }}
-                  >
-                    <span className="topic-name">#{summary.topic}</span>
-                    <span className="count">{summary.count}</span>
-                    {summary.fresh > 0 && (
-                      <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>
-                    )}
-                  </button>
-                ))
-              )}
-            </nav>
-          </aside>
-          <main
-            className="conversation"
-            aria-labelledby="conversation-heading"
-            tabIndex={0}
-            ref={setMessagePane}
+                <button
+                  type="button"
+                  aria-pressed={view === "chat" && topic === null}
+                  onClick={(event) => {
+                    pendingJump.current = null;
+                    setView("chat");
+                    setTopic(null);
+                    lastTopicButton.current = event.currentTarget;
+                    setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+                  }}
+                >
+                  {t("nav.all")}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={view === "questions"}
+                  onClick={(event) => {
+                    pendingJump.current = null;
+                    setView("questions");
+                    lastTopicButton.current = event.currentTarget;
+                    setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+                  }}
+                >
+                  <span>{t("nav.questions")}</span>
+                  <span className="count">
+                    {t("nav.questionsOpen", { count: questionGroups.open.length })}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={view === "files"}
+                  onClick={(event) => {
+                    pendingJump.current = null;
+                    setView("files");
+                    lastTopicButton.current = event.currentTarget;
+                    setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+                  }}
+                >
+                  <span>{t("nav.files")}</span>
+                </button>
+                {topicLayout ? (
+                  <TopicList
+                    topics={listedTopics}
+                    selected={topic}
+                    pressed={view === "chat" ? topic : null}
+                    closedOpen={closedOpen}
+                    onClosedOpenChange={setClosedOpen}
+                    onSelect={openTopic}
+                  />
+                ) : (
+                  topics.map((summary) => (
+                    <button
+                      key={summary.topic}
+                      type="button"
+                      aria-pressed={view === "chat" && topic === summary.topic}
+                      onClick={(event) => {
+                        pendingJump.current = null;
+                        setView("chat");
+                        setTopic(summary.topic);
+                        lastTopicButton.current = event.currentTarget;
+                        setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+                      }}
+                    >
+                      <span className="topic-name">#{summary.topic}</span>
+                      <span className="count">{summary.count}</span>
+                      {summary.fresh > 0 && (
+                        <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>
+                      )}
+                    </button>
+                  ))
+                )}
+              </nav>
+            </aside>
+          </div>
+          <div
+            className="pane-frame conversation-frame"
+            data-mobile-view={mobileConversation ? "conversation" : "topics"}
           >
-            <TopicBar
-              headingClass={topicLayout && topic !== null ? "topic-heading" : undefined}
-              headingRef={conversationHeading}
-              onBack={() => {
-                setMobileConversation(false);
-              }}
-              menu={narrow ? range : null}
-              heading={
-                <>
-                  {view === "questions"
-                    ? t("heading.questions")
-                    : view === "files"
-                      ? topic === null
-                        ? t("heading.files")
-                        : t("heading.filesIn", { topic })
-                      : topic === null
-                        ? t("heading.all")
-                        : `#${topic}`}
-                </>
-              }
-            />
-            {topicLayout && loadedTopics.length === 0 && (
-              <p className="topic-prompt">{t("topic.selectPrompt")}</p>
-            )}
-            {showingAll && (allLoading || closedHidden) && (
-              <p className="all-status" role="status">
-                {allLoading
-                  ? t("all.loading", { done: allDone, total: allTotal })
-                  : t("all.closedNote")}
-              </p>
-            )}
-            {view === "questions" && (
-              <QuestionsView
-                groups={questionGroups}
-                people={people}
-                now={now}
-                onOpen={openQuestion}
-              />
-            )}
-            {!narrow && range}
-            {view !== "questions" && selectedLoader !== null && paging.hasOlder && (
-              <button
-                type="button"
-                className="older"
-                disabled={busy || retryingAfterLimit}
-                onClick={() => {
-                  run(() => selectedLoader.loadOlder(), 0, "load-older");
+            <main
+              className="conversation"
+              aria-labelledby="conversation-heading"
+              tabIndex={0}
+              ref={setMessagePane}
+            >
+              <TopicBar
+                headingClass={topicLayout && topic !== null ? "topic-heading" : undefined}
+                headingRef={conversationHeading}
+                onBack={() => {
+                  setMobileConversation(false);
                 }}
-              >
-                {t("nav.loadOlder")}
-              </button>
-            )}
-            {view === "files" && (
-              <FilesView
-                messages={
-                  topic === null ? messages : messages.filter((message) => message.topic === topic)
+                menu={narrow ? range : null}
+                heading={
+                  <>
+                    {view === "questions"
+                      ? t("heading.questions")
+                      : view === "files"
+                        ? topic === null
+                          ? t("heading.files")
+                          : t("heading.filesIn", { topic })
+                        : topic === null
+                          ? t("heading.all")
+                          : `#${topic}`}
+                  </>
                 }
-                context={attachments}
-                label={(name) => people.label(name)}
-                hasOlder={paging.hasOlder}
               />
-            )}
+              {topicLayout && loadedTopics.length === 0 && (
+                <p className="topic-prompt">{t("topic.selectPrompt")}</p>
+              )}
+              {showingAll && (allLoading || closedHidden) && (
+                <p className="all-status" role="status">
+                  {allLoading
+                    ? t("all.loading", { done: allDone, total: allTotal })
+                    : t("all.closedNote")}
+                </p>
+              )}
+              {view === "questions" && (
+                <QuestionsView
+                  groups={questionGroups}
+                  people={people}
+                  now={now}
+                  onOpen={openQuestion}
+                />
+              )}
+              {!narrow && range}
+              {view !== "questions" && selectedLoader !== null && paging.hasOlder && (
+                <button
+                  type="button"
+                  className="older"
+                  disabled={busy || retryingAfterLimit}
+                  onClick={() => {
+                    run(() => selectedLoader.loadOlder(), 0, "load-older");
+                  }}
+                >
+                  {t("nav.loadOlder")}
+                </button>
+              )}
+              {view === "files" && (
+                <FilesView
+                  messages={
+                    topic === null
+                      ? messages
+                      : messages.filter((message) => message.topic === topic)
+                  }
+                  context={attachments}
+                  label={(name) => people.label(name)}
+                  hasOlder={paging.hasOlder}
+                />
+              )}
+              {view === "chat" && (
+                <ChatView
+                  rows={rows}
+                  loading={allLoading}
+                  people={people}
+                  attachments={attachments}
+                  earlier={{
+                    // Ids start with their timestamp, so a parent that sorts before the oldest loaded
+                    // message is older than the loaded range.
+                    beforeId: paging.hasOlder ? (pagedMessages[0]?.id ?? null) : null,
+                    disabled: busy || retryingAfterLimit,
+                    onLoad: () => {
+                      if (selectedLoader !== null) {
+                        run(() => selectedLoader.loadOlder(), 0, "load-older");
+                      }
+                    },
+                  }}
+                />
+              )}
+            </main>
             {view === "chat" && (
-              <ChatView
-                rows={rows}
-                loading={allLoading}
-                people={people}
-                attachments={attachments}
-                earlier={{
-                  // Ids start with their timestamp, so a parent that sorts before the oldest loaded
-                  // message is older than the loaded range.
-                  beforeId: paging.hasOlder ? (pagedMessages[0]?.id ?? null) : null,
-                  disabled: busy || retryingAfterLimit,
-                  onLoad: () => {
-                    if (selectedLoader !== null) {
-                      run(() => selectedLoader.loadOlder(), 0, "load-older");
-                    }
-                  },
-                }}
-              />
+              <a
+                className="jump-to-latest"
+                data-mobile-view={mobileConversation ? "conversation" : "topics"}
+                href="#latest-message"
+              >
+                {t("nav.jumpLatest")}
+              </a>
             )}
-          </main>
+          </div>
         </div>
-      )}
-      {view === "chat" && (
-        <a
-          className="jump-to-latest"
-          data-mobile-view={mobileConversation ? "conversation" : "topics"}
-          href="#latest-message"
-        >
-          {t("nav.jumpLatest")}
-        </a>
       )}
     </div>
   );
