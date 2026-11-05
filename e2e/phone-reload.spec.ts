@@ -82,16 +82,61 @@ test.describe("reloading on a phone @csp", () => {
 
   test("a topic that is gone falls back to the list @csp", async ({ page }) => {
     await start(page);
+    await expect(row(page)).toBeVisible();
     await page.evaluate(() => {
       const key = Object.keys(localStorage).find((name) => name.includes(".view:"));
+      if (key === undefined) throw new Error("the viewer saved no view state");
       localStorage.setItem(
-        key ?? "agent-collab-viewer.view:hosted",
+        key,
         JSON.stringify({ view: "chat", topic: "removed", conversation: true }),
       );
     });
     await page.reload();
     await expect(row(page)).toBeVisible();
     await expect(page.locator(".conversation")).toBeHidden();
+  });
+
+  test("reloads inside a topic add no history entry, and back still leaves the viewer @csp", async ({
+    page,
+  }) => {
+    await page.route("**/hosted-snapshot.json", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: snapshot }),
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    // A page of another origin before the viewer tells leaving the viewer from staying in it.
+    await page.goto("data:text/html,<p>before</p>");
+    await page.goto("/");
+    await row(page).click();
+    await expect(page.locator(".conversation")).toBeVisible();
+    const length = await page.evaluate(() => history.length);
+
+    for (let round = 0; round < 2; round += 1) {
+      await page.reload();
+      await expect(page.locator(".conversation")).toBeVisible();
+      expect(await page.evaluate(() => history.length)).toBe(length);
+    }
+
+    await page.goBack();
+    await expect(row(page)).toBeVisible();
+    await page.goBack();
+    expect(page.url().startsWith("data:")).toBe(true);
+  });
+
+  test("a restored topic without a history entry gets one, so back reaches the list @csp", async ({
+    page,
+  }) => {
+    await start(page);
+    await row(page).click();
+    await expect(page.locator(".conversation")).toBeVisible();
+    // A fresh tab restores the page state but not the viewer's history entry.
+    await page.evaluate(() => {
+      history.replaceState(null, "");
+    });
+    await page.reload();
+    await expect(page.locator(".conversation")).toBeVisible();
+    await page.goBack();
+    await expect(page.locator(".conversation")).toBeHidden();
+    await expect(row(page)).toBeVisible();
   });
 
   test("on a wide screen a reload keeps the topic as before @csp", async ({ page }) => {
