@@ -2,7 +2,12 @@
 // newest-first paging and change detection (docs/design.md, sections 4 and 7).
 
 import { parseMessageFile } from "../message/parse";
-import { isKnownLayout, markerLayout } from "../message/topic-layout";
+import {
+  isKnownLayout,
+  markerLayout,
+  markerParticipants,
+  type MarkerParticipants,
+} from "../message/topic-layout";
 import { mapLimit } from "../source/map-limit";
 import { TopicLayoutSource } from "../source/topic-layout";
 import { AttachmentReader } from "./attachments";
@@ -78,38 +83,6 @@ const PER_FILE_ERRORS: ReadonlySet<SourceErrorKind> = new Set([
   "too-large",
   "unexpected",
 ]);
-
-interface MarkerParticipants {
-  readonly participants: readonly string[];
-  readonly formerParticipants: readonly string[];
-}
-
-function markerParticipants(text: string): MarkerParticipants {
-  const fields = new Map<string, string>();
-  for (const line of text
-    .replace(/^\uFEFF/, "")
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .slice(1)) {
-    const colon = line.indexOf(":");
-    if (colon === -1) continue;
-    const key = line.slice(0, colon).trim();
-    if (key === "participants" || key === "former-participants") {
-      fields.set(key, line.slice(colon + 1).trim());
-    }
-  }
-  const split = (value: string | undefined): string[] =>
-    value === undefined
-      ? []
-      : value
-          .split(",")
-          .map((name) => name.trim())
-          .filter(Boolean);
-  return {
-    participants: split(fields.get("participants")),
-    formerParticipants: split(fields.get("former-participants")),
-  };
-}
 
 function topicsForMessagePath(path: string, senders: readonly string[]): readonly string[] | null {
   const fileName = path.slice(path.lastIndexOf("/") + 1);

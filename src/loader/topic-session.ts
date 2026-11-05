@@ -13,8 +13,8 @@ import {
 } from "../message/generated-index";
 import { isTopicFolderName, parseRootIndex, type TopicSummary } from "../message/topic-layout";
 import { SourceError, type DirectoryEntry, type Head, type MessageSource } from "../source/types";
-import type { Loader, LoaderOptions } from "./loader";
-import { readLayout, topicLoader } from "./topic-reader";
+import type { Loader, LoaderOptions, LoaderSnapshot } from "./loader";
+import { readRepositoryMetadata, topicLoader } from "./topic-reader";
 
 /** What the viewer knows of a topic's size and recency without loading its messages. */
 export interface TopicDigest {
@@ -36,6 +36,11 @@ interface TopicState {
 export class TopicSession {
   private head: Head | null = null;
   private states = new Map<string, TopicState>();
+  private roster: Pick<LoaderSnapshot, "participants" | "formerParticipants" | "rosterKnown"> = {
+    participants: [],
+    formerParticipants: [],
+    rosterKnown: false,
+  };
   private readonly loaders = new Map<string, { loader: Loader; treeId: string | null }>();
   private readonly digests = new Map<string, { treeId: string | null; digest: TopicDigest }>();
   /** Digest reads in progress, so a caller that asks again joins the read instead of repeating it. */
@@ -63,6 +68,14 @@ export class TopicSession {
   /** The head used by the most recent successful open or refresh. */
   get currentHead(): Head | null {
     return this.head;
+  }
+
+  /** Root participant metadata, available from the topic list before a message loader opens. */
+  get rosterSnapshot(): Pick<
+    LoaderSnapshot,
+    "participants" | "formerParticipants" | "rosterKnown"
+  > {
+    return this.roster;
   }
 
   /** Reads the marker, `topics/` and the root index (the handful of requests of section 6.1). */
@@ -236,7 +249,8 @@ export class TopicSession {
 
   private async read(head: Head): Promise<void> {
     const root = await this.source.listDirectory(head.revision, "");
-    const layout = await readLayout(this.source, root);
+    const metadata = await readRepositoryMetadata(this.source, root);
+    const layout = metadata.layout;
     this.layout = layout;
     const states = new Map<string, TopicState>();
     if (layout === "topic") {
@@ -265,6 +279,11 @@ export class TopicSession {
       }
     }
     this.states = new Map([...states].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    this.roster = {
+      participants: metadata.participants,
+      formerParticipants: metadata.formerParticipants,
+      rosterKnown: metadata.rosterKnown,
+    };
     this.head = head;
   }
 

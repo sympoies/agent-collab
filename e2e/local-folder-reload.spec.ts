@@ -51,6 +51,79 @@ async function installPicker(page: Page) {
   );
 }
 
+async function installTopicPicker(page: Page) {
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      showDirectoryPicker: async () => {
+        const root = await navigator.storage.getDirectory();
+        const clone = await root.getDirectoryHandle("topic-clone", { create: true });
+        const write = async (directory: FileSystemDirectoryHandle, name: string, text: string) => {
+          const file = await directory.getFileHandle(name, { create: true });
+          const stream = await file.createWritable();
+          await stream.write(text);
+          await stream.close();
+        };
+        await write(
+          clone,
+          ".agent-collab",
+          "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent, bob-agent\n",
+        );
+        const topics = await clone.getDirectoryHandle("topics", { create: true });
+        const api = await topics.getDirectoryHandle("api", { create: true });
+        const inbox = await api.getDirectoryHandle("inbox", { create: true });
+        const month = await inbox.getDirectoryHandle("2026-11", { create: true });
+        await write(
+          month,
+          "2026-11-04T0900-alice-agent-api-01.md",
+          [
+            "---",
+            "id: 2026-11-04T0900-alice-agent-api-01",
+            "from: alice-agent",
+            "to: all",
+            "topic: api",
+            "type: info",
+            "reply_to:",
+            "refs:",
+            "needs: none",
+            "due:",
+            "---",
+            "The topic message remains unopened.",
+          ].join("\n"),
+        );
+        return clone;
+      },
+    });
+  });
+}
+
+test("Viewing as lists a local topic roster before opening a topic and remembers the choice", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installTopicPicker(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open local folder (experimental)" }).click();
+  await expect(page.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+  await expect(page.getByText("The topic message remains unopened.")).toHaveCount(0);
+
+  const identity = page.locator(".bar-actions .identity-button");
+  await identity.click();
+  const panel = page.getByRole("region", { name: "Profile & colors" });
+  const viewingAs = panel.getByLabel("Viewing as");
+  await expect(viewingAs.locator("option")).toHaveText(["Observer", "alice-agent", "bob-agent"]);
+  await viewingAs.selectOption("bob-agent");
+  await page.keyboard.press("Escape");
+  await expect(identity).toHaveAttribute(
+    "aria-label",
+    "Viewing as bob-agent. Open Profile & colors",
+  );
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+  await identity.click();
+  await expect(panel.getByLabel("Viewing as")).toHaveValue("bob-agent");
+});
+
 test("a reload returns to the local folder and the person chosen in it", async ({ page }) => {
   await installPicker(page);
   await page.goto("/");

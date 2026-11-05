@@ -51,7 +51,7 @@ import {
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
 import { TopicChip } from "./shared/components";
-import { useMergedSnapshot } from "./merged-snapshot";
+import { mergeRosterSnapshot, useMergedSnapshot } from "./merged-snapshot";
 import { mapLimit } from "../source/map-limit";
 import { useTopicDigests } from "./useTopicDigests";
 import { buildRows, topicSummaries } from "./timeline";
@@ -230,7 +230,15 @@ export function App({
         : [loader],
     [loadedTopics, loader, topicLayout, topicSession],
   );
-  const snapshot = useMergedSnapshot(openedLoaders);
+  const loadedSnapshot = useMergedSnapshot(openedLoaders);
+  const rosterSnapshot = topicSession?.rosterSnapshot;
+  const snapshot = useMemo(
+    () =>
+      topicLayout && rosterSnapshot !== undefined
+        ? mergeRosterSnapshot(loadedSnapshot, rosterSnapshot)
+        : loadedSnapshot,
+    [loadedSnapshot, rosterSnapshot, topicLayout],
+  );
   // The budget the API reported with its latest response; null until a response carried one.
   const reported = signedIn === undefined ? null : loader.rateLimit();
   // Only a plausible budget is shown: whole numbers, and no more left than the limit.
