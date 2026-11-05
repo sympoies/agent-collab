@@ -264,6 +264,32 @@ describe("the settings screen as the place to choose a data source", () => {
     expect(calls.forget).toEqual(["other-clone"]);
   });
 
+  it("still forgets the folder and every stored choice when the credentials cannot be removed", async () => {
+    const storage = storageMap({
+      "agent-collab-viewer.settings": "{}",
+      "agent-collab-viewer.identity:local:my-clone": "{}",
+      "agent-collab-viewer.view:hosted:https://a.example/": "{}",
+      "agent-collab-viewer.theme": "night-owl",
+      "agent-collab-viewer.locale": "ja",
+    });
+    const credentials = new MemoryStore();
+    credentials.delete = () => Promise.reject(new Error("blocked"));
+    const { memory, calls } = remembering("my-clone");
+    const host = await render({ hosted: true, memory, storage, credentials });
+    await settingsFromViewer(host);
+
+    await click(button(host, "Forget what this browser remembers"));
+    await click(button(host, "Forget everything"));
+
+    expect(calls.forget).toEqual(["my-clone"]);
+    expect([...storage.values.keys()].sort()).toEqual([
+      "agent-collab-viewer.locale",
+      "agent-collab-viewer.theme",
+    ]);
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("could not be removed");
+    expect(host.querySelector('[role="status"]')).toBeNull();
+  });
+
   it("says it could not forget when the folder record stays", async () => {
     const { memory } = remembering("my-clone");
     memory.forget = () => Promise.resolve(false);
