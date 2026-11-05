@@ -65,9 +65,11 @@ folder from files** when their file chooser supports directory selection;
 browsers without either option show an explanation. Choose **Open local folder
 (experimental)** on the welcome screen or **Local folder** in the toolbar, then
 pick the clone folder itself, the one that contains `.agent-collab`. The viewer
-only reads the folder; it never writes to it. The page forgets the selection
-when you reload, but remembers your **Viewing as** choice, colours and the open topic for a folder
-of the same name once you pick it again.
+only reads the folder; it never writes to it. In Chrome and Edge the page
+remembers the folder across a reload (the browser may ask permission again; use **Reopen**, or
+**Forget this folder** to remove it). Safari and Firefox read a snapshot through a file input and
+cannot remember the folder; the choices made in it (Viewing as, colours, the open topic) are
+remembered per folder name.
 
 The page cannot run `git pull`. The folder-handle picker keeps a read-only
 handle in memory, re-reads it about once a minute while the tab is visible

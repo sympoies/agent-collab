@@ -110,10 +110,13 @@ export const en = {
   "local.notClone":
     "This folder is not a collaboration clone (no .agent-collab file). Choose the clone folder itself.",
   "local.unreadable": "This folder could not be read.",
+  "welcome.reopenLocal": "Reopen {name}",
+  "welcome.forgetLocal": "Forget this folder",
+  "local.reopenDenied": "Permission to read {name} was not granted. Choose the folder again.",
   "local.snapshotNotice":
-    "This is a snapshot of the selected folder. After a git pull, choose the folder again to see updates.",
+    "This is a snapshot of the selected folder. After a git pull, choose the folder again to see updates. This browser cannot remember it: after a reload, choose the folder again.",
   "local.snapshotNoticeRosterUnknown":
-    "This is a snapshot of the selected folder. After a git pull, choose the folder again to see updates. This browser omitted .agent-collab, so the participant roster and question progress are unknown; loaded senders appear under “Viewing as”.",
+    "This is a snapshot of the selected folder. After a git pull, choose the folder again to see updates. This browser omitted .agent-collab, so the participant roster and question progress are unknown; loaded senders appear under “Viewing as”. This browser cannot remember it: after a reload, choose the folder again.",
   "hosted.unreadable": "The snapshot served with this page could not be read.",
   "live.snapshotAt": "the snapshot generated at {date}",
   "live.bundled": "the bundled sample",

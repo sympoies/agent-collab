@@ -1,0 +1,109 @@
+// The one local folder this browser remembers across a reload (issue #53): the
+// FileSystemDirectoryHandle and its display name, kept in IndexedDB and nothing else (no file
+// content, no path). Every operation is guarded: a store that is missing, blocked or full simply
+// remembers nothing, and the viewer works from the folder the reader picks again.
+
+import type { RecordStore } from "../credentials/store";
+import { LocalFolderSource, type LocalDirectoryHandle } from "./local-folder";
+import type { MessageSource } from "./types";
+
+const RECORD = "local-folder";
+
+export type FolderPermission = "granted" | "prompt" | "denied";
+
+/** A folder from an earlier visit. Reading it again may need the reader's permission. */
+export interface RememberedFolder {
+  readonly name: string;
+  /** The last viewer this browser showed was this folder, so a reload should return to it. */
+  readonly active: boolean;
+  /** The permission as it stands now; never prompts. */
+  permission(): Promise<FolderPermission>;
+  /** Asks for read permission; the browser needs a user gesture for this. */
+  request(): Promise<FolderPermission>;
+  open(): { readonly source: MessageSource; readonly name: string };
+}
+
+export interface FolderMemory {
+  load(): Promise<RememberedFolder | null>;
+  /** Remembers this folder in place of any other, as the last viewer shown. */
+  save(handle: LocalDirectoryHandle): Promise<void>;
+  setActive(active: boolean): Promise<void>;
+  forget(): Promise<void>;
+}
+
+interface Stored {
+  readonly handle: LocalDirectoryHandle;
+  readonly name: string;
+  readonly active: boolean;
+}
+
+function isStored(value: unknown): value is Stored {
+  if (typeof value !== "object" || value === null) return false;
+  const { handle, name, active } = value as Record<string, unknown>;
+  return (
+    typeof name === "string" &&
+    typeof active === "boolean" &&
+    typeof handle === "object" &&
+    handle !== null &&
+    (handle as { kind?: unknown }).kind === "directory"
+  );
+}
+
+const asPermission = (state: PermissionState): FolderPermission =>
+  state === "granted" || state === "denied" ? state : "prompt";
+
+export function folderMemory(records: RecordStore): FolderMemory {
+  const read = async (): Promise<Stored | null> => {
+    try {
+      const value = await records.get(RECORD);
+      return isStored(value) ? value : null;
+    } catch {
+      return null;
+    }
+  };
+  const write = async (value: Stored): Promise<void> => {
+    try {
+      await records.put(RECORD, value);
+    } catch {
+      // Nothing is remembered; the folder still opens for this visit.
+    }
+  };
+  return {
+    load: async () => {
+      const stored = await read();
+      if (stored === null) return null;
+      const { handle } = stored;
+      return {
+        name: stored.name,
+        active: stored.active,
+        permission: async () => {
+          try {
+            return asPermission((await handle.queryPermission?.({ mode: "read" })) ?? "prompt");
+          } catch {
+            return "denied";
+          }
+        },
+        request: async () => {
+          try {
+            return asPermission((await handle.requestPermission?.({ mode: "read" })) ?? "denied");
+          } catch {
+            return "denied";
+          }
+        },
+        open: () => ({ source: new LocalFolderSource(handle), name: stored.name }),
+      };
+    },
+    save: (handle) => write({ handle, name: handle.name, active: true }),
+    setActive: async (active) => {
+      const stored = await read();
+      if (stored !== null && stored.active !== active) await write({ ...stored, active });
+    },
+    forget: async () => {
+      try {
+        await records.delete(RECORD);
+      } catch {
+        // Already gone, or storage is blocked: either way nothing is remembered.
+      }
+    },
+  };
+}

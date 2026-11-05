@@ -97,8 +97,18 @@ No fallback helper or topic preview is part of this spike.
   where `window.showDirectoryPicker` exists; elsewhere the welcome screen explains that a browser
   with folder access is needed and the toolbar has no folder button. The picker runs straight from
   the click with `mode: "read"`. Cancelling or a refused folder shows the neutral message; a folder
-  without `.agent-collab` is refused before the viewer opens. The handle stays in memory and is
-  never stored; reloading means picking again. A revoked permission stops the read with the
+  without `.agent-collab` is refused before the viewer opens. **Remembering (issue #53).** A folder
+  picked with the directory picker is remembered across a reload: the handle and its display name
+  (nothing else: no path, no content) go to IndexedDB through the guarded record store
+  (`src/source/folder-memory.ts`); a store that is blocked or throws just remembers nothing. One
+  folder is kept, and picking another replaces it. After a reload the viewer returns to the folder
+  when it was the last viewer shown and `queryPermission({ mode: "read" })` says `granted`; otherwise
+  the welcome screen offers "Reopen <name>", which calls `requestPermission` from the click, and
+  "Forget this folder". A folder that was deleted or whose permission is refused shows the local
+  error message and the reader chooses the folder again. A snapshot from a file input (a FileList)
+  cannot be remembered and its notice says so. The reader's choices for a folder (Viewing as,
+  colours, names, selected view and topic) are kept under `local:<folder name>`, so two folders with
+  the same name share them; never a path. A revoked permission stops the read with the
   `forbidden` message and keeps the messages on screen; choosing the folder again recovers.
 - **Label.** The source is shown as "Local folder · experimental" until the dedicated-origin and CSP
   slice lands. The viewer keeps the reader's choices for a local folder

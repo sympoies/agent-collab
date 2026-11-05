@@ -37,6 +37,7 @@ import { SourceError, type MessageSource } from "../source/types";
 import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
 import { say } from "./errorText";
 import { App, type AppProps, type SourceIndicator } from "./App";
+import type { FolderMemory, RememberedFolder } from "../source/folder-memory";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
 
@@ -46,6 +47,8 @@ export interface LocalFolderOpen {
   readonly name: string;
   /** The source cannot observe changes after selection. */
   readonly snapshot?: boolean;
+  /** Keeps this folder for the next visit; set when the browser can remember it. */
+  readonly remember?: () => Promise<void>;
 }
 
 export type LocalFolderSelection =
@@ -61,6 +64,8 @@ export interface RootProps extends SettingsDeps {
   readonly openLocalFolder: (() => Promise<LocalFolderOpen>) | null;
   /** Creates a read-only source from a directory input or dropped folder. */
   readonly openLocalFileList?: (selection: LocalFolderSelection) => Promise<LocalFolderOpen>;
+  /** The folder this browser remembers between visits; absent when it remembers none. */
+  readonly folderMemory?: FolderMemory;
   /** Reads the snapshot this deployment serves next to the app; null when it serves none. */
   readonly createHostedSource?: (() => MessageSource) | null;
 }
@@ -87,6 +92,8 @@ interface ViewerScreen {
   readonly signedIn: boolean;
   /** The open view and topic are kept across a reload (hosted snapshot and local folder). */
   readonly rememberView: boolean;
+  /** A local folder this browser can reopen after a reload. */
+  readonly folder: boolean;
   /** The source to check for the topic layout first; null for the demos, which are flat. */
   readonly topicSource: MessageSource | null;
   /** A topic session already opened on `topicSource`, when the root checked the layout. */
@@ -107,6 +114,12 @@ async function openRepository(
   if (session.inboxLayout !== "topic") await loader.openWithHead(session.currentHead);
   return { loader, session };
 }
+
+/** A remembered folder opens like a picked one, and stays the folder to return to. */
+const reopened = (found: RememberedFolder): LocalFolderOpen => ({
+  ...found.open(),
+  remember: () => Promise.resolve(),
+});
 
 /** The demos neither read nor write browser storage, so identity choices last for the view. */
 const MEMORY_ONLY = { storage: null, key: "demo" } as const;
@@ -141,6 +154,8 @@ export function Root(props: RootProps) {
     openLocalFileList,
   } = props;
   const createHostedSource = props.createHostedSource ?? null;
+  const folderMemory = props.folderMemory ?? null;
+  const [remembered, setRemembered] = useState<RememberedFolder | null>(null);
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
   const navigation = useRef(0);
@@ -170,7 +185,13 @@ export function Root(props: RootProps) {
     extras: Partial<
       Pick<
         ViewerScreen,
-        "demo" | "limitHit" | "signedIn" | "rememberView" | "topicSource" | "initialTopicSession"
+        | "demo"
+        | "limitHit"
+        | "signedIn"
+        | "rememberView"
+        | "folder"
+        | "topicSource"
+        | "initialTopicSession"
       >
     > = {},
   ): ViewerScreen => {
@@ -190,6 +211,7 @@ export function Root(props: RootProps) {
       limitHit: extras.limitHit ?? false,
       signedIn: extras.signedIn ?? false,
       rememberView: extras.rememberView ?? false,
+      folder: extras.folder ?? false,
       topicSource: extras.topicSource ?? null,
       initialTopicSession: extras.initialTopicSession ?? null,
     };
@@ -459,14 +481,24 @@ export function Root(props: RootProps) {
           ...(opened.snapshot === true ? { actionLabel: "bar.localFolderSnapshot" as const } : {}),
           experimental: true,
         },
-        { topicSource: opened.source, initialTopicSession: session, rememberView: true },
+        {
+          topicSource: opened.source,
+          initialTopicSession: session,
+          rememberView: true,
+          folder: opened.remember !== undefined,
+        },
       ),
     );
+    if (folderMemory === null) return;
+    void (async () => {
+      await opened.remember?.();
+      setRemembered(await folderMemory.load());
+    })();
   };
 
   /**
    * Picks and opens a local folder. The picker is called first, straight from the click, because
-   * it needs the user gesture. Nothing is saved: the handle lives only in this view.
+   * it needs the user gesture. A folder that opened is then remembered, when the browser can.
    */
   const chooseLocalFolder = async (current: ViewerScreen | null): Promise<void> => {
     if (openLocalFolder === null) return;
@@ -560,10 +592,39 @@ export function Root(props: RootProps) {
   // A deployment that serves a snapshot goes straight to it; the welcome screen stays reachable
   // through its button when the snapshot cannot be read.
   useEffect(() => {
-    void showHosted();
+    void (async () => {
+      const found = folderMemory === null ? null : await folderMemory.load();
+      setRemembered(found);
+      // The last visit ended on this folder: go back to it when no click is needed.
+      if (found?.active === true && (await found.permission()) === "granted") {
+        const operation = ++navigation.current;
+        await openLocalSource(() => Promise.resolve(reopened(found)), null, operation);
+        return;
+      }
+      await showHosted();
+    })();
     // Once, on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Mark whether the viewer on screen is the folder to return to after a reload.
+  useEffect(() => {
+    if (folderMemory !== null && screen.kind === "viewer")
+      void folderMemory.setActive(screen.folder);
+  }, [folderMemory, screen]);
+
+  /** The click on Reopen: the permission may need a prompt, which needs this gesture. */
+  const reopenRemembered = async (found: RememberedFolder): Promise<void> => {
+    const operation = ++navigation.current;
+    let permission = await found.permission();
+    if (permission !== "granted") permission = await found.request();
+    if (operation !== navigation.current) return;
+    if (permission !== "granted") {
+      setLocalMessage({ key: "local.reopenDenied", params: { name: found.name } });
+      return;
+    }
+    await openLocalSource(() => Promise.resolve(reopened(found)), null, operation);
+  };
 
   const save = async (draft: SettingsDraft): Promise<DraftErrors | null> => {
     const operation = ++navigation.current;
@@ -630,6 +691,29 @@ export function Root(props: RootProps) {
               >
                 {t("welcome.openLocal")}
               </button>
+            )}
+            {remembered !== null && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void reopenRemembered(remembered);
+                  }}
+                >
+                  {t("welcome.reopenLocal", { name: remembered.name })}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      await folderMemory?.forget();
+                      setRemembered(null);
+                    })();
+                  }}
+                >
+                  {t("welcome.forgetLocal")}
+                </button>
+              </>
             )}
             {openLocalFolder === null && openLocalFileList !== undefined && (
               <button
