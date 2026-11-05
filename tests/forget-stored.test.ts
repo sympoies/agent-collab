@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { forgetStored } from "../src/settings/forget-stored";
+import { forgetStored, isForgettable } from "../src/settings/forget-stored";
 
 function storage(entries: Record<string, string>) {
   const values = new Map(Object.entries(entries));
@@ -50,5 +50,12 @@ describe("forgetStored", () => {
     expect(() => {
       forgetStored(throwing);
     }).not.toThrow();
+  });
+
+  it("names the keys it forgets, for storage kept in memory too", () => {
+    expect(isForgettable("agent-collab-viewer.view:local:x")).toBe(true);
+    expect(isForgettable("agent-collab-viewer.locale")).toBe(false);
+    expect(isForgettable("agent-collab-viewer.theme")).toBe(false);
+    expect(isForgettable("other.key")).toBe(false);
   });
 });

@@ -8,6 +8,11 @@ import { THEME_KEY } from "../ui/ThemeProvider";
 const PREFIX = "agent-collab-viewer.";
 const KEEP: readonly string[] = [LOCALE_KEY, THEME_KEY];
 
+/** Whether the viewer forgets this key: its own, except the language and the theme. */
+export function isForgettable(key: string): boolean {
+  return key.startsWith(PREFIX) && !KEEP.includes(key);
+}
+
 /** The part of `Storage` this needs; a store that throws simply forgets nothing. */
 export interface ForgettableStorage {
   readonly length: number;
@@ -22,7 +27,7 @@ export function forgetStored(storage: ForgettableStorage): void {
     const keys: string[] = [];
     for (let index = 0; index < storage.length; index += 1) {
       const key = storage.key(index);
-      if (key !== null && key.startsWith(PREFIX) && !KEEP.includes(key)) keys.push(key);
+      if (key !== null && isForgettable(key)) keys.push(key);
     }
     for (const key of keys) storage.removeItem(key);
   } catch {

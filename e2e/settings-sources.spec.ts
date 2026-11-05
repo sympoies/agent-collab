@@ -104,4 +104,34 @@ test.describe("screenshots", () => {
       }
     }
   }
+
+  // The steps of forgetting, in Japanese on a 360 px phone.
+  for (const step of ["confirm", "done", "failed"] as const) {
+    test(`ja 360 forget ${step}`, async ({ page }) => {
+      if (step === "failed") {
+        // The browser-encrypted store cannot be opened, so removing credentials fails.
+        await page.addInitScript(() => {
+          Object.defineProperty(window, "indexedDB", {
+            value: {
+              open: () => {
+                throw new Error("blocked");
+              },
+            },
+          });
+        });
+      }
+      await openSettings(page, "ja", 360, "paper");
+      await page.getByRole("button", { name: ja["forget.button"] }).click();
+      if (step !== "confirm")
+        await page.getByRole("button", { name: ja["forget.confirm"] }).click();
+      const note = step === "done" ? "forget.done" : "forget.failed";
+      if (step !== "confirm") await expect(page.getByText(ja[note])).toBeVisible();
+      await page.locator(".forget-all").scrollIntoViewIfNeeded();
+      const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
+      mkdirSync(directory, { recursive: true });
+      await page.locator(".forget-all").screenshot({
+        path: join(directory, `${prefix ?? "shot"}-ja-360-forget-${step}.png`),
+      });
+    });
+  }
 });

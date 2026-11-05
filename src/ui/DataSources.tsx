@@ -1,7 +1,7 @@
 // The settings screen's data-source section: every way to get messages, each with its own action,
 // and "Forget what this browser remembers". The GitHub connection form follows it (SettingsView).
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useT } from "../i18n/LocaleProvider";
 import type { MessageRef } from "../i18n/translate";
@@ -29,8 +29,7 @@ export function DataSources(props: DataSourcesProps) {
   const t = useT();
   const { local } = props;
   return (
-    <section className="data-sources" aria-labelledby="sources-heading">
-      <h2 id="sources-heading">{t("sources.heading")}</h2>
+    <section className="data-sources" aria-label={t("sources.heading")}>
       <p className="note">{t("sources.intro")}</p>
       {props.hosted !== null && (
         <SharedCard className="source-card">
@@ -95,6 +94,15 @@ export function ForgetSection({ onForget }: { readonly onForget: () => Promise<v
   const [confirming, setConfirming] = useState(false);
   const [forgotten, setForgotten] = useState(false);
   const [failed, setFailed] = useState(false);
+  const trigger = useRef<HTMLButtonElement | null>(null);
+  const cancel = useRef<HTMLButtonElement | null>(null);
+  // Focus follows the step: Cancel when the question opens, the trigger again when it closes.
+  const wasConfirming = useRef(false);
+  useEffect(() => {
+    if (confirming) cancel.current?.focus();
+    else if (wasConfirming.current) trigger.current?.focus();
+    wasConfirming.current = confirming;
+  }, [confirming]);
   return (
     <section className="forget-all" aria-labelledby="forget-heading">
       <h2 id="forget-heading">{t("forget.heading")}</h2>
@@ -102,6 +110,7 @@ export function ForgetSection({ onForget }: { readonly onForget: () => Promise<v
       {!confirming && (
         <button
           type="button"
+          ref={trigger}
           onClick={() => {
             setForgotten(false);
             setFailed(false);
@@ -112,7 +121,14 @@ export function ForgetSection({ onForget }: { readonly onForget: () => Promise<v
         </button>
       )}
       {confirming && (
-        <div className="actions" role="group" aria-label={t("forget.heading")}>
+        <div
+          className="actions"
+          role="group"
+          aria-label={t("forget.heading")}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") setConfirming(false);
+          }}
+        >
           <button
             type="button"
             className="danger"
@@ -133,6 +149,7 @@ export function ForgetSection({ onForget }: { readonly onForget: () => Promise<v
           </button>
           <button
             type="button"
+            ref={cancel}
             onClick={() => {
               setConfirming(false);
             }}

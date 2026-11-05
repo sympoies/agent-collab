@@ -106,6 +106,16 @@ describe("the settings screen as the place to choose a data source", () => {
     });
   }
 
+  /** Types into a controlled input the way a reader does. */
+  function type(input: HTMLInputElement | null, value: string): void {
+    expect(input).not.toBeNull();
+    if (input === null) return;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+
   const settingsFromViewer = (host: HTMLElement) =>
     click(host.querySelector('button[aria-label="Settings"]') ?? undefined);
 
@@ -201,6 +211,68 @@ describe("the settings screen as the place to choose a data source", () => {
     expect(button(host, "Reopen my-clone")).toBeUndefined();
     expect(host.querySelector('[role="status"]')?.textContent).toContain("no longer remembers");
     expect(host.querySelector("#github-form")).not.toBeNull();
+  });
+
+  it("empties the GitHub form, with a typed token, and offers no way back to the old session", async () => {
+    const storage = storageMap({
+      "agent-collab-viewer.settings": JSON.stringify({
+        platform: "github",
+        endpoint: "https://api.github.com",
+        repository: "alice-org/collab",
+        branch: "dev",
+        selfNames: ["alice-agent"],
+        credentialStorage: "memory",
+      }),
+    });
+    const host = await render({ hosted: true, storage });
+    await settingsFromViewer(host);
+    const field = (label: string) =>
+      host.querySelector<HTMLInputElement>(`#github-form input[placeholder="${label}"]`);
+    expect(field("owner/repository")?.value).toBe("alice-org/collab");
+    type(
+      host.querySelector<HTMLInputElement>('#github-form input[type="password"]'),
+      "typed-secret",
+    );
+    expect(button(host.querySelector("#github-form") as HTMLElement, "Cancel")).toBeDefined();
+
+    await click(button(host, "Forget what this browser remembers"));
+    await click(button(host, "Forget everything"));
+
+    expect(field("owner/repository")?.value).toBe("");
+    expect(host.querySelector<HTMLInputElement>('#github-form input[type="password"]')?.value).toBe(
+      "",
+    );
+    // The session that was open is gone with what it read; there is nothing to go back to.
+    expect(button(host.querySelector("#github-form") as HTMLElement, "Cancel")).toBeUndefined();
+    expect(
+      [...storage.values.keys()].filter((key) => key !== "agent-collab-viewer.locale"),
+    ).toEqual([]);
+  });
+
+  it("forgets the folder that is stored now, not the one this tab remembers", async () => {
+    const { memory, calls } = remembering("my-clone");
+    const host = await render({ hosted: true, memory });
+    await settingsFromViewer(host);
+    // Another tab replaced the remembered folder after this page loaded.
+    const originalLoad = memory.load.bind(memory);
+    memory.load = async () => {
+      const found = await originalLoad();
+      return found === null ? null : { ...found, name: "other-clone" };
+    };
+    await click(button(host, "Forget what this browser remembers"));
+    await click(button(host, "Forget everything"));
+    expect(calls.forget).toEqual(["other-clone"]);
+  });
+
+  it("says it could not forget when the folder record stays", async () => {
+    const { memory } = remembering("my-clone");
+    memory.forget = () => Promise.resolve(false);
+    const host = await render({ hosted: true, memory });
+    await settingsFromViewer(host);
+    await click(button(host, "Forget what this browser remembers"));
+    await click(button(host, "Forget everything"));
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain("could not be removed");
+    expect(host.querySelector('[role="status"]')).toBeNull();
   });
 
   it("keeps everything when the reader cancels", async () => {

@@ -157,4 +157,39 @@ describe("DataSources", () => {
     await click(button(host, "Forget everything"));
     expect(host.querySelector('[role="alert"]')?.textContent).toContain("could not be removed");
   });
+
+  describe("focus in the confirm step", () => {
+    const active = () => document.activeElement?.textContent;
+
+    it("moves to Cancel, comes back to the trigger on Cancel and on Escape", async () => {
+      const host = mount(props(), <ForgetSection onForget={() => Promise.resolve()} />);
+      await click(button(host, "Forget what this browser remembers"));
+      expect(active()).toBe("Cancel");
+
+      await click(button(host, "Cancel"));
+      expect(active()).toBe("Forget what this browser remembers");
+
+      await click(button(host, "Forget what this browser remembers"));
+      const group = host.querySelector('[role="group"]');
+      await act(async () => {
+        group?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await Promise.resolve();
+      });
+      expect(button(host, "Forget everything")).toBeUndefined();
+      expect(active()).toBe("Forget what this browser remembers");
+    });
+
+    it("returns to the trigger after forgetting", async () => {
+      const host = mount(props(), <ForgetSection onForget={() => Promise.resolve()} />);
+      await click(button(host, "Forget what this browser remembers"));
+      await click(button(host, "Forget everything"));
+      expect(active()).toBe("Forget what this browser remembers");
+    });
+  });
+
+  it("has no second heading above the source cards", () => {
+    const host = mount(props());
+    expect(host.querySelectorAll("h2")).toHaveLength(0);
+    expect(host.querySelector(".data-sources")?.getAttribute("aria-label")).toBe("Data source");
+  });
 });

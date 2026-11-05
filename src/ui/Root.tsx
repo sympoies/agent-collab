@@ -183,6 +183,8 @@ export function Root(props: RootProps) {
   const createHostedSource = props.createHostedSource ?? null;
   const folderMemory = props.folderMemory ?? null;
   const [remembered, setRemembered] = useState<RememberedFolder | null>(null);
+  /** Remounts the GitHub form, so what was forgotten does not stay in its fields. */
+  const [formKey, setFormKey] = useState(0);
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
   const navigation = useRef(0);
@@ -688,15 +690,26 @@ export function Root(props: RootProps) {
   /** Forgets the saved repository and token, the remembered folder and every stored choice. */
   const forgetEverything = async (): Promise<void> => {
     const operation = ++navigation.current;
-    await removeCredentials(props);
+    let failed = false;
+    try {
+      await removeCredentials(props);
+    } catch {
+      failed = true;
+    }
     forgetToken();
-    if (remembered !== null) await folderMemory?.forget(remembered.name);
+    // The record that is stored now, which another tab may have replaced since this page loaded.
+    const stored = (await folderMemory?.load()) ?? null;
+    if (stored !== null && !(await folderMemory?.forget(stored.name))) failed = true;
     props.forgetStored?.();
     setRemembered(null);
     setReopenMessage(null);
     setLocalMessage(null);
-    if (operation !== navigation.current) return;
-    await showSettings(screen.kind === "settings" ? screen.back : null);
+    // Nothing is left to go back to: the open session read with what was just forgotten.
+    if (operation === navigation.current) {
+      setFormKey((count) => count + 1);
+      await showSettings(null);
+    }
+    if (failed) throw new Error("Something remembered could not be removed.");
   };
 
   /** Forgets the folder handle and, with it, the choices made in that folder. */
@@ -881,6 +894,7 @@ export function Root(props: RootProps) {
             onOfflineDemo={openOfflineDemo}
           />
           <SettingsView
+            key={formKey}
             initial={screen.draft}
             storedEndpoints={screen.storedEndpoints}
             onSave={save}
