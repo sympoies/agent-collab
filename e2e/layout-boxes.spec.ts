@@ -125,10 +125,95 @@ for (const width of [1280, 390] as const) {
 }
 
 test.describe("Jump to latest is only in the chat @csp", () => {
-  test("it is gone on Files @csp", async ({ page }) => {
+  for (const name of [/^Files$/, /^Questions/]) {
+    test(`it is gone on ${String(name)} @csp`, async ({ page }) => {
+      await open(page, 1280);
+      await expect(page.locator(".jump-to-latest")).toHaveCount(1);
+      await page.getByRole("button", { name }).click();
+      await expect(page.locator(".jump-to-latest")).toHaveCount(0);
+    });
+  }
+});
+
+// A repository with many topics, so the topic list scrolls.
+const MANY = 40;
+const manySnapshot = JSON.stringify({
+  schemaVersion: 1,
+  generatedAt: "2026-11-04T09:59:00.000Z",
+  revision: "r1",
+  files: [
+    {
+      path: ".agent-collab",
+      text: "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent\n",
+    },
+    ...Array.from({ length: MANY }, (_, n) => {
+      const topic = `topic-${String(n + 1).padStart(2, "0")}`;
+      const message = `2026-11-04T09${String(n).padStart(2, "0")}-alice-agent-${topic}-01`;
+      return {
+        path: `topics/${topic}/inbox/2026-11/${message}.md`,
+        text: messageText(message, "alice-agent", topic, {}, `In ${topic}.`),
+      };
+    }),
+  ],
+});
+
+async function openMany(page: Page) {
+  await page.route("**/hosted-snapshot.json", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: manySnapshot }),
+  );
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Show all 40 topics" }).click();
+}
+
+test.describe("the topic list frame at 1280 px @csp", () => {
+  test("the scrollbar sits inside the border of the list frame @csp", async ({ page }) => {
+    await openMany(page);
+    const m = await page.evaluate(() => {
+      const pane = document.querySelector<HTMLElement>(".topics-pane");
+      const frame = document.querySelector<HTMLElement>(".topics-frame");
+      if (pane === null || frame === null) throw new Error("no topic list frame");
+      return {
+        scrolls: pane.scrollHeight > pane.clientHeight,
+        frameRight: frame.getBoundingClientRect().right,
+        paneRight: pane.getBoundingClientRect().right,
+        border: parseFloat(getComputedStyle(frame).borderRightWidth),
+        paneBorder: parseFloat(getComputedStyle(pane).borderRightWidth),
+      };
+    });
+    expect(m.scrolls).toBe(true);
+    expect(m.border).toBeGreaterThan(0);
+    expect(m.paneBorder).toBe(0);
+    expect(m.frameRight - m.paneRight).toBeGreaterThanOrEqual(m.border);
+  });
+
+  test("a stable scrollbar gutter keeps the content width when the list starts to scroll @csp", async ({
+    page,
+    browserName,
+  }) => {
+    test.skip(browserName !== "chromium", "only Chromium draws a classic scrollbar headless");
+    // The same viewport, first without and then with enough topics to scroll.
     await open(page, 1280);
-    await page.getByRole("button", { name: "Files", exact: true }).click();
-    await expect(page.locator(".jump-to-latest")).toHaveCount(0);
+    const few = await page.evaluate(() => {
+      const pane = document.querySelector<HTMLElement>(".topics-pane");
+      if (pane === null) throw new Error("no topic list");
+      return { width: pane.clientWidth, scrolls: pane.scrollHeight > pane.clientHeight };
+    });
+    expect(few.scrolls).toBe(false);
+    await page.unroute("**/hosted-snapshot.json");
+    await openMany(page);
+    const many = await page.evaluate(() => {
+      const pane = document.querySelector<HTMLElement>(".topics-pane");
+      if (pane === null) throw new Error("no topic list");
+      return {
+        width: pane.clientWidth,
+        scrolls: pane.scrollHeight > pane.clientHeight,
+        scrollbar: pane.offsetWidth - pane.clientWidth,
+      };
+    });
+    expect(many.scrolls).toBe(true);
+    expect(many.scrollbar).toBeGreaterThan(0);
+    expect(many.width).toBe(few.width);
   });
 });
 
