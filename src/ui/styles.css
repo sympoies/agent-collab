@@ -1,167 +1,3 @@
-:root {
-  color-scheme: light;
-  --canvas: #f4f3ed;
-  --card: #ffffff;
-  --toolbar: #ecefe8;
-  --floating: #ffffff;
-  --inset: #ecefe8;
-  --text: #1f2520;
-  --secondary: #3b443d;
-  --muted: #5d645c;
-  --accent: #2457a7;
-  --link: #0c655b;
-  --ok: #2d6c3f;
-  --warm-note: #73520f;
-  --warn: #855b00;
-  --error: #a43c2e;
-  --cyan: #0b7c8c;
-  --purple: #5c4b86;
-  --border: rgba(31, 37, 32, 0.22);
-  --border-soft: rgba(31, 37, 32, 0.12);
-  --border-strong: rgba(31, 37, 32, 0.3);
-  --grid: #d6d9cf;
-  --chip-bg: rgba(31, 37, 32, 0.06);
-  --chip-border: rgba(31, 37, 32, 0.22);
-  --hover: rgba(31, 37, 32, 0.06);
-  --hover-strong: rgba(31, 37, 32, 0.09);
-  --popover-shadow: 0 8px 18px rgba(31, 37, 32, 0.18);
-  --selected: rgba(36, 87, 167, 0.12);
-  --on-person: #ffffff;
-  --person-0: #af4e1c;
-  --person-1: #2d6c3f;
-  --person-2: #6d4aa8;
-  --person-3: #2457a7;
-  --person-4: #0a7685;
-  --person-5: #a43c2e;
-  --person-6: #855b00;
-  --person-7: #596b79;
-  --code: #ecefe8;
-  font-family: system-ui, sans-serif;
-  line-height: 1.5;
-}
-
-:root[data-theme="paper"] {
-  color-scheme: light;
-  --canvas: #f4f3ed;
-  --card: #ffffff;
-  --toolbar: #ecefe8;
-  --floating: #ffffff;
-  --inset: #ecefe8;
-  --text: #1f2520;
-  --secondary: #3b443d;
-  --muted: #5d645c;
-  --accent: #2457a7;
-  --link: #0c655b;
-  --ok: #2d6c3f;
-  --warm-note: #73520f;
-  --warn: #855b00;
-  --error: #a43c2e;
-  --cyan: #0b7c8c;
-  --purple: #5c4b86;
-  --border: rgba(31, 37, 32, 0.22);
-  --border-soft: rgba(31, 37, 32, 0.12);
-  --border-strong: rgba(31, 37, 32, 0.3);
-  --grid: #d6d9cf;
-  --chip-bg: rgba(31, 37, 32, 0.06);
-  --chip-border: rgba(31, 37, 32, 0.22);
-  --hover: rgba(31, 37, 32, 0.06);
-  --hover-strong: rgba(31, 37, 32, 0.09);
-  --popover-shadow: 0 8px 18px rgba(31, 37, 32, 0.18);
-  --selected: rgba(36, 87, 167, 0.12);
-  --on-person: #ffffff;
-  --person-0: #af4e1c;
-  --person-1: #2d6c3f;
-  --person-2: #6d4aa8;
-  --person-3: #2457a7;
-  --person-4: #0a7685;
-  --person-5: #a43c2e;
-  --person-6: #855b00;
-  --person-7: #596b79;
-  --code: #ecefe8;
-}
-
-:root[data-theme="night-owl"] {
-  color-scheme: dark;
-  --canvas: #011627;
-  --card: #061e31;
-  --toolbar: #0b2942;
-  --floating: #123650;
-  --inset: #00111f;
-  --text: #d6deeb;
-  --secondary: #a8bdd4;
-  --muted: #8ba1b8;
-  --accent: #82aaff;
-  --link: #82aaff;
-  --ok: #22da6e;
-  --warm-note: #ffcb8b;
-  --warn: #ffcb8b;
-  --error: #ef5350;
-  --cyan: #7fdbca;
-  --purple: #c792ea;
-  --border: rgba(95, 126, 151, 0.4);
-  --border-soft: rgba(95, 126, 151, 0.2);
-  --border-strong: rgba(95, 126, 151, 0.62);
-  --grid: rgba(95, 126, 151, 0.2);
-  --chip-bg: #0b2942;
-  --chip-border: rgba(95, 126, 151, 0.4);
-  --hover: #123650;
-  --hover-strong: #123650;
-  --popover-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
-  --selected: rgba(130, 170, 255, 0.17);
-  --on-person: #011627;
-  --person-0: #f78c6c;
-  --person-1: #addb67;
-  --person-2: #c792ea;
-  --person-3: #82aaff;
-  --person-4: #7fdbca;
-  --person-5: #ef5350;
-  --person-6: #ffcb8b;
-  --person-7: #8ba1b8;
-  --code: #0b2942;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    color-scheme: dark;
-    --canvas: #011627;
-    --card: #061e31;
-    --toolbar: #0b2942;
-    --floating: #123650;
-    --inset: #00111f;
-    --text: #d6deeb;
-    --secondary: #a8bdd4;
-    --muted: #8ba1b8;
-    --accent: #82aaff;
-    --link: #82aaff;
-    --ok: #22da6e;
-    --warm-note: #ffcb8b;
-    --warn: #ffcb8b;
-    --error: #ef5350;
-    --cyan: #7fdbca;
-    --purple: #c792ea;
-    --border: rgba(95, 126, 151, 0.4);
-    --border-soft: rgba(95, 126, 151, 0.2);
-    --border-strong: rgba(95, 126, 151, 0.62);
-    --grid: rgba(95, 126, 151, 0.2);
-    --chip-bg: #0b2942;
-    --chip-border: rgba(95, 126, 151, 0.4);
-    --hover: #123650;
-    --hover-strong: #123650;
-    --popover-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
-    --selected: rgba(130, 170, 255, 0.17);
-    --on-person: #011627;
-    --person-0: #f78c6c;
-    --person-1: #addb67;
-    --person-2: #c792ea;
-    --person-3: #82aaff;
-    --person-4: #7fdbca;
-    --person-5: #ef5350;
-    --person-6: #ffcb8b;
-    --person-7: #8ba1b8;
-    --code: #0b2942;
-  }
-}
-
 * {
   box-sizing: border-box;
   scrollbar-color: color-mix(in srgb, var(--muted) 75%, var(--canvas)) var(--canvas);
@@ -251,7 +87,7 @@ button:hover {
 
 .bar h1 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--font-heading);
 }
 
 .bar-actions {
@@ -269,7 +105,7 @@ button:hover {
   align-items: center;
   gap: 6px;
   color: var(--secondary);
-  font-size: 0.9rem;
+  font-size: var(--font-small);
 }
 
 .profile .viewing-as {
@@ -328,7 +164,7 @@ button:hover {
   gap: 4px 10px;
   margin: 0;
   color: var(--secondary);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 
 .source-label {
@@ -391,13 +227,13 @@ button:hover {
 
 .profile h2 {
   margin: 0;
-  font-size: 1rem;
+  font-size: var(--font-body);
 }
 
 .profile .note {
   margin: 6px 0 10px;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 
 .profile-list {
@@ -431,7 +267,7 @@ button:hover {
   flex-direction: column;
   gap: 2px;
   color: var(--secondary);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .profile-name input {
@@ -456,7 +292,7 @@ button:hover {
   padding: 0;
   margin-bottom: 4px;
   color: var(--secondary);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .swatch {
@@ -553,7 +389,7 @@ button:hover {
 
 .topics-pane h2 {
   margin: 0 0 10px;
-  font-size: 0.95rem;
+  font-size: var(--font-heading);
 }
 
 .topics {
@@ -650,13 +486,13 @@ button:hover {
 .count,
 .topic {
   color: var(--muted);
-  font-size: 0.85em;
+  font-size: var(--font-small);
 }
 
 .fresh {
   margin-left: auto;
   color: var(--accent);
-  font-size: 0.8em;
+  font-size: var(--font-small);
 }
 
 .conversation {
@@ -686,7 +522,7 @@ button:hover {
 .range-line {
   margin: 0;
   color: var(--muted);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   overflow-wrap: anywhere;
 }
 
@@ -726,7 +562,7 @@ button:hover {
   align-items: center;
   gap: 12px;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   text-align: center;
 }
 
@@ -772,7 +608,7 @@ button:hover {
   gap: 8px;
   max-width: 100%;
   min-width: 0;
-  font-size: 0.9rem;
+  font-size: var(--font-small);
 }
 
 .avatar {
@@ -784,7 +620,7 @@ button:hover {
   border-radius: 50%;
   background: var(--person);
   color: var(--on-person);
-  font-size: 0.75rem;
+  font-size: var(--font-small);
   font-weight: 700;
 }
 
@@ -793,7 +629,7 @@ button:hover {
   border: 1px solid var(--accent);
   border-radius: 10px;
   color: var(--accent);
-  font-size: 0.72rem;
+  font-size: var(--font-small);
   font-weight: 650;
 }
 
@@ -849,7 +685,7 @@ button:hover {
 }
 
 .message[data-compact="true"] {
-  font-size: 0.9rem;
+  font-size: var(--font-small);
 }
 
 .meta {
@@ -858,7 +694,7 @@ button:hover {
   align-items: baseline;
   gap: 8px;
   color: inherit;
-  font-size: 0.76rem;
+  font-size: var(--font-small);
 }
 
 .meta time {
@@ -881,7 +717,7 @@ button:hover {
   background: var(--floating);
   color: var(--text);
   box-shadow: var(--popover-shadow);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   white-space: nowrap;
 }
 
@@ -1008,7 +844,7 @@ button:hover {
   border-radius: 0 6px 6px 0;
   color: var(--link);
   background: var(--code);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   text-decoration: none;
   text-overflow: ellipsis;
 }
@@ -1021,7 +857,7 @@ a.quote {
 
 .quote-label {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--font-small);
 }
 
 .quote-label::before {
@@ -1046,7 +882,7 @@ a.quote {
 .due {
   margin: 3px 0;
   color: inherit;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 
 .due[data-overdue="true"] {
@@ -1062,7 +898,7 @@ a.quote {
   padding-top: 6px;
   border-top: 1px solid var(--border-soft);
   color: var(--secondary);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .receipts p,
@@ -1136,7 +972,7 @@ a.quote {
 
 .question-group h3 {
   margin: 0 0 8px;
-  font-size: 0.95rem;
+  font-size: var(--font-heading);
 }
 
 .question-group ul {
@@ -1182,14 +1018,14 @@ a.quote {
 
 .question-meta {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .reminder-count {
   flex-basis: 100%;
   margin: 0;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   overflow-wrap: anywhere;
 }
 
@@ -1197,7 +1033,7 @@ a.quote {
   flex-basis: 100%;
   margin: 0;
   color: var(--secondary);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   white-space: pre-wrap;
 }
 
@@ -1209,7 +1045,7 @@ a.quote {
   gap: 4px 10px;
   margin: 0;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .question-badges .reminder-count {
@@ -1259,7 +1095,7 @@ a.quote {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .reply-from {
@@ -1273,7 +1109,7 @@ a.quote {
 .reply-text {
   overflow-wrap: anywhere;
   color: var(--secondary);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
   white-space: pre-line;
 }
 
@@ -1285,12 +1121,12 @@ a.quote {
   align-self: flex-start;
   min-height: 28px;
   padding: 0 8px;
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .question-ack {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   overflow-wrap: anywhere;
 }
 
@@ -1329,7 +1165,7 @@ a.quote {
   border-radius: 12px;
   background: var(--chip-bg);
   color: var(--link);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
   text-decoration: none;
 }
 
@@ -1343,7 +1179,7 @@ span.chip {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--card);
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 
 .file-card summary {
@@ -1359,7 +1195,7 @@ span.chip {
   border: 1px solid var(--accent);
   border-radius: 6px;
   color: var(--accent);
-  font-size: 0.7rem;
+  font-size: var(--font-small);
   font-weight: 700;
 }
 
@@ -1402,7 +1238,7 @@ span.chip {
 
 .markdown :is(h1, h2, h3, h4, h5, h6) {
   margin: 8px 0 4px;
-  font-size: 1rem;
+  font-size: var(--font-body);
 }
 
 .markdown p,
@@ -1429,7 +1265,7 @@ span.chip {
 
 .csv-preview table {
   border-collapse: collapse;
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .csv-preview th,
@@ -1467,14 +1303,14 @@ span.chip {
 
 .file-from {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-small);
 }
 
 .card {
   border: 1px dashed var(--warn);
   border-radius: 8px;
   padding: 8px 12px;
-  font-size: 0.9rem;
+  font-size: var(--font-small);
 }
 
 .card pre {
@@ -1522,7 +1358,7 @@ span.chip {
 .settings h1,
 .settings h2 {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: var(--font-heading);
 }
 
 .field {
@@ -1780,7 +1616,7 @@ span.chip {
   .avatar {
     width: 30px;
     height: 30px;
-    font-size: 0.68rem;
+    font-size: var(--font-small);
   }
 }
 
@@ -1891,7 +1727,7 @@ span.chip {
 .menu-heading {
   padding: 6px 10px 0;
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: var(--font-small);
 }
 
 /* A person's palette slot, set as data-slot by the components (no inline styles). */
@@ -1939,7 +1775,7 @@ span.chip {
   background: var(--inset);
   border: 1px solid var(--border-soft);
   border-radius: 10px;
-  font-size: 0.85rem;
+  font-size: var(--font-small);
 }
 
 .token-help p {

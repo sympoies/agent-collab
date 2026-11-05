@@ -17,6 +17,8 @@ import type { MessageSource } from "./source/types";
 import { Root, type LocalFolderOpen, type LocalFolderSelection } from "./ui/Root";
 import { LocaleProvider } from "./i18n/LocaleProvider";
 import { ThemeProvider } from "./ui/ThemeProvider";
+import "./ui/shared/tokens.css";
+import "./ui/shared/components.css";
 import "./ui/styles.css";
 
 // Composition root: the only module that picks concrete providers and stores.

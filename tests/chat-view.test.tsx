@@ -47,7 +47,8 @@ describe("ChatView with the demo repository", () => {
   it("renders messages with sender, type, needs and due", async () => {
     const html = await render();
     expect(html).toContain("bob-agent");
-    expect(html).toContain('class="avatar" aria-hidden="true">BA</span>');
+    expect(html).toContain('class="shared-avatar avatar" aria-hidden="true">BA</span>');
+    expect(html).toContain('class="shared-topic-chip topic">#api</span>');
     expect(html).toContain('data-type="question"');
     expect(html).toContain(">decision</span>");
     expect(html).toContain('title="2026-10-08 09:05"');

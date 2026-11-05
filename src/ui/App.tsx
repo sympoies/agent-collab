@@ -44,6 +44,7 @@ import { usePhoneHistory } from "./phone-history";
 import { TopicBar } from "./TopicBar";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
+import { TopicChip } from "./shared/components";
 import { useMergedSnapshot } from "./merged-snapshot";
 import { mapLimit } from "../source/map-limit";
 import { useTopicDigests } from "./useTopicDigests";
@@ -945,7 +946,7 @@ export function App({
                         setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
                       }}
                     >
-                      <span className="topic-name">#{summary.topic}</span>
+                      <TopicChip topic={summary.topic} className="topic-name" />
                       <span className="count">{summary.count}</span>
                       {summary.fresh > 0 && (
                         <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>

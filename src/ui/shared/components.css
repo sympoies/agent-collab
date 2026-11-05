@@ -1,0 +1,95 @@
+.shared-participant {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--person);
+  font-weight: 650;
+}
+
+.shared-avatar {
+  display: inline-grid;
+  width: 1.75rem;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--person);
+  color: var(--on-person);
+  font-size: var(--font-small);
+  font-weight: 700;
+}
+
+.shared-topic-chip,
+.shared-status-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: var(--border-width) solid var(--chip-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  background: var(--chip-bg);
+  color: var(--secondary);
+  font-size: var(--font-small);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.shared-topic-chip {
+  color: var(--link);
+}
+
+.shared-status-chip[data-tone="attention"] {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.shared-status-chip[data-tone="success"] {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.shared-status-chip[data-tone="danger"] {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.shared-status-chip[data-tone="neutral"] {
+  color: var(--muted);
+}
+
+.shared-card {
+  min-width: 0;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--card);
+}
+
+.shared-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.shared-meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+
+.shared-empty-state {
+  border: var(--border-width) dashed var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  color: var(--muted);
+  text-align: center;
+}
+
+.shared-link {
+  color: var(--link);
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.15em;
+}
