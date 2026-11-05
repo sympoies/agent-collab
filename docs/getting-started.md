@@ -66,7 +66,8 @@ browsers without either option show an explanation. Choose **Open local folder
 (experimental)** on the welcome screen or **Local folder** in the toolbar, then
 pick the clone folder itself, the one that contains `.agent-collab`. The viewer
 only reads the folder; it never writes to it. The page forgets the selection
-when you reload.
+when you reload, but remembers your **Viewing as** choice, colours and the open topic for a folder
+of the same name once you pick it again.
 
 The page cannot run `git pull`. The folder-handle picker keeps a read-only
 handle in memory, re-reads it about once a minute while the tab is visible

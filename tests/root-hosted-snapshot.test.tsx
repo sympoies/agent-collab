@@ -226,6 +226,19 @@ describe("Root with a served snapshot", () => {
       expect(host.textContent).not.toContain("In the api topic.");
     });
 
+    it("scopes the saved choices to the deployment's origin and base path", async () => {
+      const storage = memoryStorage();
+      const host = await open(storage);
+      await click(topicButton(host, "ops"));
+      const keys = [...storage.values.keys()].filter((key) => key.includes("hosted:"));
+      expect(keys.length).toBeGreaterThan(0);
+      for (const key of keys) {
+        expect(key.endsWith(`hosted:${window.location.origin}${import.meta.env.BASE_URL}`)).toBe(
+          true,
+        );
+      }
+    });
+
     it("returns to the Files view after a reload and ignores a topic that is gone", async () => {
       const storage = memoryStorage();
       let host = await open(storage);

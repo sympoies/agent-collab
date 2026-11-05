@@ -110,10 +110,11 @@ async function openRepository(
 const MEMORY_ONLY = { storage: null, key: "demo" } as const;
 
 /**
- * The hosted snapshot is a real repository's data, so the reader's choices are kept for the page's
- * origin, like those of a GitHub repository; the demos keep nothing.
+ * The hosted snapshot is a real repository's data, so the reader's choices are kept for this
+ * deployment (origin and base path, which tell two deployments on one origin apart), like those
+ * of a GitHub repository; the demos keep nothing.
  */
-const hostedIdentityKey = () => `hosted:${window.location.origin}`;
+const hostedIdentityKey = () => `hosted:${window.location.origin}${import.meta.env.BASE_URL}`;
 
 type Screen =
   | { readonly kind: "welcome" }
@@ -436,7 +437,7 @@ export function Root(props: RootProps) {
         loader,
         { key: "app.localTitle", params: { name: opened.name } },
         [],
-        MEMORY_ONLY,
+        { storage: props.storage, key: `local:${opened.name}` },
         opened.snapshot === true
           ? {
               key:
