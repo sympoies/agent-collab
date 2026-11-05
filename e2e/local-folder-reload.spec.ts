@@ -93,6 +93,8 @@ test("after leaving the folder a reload offers Reopen, and Forget removes it", a
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("button", { name: "Open offline demo" }).click();
+  // The demo must be on screen (so the folder is no longer the last viewer) before the reload.
+  await expect(page.locator("h1")).toHaveText("Demo repository");
   await page.reload();
   await page.getByRole("button", { name: "Forget this folder" }).click();
   await expect(page.getByRole("button", { name: "Reopen demo-clone" })).toHaveCount(0);
