@@ -224,6 +224,7 @@ export const ja: Messages = {
   "file.messageRefMissingTitle": "このメッセージは読み込まれていません",
   "files.loadedOnly":
     "読み込み済みのメッセージのファイルとリンクだけを表示しています。古いメッセージを読み込むと増えます。",
+  "files.loadMore": "さらにファイルを読み込む",
   "files.empty": "読み込み済みのメッセージに、ファイルやリンクはありません。",
   "files.allTopics": "すべてのトピック",
   "files.badgeLink": "URL",

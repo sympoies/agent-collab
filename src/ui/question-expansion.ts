@@ -1,3 +1,5 @@
+import type { PreferenceStorage } from "../identity/preferences";
+
 const QUESTION_EXPANSION_STORAGE_PREFIX = "agent-collab-viewer.questions.expanded";
 const MAX_QUESTION_EXPANSION_CHOICES = 256;
 
@@ -7,9 +9,13 @@ export function questionExpansionStorageKey(repositoryKey: string): string {
 
 export type QuestionExpansionChoices = Readonly<Record<string, boolean>>;
 
-export function readQuestionExpansionChoices(repositoryKey: string): QuestionExpansionChoices {
+export function readQuestionExpansionChoices(
+  storage: PreferenceStorage | null,
+  repositoryKey: string,
+): QuestionExpansionChoices {
+  if (storage === null) return {};
   try {
-    const raw = window.localStorage.getItem(questionExpansionStorageKey(repositoryKey));
+    const raw = storage.getItem(questionExpansionStorageKey(repositoryKey));
     if (raw === null) return {};
     const parsed: unknown = JSON.parse(raw);
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
@@ -31,11 +37,13 @@ export function updateQuestionExpansionChoices(
 }
 
 export function saveQuestionExpansionChoices(
+  storage: PreferenceStorage | null,
   repositoryKey: string,
   choices: QuestionExpansionChoices,
 ): void {
+  if (storage === null) return;
   try {
-    window.localStorage.setItem(
+    storage.setItem(
       questionExpansionStorageKey(repositoryKey),
       JSON.stringify(
         Object.fromEntries(validChoices(choices).slice(-MAX_QUESTION_EXPANSION_CHOICES)),

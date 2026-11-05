@@ -1386,6 +1386,34 @@ for (const identity of identityCases) {
   });
 }
 
+for (const identity of identityCases) {
+  test(`Questions and Files retain participant colors on ${identity.label} in ${identity.theme} @csp`, async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(new Date("2026-10-20T12:00:00"));
+    await page.emulateMedia({ colorScheme: identity.scheme });
+    await page.setViewportSize(identity.viewport);
+    const assertRequests = await openViewer(page, "design-review");
+    await page.getByRole("button", { name: /^Questions/ }).click();
+
+    const question = page.locator(".question-item", { hasText: "Open ordering question 1." });
+    const identities = question.locator(".shared-participant");
+    await expect(identities.nth(0)).toHaveCSS("color", identity.alice);
+    await expect(identities.nth(1)).toHaveCSS("color", identity.bob);
+
+    if (identity.viewport.width < 721) {
+      await page.getByRole("button", { name: "Back to conversations" }).click();
+    }
+    await page.getByRole("button", { name: "Files" }).click();
+    const file = page.locator(".file-item", { hasText: "Older API reference shared for review." });
+    await expect(file.locator(".file-from .shared-participant").first()).toHaveCSS(
+      "color",
+      identity.alice,
+    );
+    assertRequests();
+  });
+}
+
 test("identity choices still work when browser storage rejects reads and writes", async ({
   page,
 }) => {
@@ -1462,6 +1490,7 @@ for (const code of ["ja", "zh-TW"] as const) {
 test("the Questions view shows the replies, the acknowledgement line and the reminders @csp", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-10-20T12:00:00"));
   const assertRequests = await openViewer(page, "questions");
   await page.getByRole("button", { name: /^Questions/ }).click();
   const open = page.getByRole("region", { name: "Open" });
@@ -1492,6 +1521,7 @@ test("the Questions view shows the replies, the acknowledgement line and the rem
 test("Questions cards prioritize overdue and waiting items, then stay oldest-first @csp", async ({
   page,
 }) => {
+  await page.clock.setFixedTime(new Date("2026-10-20T12:00:00"));
   await page.setViewportSize({ width: 390, height: 600 });
   const assertRequests = await openViewer(page, "questions-order");
   await page.getByRole("button", { name: /^Questions/ }).click();
@@ -1509,6 +1539,14 @@ test("Questions cards prioritize overdue and waiting items, then stay oldest-fir
   await expect(openHeaders.nth(1)).toContainText("Overdue");
   await expect(openHeaders.nth(2)).toContainText("Overdue");
   await expect(openHeaders.nth(3)).not.toContainText("Overdue");
+  await expect(openCards.nth(0).locator(".question-waiting")).toHaveAttribute(
+    "data-tone",
+    "attention",
+  );
+  await expect(openCards.nth(1).locator(".question-overdue")).toHaveAttribute(
+    "data-tone",
+    "danger",
+  );
   await expect(openCards.nth(0).locator(".you")).toHaveText("Waiting for you");
   await expect(openHeaders.nth(0)).toHaveAttribute("aria-expanded", "true");
   await expect(openCards.nth(0).locator(".question-body")).toBeVisible();
@@ -1543,10 +1581,54 @@ test("Questions cards prioritize overdue and waiting items, then stay oldest-fir
   assertRequests();
 });
 
+test("question cards expand and collapse with Enter and Space @csp", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-10-20T12:00:00"));
+  const assertRequests = await openViewer(page, "questions-order");
+  const questionsButton = page.getByRole("button", { name: /^Questions/ });
+  await questionsButton.click();
+  const toggle = page.getByRole("region", { name: "Answered" }).locator(".question-toggle").first();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  const body = toggle.locator("xpath=..").locator(".question-body");
+
+  await questionsButton.focus();
+  for (let index = 0; index < 40; index += 1) {
+    if (await toggle.evaluate((node) => document.activeElement === node)) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(toggle).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(body).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(body).toBeHidden();
+  assertRequests();
+});
+
+test("Questions ordering stays stable after the fixed clock passes a due date @csp", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date("2026-12-15T12:00:00"));
+  const assertRequests = await openViewer(page, "questions-order");
+  await page.getByRole("button", { name: /^Questions/ }).click();
+  const open = page.getByRole("region", { name: "Open" });
+  const headers = open.locator(".question-toggle");
+  await expect(headers).toHaveCount(4);
+  await expect(headers.nth(0)).toContainText("Waiting ordering question 4.");
+  await expect(headers.nth(1)).toContainText("Open ordering question 1.");
+  await expect(headers.nth(2)).toContainText("Open ordering question 2.");
+  await expect(headers.nth(3)).toContainText("Open ordering question 3.");
+  await expect(headers.nth(1)).toContainText("Overdue");
+  await expect(headers.nth(2)).toContainText("Overdue");
+  await expect(headers.nth(3)).toContainText("Overdue");
+  assertRequests();
+});
+
 for (const code of ["en", "ja", "zh-TW"] as const) {
   test(`Files defaults to all topics, preserves its scope, and shows message context in ${LOCALE_NAMES[code]} @csp`, async ({
     page,
   }) => {
+    await page.clock.setFixedTime(new Date("2026-10-20T12:00:00"));
     const messages = catalogsByLocale[code];
     await page.setViewportSize({ width: 390, height: 600 });
     const assertRequests = await openViewer(page, "files-redesign");
@@ -1556,7 +1638,7 @@ for (const code of ["en", "ja", "zh-TW"] as const) {
     }
     await page.getByRole("button", { name: /^#api/ }).click();
     await page.getByRole("button", { name: messages["nav.back"] }).click();
-    await page.getByRole("button", { name: messages["nav.files"] }).click();
+    await page.getByRole("button", { name: messages["nav.files"], exact: true }).click();
 
     await expect(page.locator("#conversation-heading")).toHaveText(messages["heading.files"]);
     await expect(page.getByRole("button", { name: messages["files.allTopics"] })).toHaveAttribute(
@@ -1610,7 +1692,7 @@ for (const code of ["en", "ja", "zh-TW"] as const) {
     await page.getByRole("button", { name: messages["nav.back"] }).click();
     await page.getByRole("button", { name: messages["nav.questions"] }).click();
     await page.getByRole("button", { name: messages["nav.back"] }).click();
-    await page.getByRole("button", { name: messages["nav.files"] }).click();
+    await page.getByRole("button", { name: messages["nav.files"], exact: true }).click();
     await expect(page.locator("#conversation-heading")).toHaveText(
       messages["heading.filesIn"].replace("{topic}", "api"),
     );
@@ -1630,6 +1712,7 @@ for (const theme of ["light", "dark"] as const) {
       page,
       browserName,
     }) => {
+      await page.clock.setFixedTime(new Date("2026-10-20T12:00:00"));
       await page.emulateMedia({ colorScheme: theme });
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       const assertRequests = await openViewer(page, "design-review");
@@ -1673,11 +1756,18 @@ for (const theme of ["light", "dark"] as const) {
         pane.scrollTo({ top: 0, behavior: "instant" });
       });
       const fileBounds = await page.locator(".file-item").first().boundingBox();
+      const scopeBounds = await page.locator(".file-scope").boundingBox();
       expect(fileBounds).not.toBeNull();
-      if (questionBounds !== null && fileBounds !== null) {
+      expect(scopeBounds).not.toBeNull();
+      if (questionBounds !== null && fileBounds !== null && scopeBounds !== null) {
         expect(Math.abs(fileBounds.x - questionBounds.x)).toBeLessThanOrEqual(1);
         expect(Math.abs(fileBounds.width - questionBounds.width)).toBeLessThanOrEqual(1);
+        expect(Math.abs(scopeBounds.x - fileBounds.x)).toBeLessThanOrEqual(1);
       }
+      const fileFontSize = await page
+        .locator(".file-excerpt")
+        .first()
+        .evaluate((node) => getComputedStyle(node).fontSize);
       await saveScreenshot(page, `${stem}-files.png`);
 
       if (width === 390) {
@@ -1689,6 +1779,11 @@ for (const theme of ["light", "dark"] as const) {
       }
       await page.getByRole("button", { name: /^#api/ }).click();
       await expect(page.locator(".message")).toHaveCount(5);
+      const chatFontSize = await page
+        .locator(".message .body")
+        .first()
+        .evaluate((node) => getComputedStyle(node).fontSize);
+      expect(fileFontSize).toBe(chatFontSize);
       await saveScreenshot(page, `${stem}-chat.png`);
       assertRequests();
     });
@@ -2974,7 +3069,7 @@ for (const code of LOCALES) {
       }
       await page.getByRole("button", { name: messages["nav.questions"] }).click();
       await expectNoClipping(page, ".question-toggle, .question-group h3, .conversation h2");
-      await toolbarAction(page, messages["bar.profile"]);
+      await identityButton(page).click();
       await expect(page.getByRole("heading", { name: messages["profile.title"] })).toBeVisible();
       await expectNoClipping(
         page,

@@ -230,6 +230,7 @@ export const en = {
   "file.messageRefMissingTitle": "This message is not loaded",
   "files.loadedOnly":
     "Only files and links from the loaded messages are listed. Load older messages to see more.",
+  "files.loadMore": "Load more files",
   "files.empty": "No files or links in the loaded messages.",
   "files.allTopics": "All topics",
   "files.badgeLink": "URL",

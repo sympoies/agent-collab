@@ -127,7 +127,7 @@ button:hover {
 .identity-button .avatar {
   width: 26px;
   height: 26px;
-  font-size: 0.7rem;
+  font-size: var(--font-small);
 }
 
 /* Observer has no person colour. */

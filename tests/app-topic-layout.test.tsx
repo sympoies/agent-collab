@@ -8,6 +8,8 @@ import { Loader } from "../src/loader/loader";
 import { TopicSession } from "../src/loader/topic-session";
 import { FixtureSource } from "../src/source/fixture";
 import { SourceError } from "../src/source/types";
+import { writeViewState } from "../src/identity/view-state";
+import type { PreferenceStorage } from "../src/identity/preferences";
 import { App } from "../src/ui/App";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { messageText } from "./support";
@@ -46,6 +48,7 @@ describe("topic list screen", () => {
     if (root !== null) act(() => root?.unmount());
     root = null;
     document.body.replaceChildren();
+    window.localStorage.removeItem("agent-collab-viewer.view:files-reload");
   });
 
   async function settle(): Promise<void> {
@@ -60,6 +63,7 @@ describe("topic list screen", () => {
     source: FixtureSource,
     key = "topic-test",
     initialTopicSession?: TopicSession,
+    storage: PreferenceStorage | null = null,
   ): Promise<void> {
     host = document.createElement("div");
     document.body.append(host);
@@ -73,7 +77,8 @@ describe("topic list screen", () => {
             {...(initialTopicSession === undefined ? {} : { initialTopicSession })}
             title="Repository"
             selfNames={new Set()}
-            identity={{ storage: null, key }}
+            identity={{ storage, key }}
+            rememberView={storage !== null}
             notice={null}
             onOpenSettings={() => undefined}
           />
@@ -254,6 +259,123 @@ describe("topic list screen", () => {
       "api-old.txt",
       "api-new.txt",
     ]);
+  });
+
+  it("keeps Files in All scope after reloading a previously selected chat topic", async () => {
+    const key = "files-reload";
+    writeViewState(window.localStorage, key, {
+      view: "files",
+      topic: "api",
+      conversation: false,
+    });
+    await mount(new FixtureSource(files), key, undefined, window.localStorage);
+
+    expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
+    expect(host.querySelector(".file-scope-all")?.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("shows a partial count and source error when a topic fails during Questions loading", async () => {
+    const source = new FixtureSource(files);
+    const list = source.listDirectory.bind(source);
+    source.listDirectory = (revision, path) =>
+      path === "topics/ops/inbox"
+        ? Promise.reject(new SourceError("unreachable", "topics/ops/inbox"))
+        : list(revision, path);
+    await mount(source, "topic-questions-partial");
+    await click(entry("Questions"));
+    await settle();
+
+    expect(host.querySelector(".error")).not.toBeNull();
+    expect(host.querySelector(".all-status")?.textContent).toBe("Loading topics: 2 of 3");
+  });
+
+  it("shows the loaded-only note in Files All scope when any topic has older pages", async () => {
+    const repository: Record<string, string> = {
+      ".agent-collab": MARKER,
+      "index.md": "| topic | title | status |\n|---|---|---|\n| api | API | open |",
+    };
+    for (let index = 0; index < 51; index += 1) {
+      const minute = String(index).padStart(2, "0");
+      const sequence = String(index).padStart(2, "0");
+      const id = `2026-10-01T09${minute}-alice-agent-api-${sequence}`;
+      repository[`topics/api/inbox/2026-10/${id}.md`] = messageText(
+        id,
+        "alice-agent",
+        "api",
+        { refs: `topics/api/file-${String(index).padStart(2, "2")}.txt` },
+        `Message ${String(index)}.`,
+      );
+    }
+    const source = new FixtureSource(repository);
+    const session = new TopicSession(source, { pageSize: 50 });
+    await session.open();
+    await mount(source, "topic-all-older", session);
+    await click(entry("Files"));
+    await settle();
+
+    expect(host.textContent).toContain("Only files and links from the loaded messages are listed.");
+  });
+
+  it("clears the Files All loaded-only note when the last older page finishes", async () => {
+    const repository: Record<string, string> = {
+      ".agent-collab": MARKER,
+      "index.md": "| topic | title | status |\n|---|---|---|\n| api | API | open |",
+    };
+    for (let index = 0; index < 51; index += 1) {
+      const minute = String(index).padStart(2, "0");
+      const sequence = String(index).padStart(2, "0");
+      const id = `2026-10-01T09${minute}-alice-agent-api-${sequence}`;
+      repository[`topics/api/inbox/2026-10/${id}.md`] = messageText(
+        id,
+        "alice-agent",
+        "api",
+        { refs: `topics/api/file-${String(index).padStart(2, "2")}.txt` },
+        `Message ${String(index)}.`,
+      );
+      repository[`topics/api/file-${String(index).padStart(2, "2")}.txt`] = "fixture";
+    }
+    const source = new FixtureSource(repository);
+    const oldestPath = "topics/api/inbox/2026-10/2026-10-01T0900-alice-agent-api-00.md";
+    const read = source.readFile.bind(source);
+    let blockOldest = false;
+    let beginRead: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      beginRead = resolve;
+    });
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    source.readFile = async (entry) => {
+      if (blockOldest && entry.path === oldestPath) {
+        beginRead();
+        await gate;
+      }
+      return read(entry);
+    };
+    const session = new TopicSession(source, { pageSize: 50 });
+    await session.open();
+    await mount(source, "topic-files-stale-older", session);
+
+    await click(entry("#api"));
+    await click(action("Files"));
+    await click(action("Use #api"));
+    expect(host.textContent).toContain("Only files and links from the loaded messages are listed.");
+    blockOldest = true;
+    await click(action("Load older"));
+    await started;
+
+    const allScope = host.querySelector<HTMLButtonElement>(".file-scope-all");
+    expect(allScope).not.toBeNull();
+    await click(allScope as HTMLButtonElement);
+    expect(host.textContent).toContain("Only files and links from the loaded messages are listed.");
+    release();
+    await settle();
+    await settle();
+
+    expect(host.textContent).not.toContain(
+      "Only files and links from the loaded messages are listed.",
+    );
   });
 
   describe("the All view", () => {

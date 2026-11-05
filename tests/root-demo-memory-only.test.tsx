@@ -13,14 +13,27 @@ import { flat, MARKER, messageText } from "./support";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const ID = "2026-10-01T0901-alice-agent-api-01";
+const QUESTION = "2026-10-01T0910-alice-agent-api-02";
 const files = {
   ".agent-collab": `${MARKER}participants: alice-agent, bob-agent\n`,
   [flat("2026-10", 1, 1)]: messageText(ID, "alice-agent", "api", {}, "In the demo."),
+  [flat("2026-10", 1, 2)]: messageText(
+    QUESTION,
+    "alice-agent",
+    "api",
+    { type: "question", to: "bob-agent" },
+    "A demo question.",
+  ),
 };
 
 describe("the demos keep the reader's choices in memory only", () => {
   afterEach(() => {
     document.body.replaceChildren();
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith("agent-collab-viewer.questions.expanded:")) {
+        window.localStorage.removeItem(key);
+      }
+    }
     vi.unstubAllGlobals();
   });
 
@@ -87,6 +100,18 @@ describe("the demos keep the reader's choices in memory only", () => {
       });
       await press("Files");
       expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
+      await press("Questions");
+      const questionToggle = host.querySelector<HTMLButtonElement>(".question-toggle");
+      expect(questionToggle).not.toBeNull();
+      await act(async () => {
+        questionToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+      });
+      expect(
+        Object.keys(window.localStorage).filter((key) =>
+          key.startsWith("agent-collab-viewer.questions.expanded:"),
+        ),
+      ).toEqual([]);
       expect(storage.setItem).not.toHaveBeenCalled();
       // Opening the panel dismissed the hint for this view only: no hint key anywhere.
       expect(

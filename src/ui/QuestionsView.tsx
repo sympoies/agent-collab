@@ -165,7 +165,7 @@ function Item({
           type="button"
           className="question-toggle"
           aria-expanded={expanded}
-          aria-controls={bodyId}
+          aria-controls={expanded ? bodyId : undefined}
           onClick={onToggle}
         >
           <span className="question-text">{firstLine(question, t)}</span>
@@ -189,64 +189,66 @@ function Item({
             )}
           </MetaLine>
         </button>
-        <div id={bodyId} className="question-body" hidden={!expanded}>
-          <p className="question-full">{fullText(question, t)}</p>
-          {question.needs !== "" && (
-            <p className="question-needs">
-              <strong>{t("chat.needs")}</strong> {question.needs}
-            </p>
-          )}
-          {question.due !== null && (
-            <p className="question-due" data-overdue={overdueDate !== null}>
-              {overdueDate !== null
-                ? t("chat.dueOverdue", { date: question.due })
-                : t("chat.due", { date: question.due })}
-            </p>
-          )}
-          {(targets.length > 0 || broadcast) && (
-            <MetaLine>
-              <span>{t("chat.to")}</span>
-              {broadcast || targets.length === 0 ? (
-                <span>{t("chat.everyone")}</span>
-              ) : (
-                targets.map((name) => (
-                  <ParticipantIdentity key={name} name={name} people={people} />
-                ))
-              )}
-            </MetaLine>
-          )}
-          {item.waitingForViewer && <span className="you">{t("questions.waiting")}</span>}
-          {(days > 0 || state.reminders.length > 0) && (
-            <p className="question-badges">
-              {days > 0 && (
-                <StatusChip tone="attention" className="question-waiting">
-                  {t("questions.unanswered", { span: t("time.spanDays", { count: days }) })}
-                </StatusChip>
-              )}
-              {state.reminders.length > 0 && (
-                <span className="reminder-count">
-                  {t("receipt.reminders", {
-                    count: state.reminders.length,
-                    time: state.reminders.at(-1)?.timestamp ?? "",
-                  })}
-                </span>
-              )}
-            </p>
-          )}
-          <Replies item={item} people={people} onOpen={onOpen} />
-          {state.conclusionText !== null && (
-            <p className="conclusion-text">{state.conclusionText}</p>
-          )}
-          <button
-            type="button"
-            className="question-open-chat"
-            onClick={() => {
-              onOpen(question);
-            }}
-          >
-            {t("questions.openInChat")}
-          </button>
-        </div>
+        {expanded && (
+          <div id={bodyId} className="question-body">
+            <p className="question-full">{fullText(question, t)}</p>
+            {question.needs !== null && (
+              <p className="question-needs">
+                <strong>{t("chat.needs")}</strong> {question.needs}
+              </p>
+            )}
+            {question.due !== null && (
+              <p className="question-due" data-overdue={overdueDate !== null}>
+                {overdueDate !== null
+                  ? t("chat.dueOverdue", { date: question.due })
+                  : t("chat.due", { date: question.due })}
+              </p>
+            )}
+            {(targets.length > 0 || broadcast) && (
+              <MetaLine>
+                <span>{t("chat.to")}</span>
+                {broadcast || targets.length === 0 ? (
+                  <span>{t("chat.everyone")}</span>
+                ) : (
+                  targets.map((name) => (
+                    <ParticipantIdentity key={name} name={name} people={people} />
+                  ))
+                )}
+              </MetaLine>
+            )}
+            {item.waitingForViewer && <span className="you">{t("questions.waiting")}</span>}
+            {(days > 0 || state.reminders.length > 0) && (
+              <p className="question-badges">
+                {days > 0 && (
+                  <StatusChip tone="attention" className="question-waiting">
+                    {t("questions.unanswered", { span: t("time.spanDays", { count: days }) })}
+                  </StatusChip>
+                )}
+                {state.reminders.length > 0 && (
+                  <span className="reminder-count">
+                    {t("receipt.reminders", {
+                      count: state.reminders.length,
+                      time: state.reminders.at(-1)?.timestamp ?? "",
+                    })}
+                  </span>
+                )}
+              </p>
+            )}
+            <Replies item={item} people={people} onOpen={onOpen} />
+            {state.conclusionText !== null && (
+              <p className="conclusion-text">{state.conclusionText}</p>
+            )}
+            <button
+              type="button"
+              className="question-open-chat"
+              onClick={() => {
+                onOpen(question);
+              }}
+            >
+              {t("questions.openInChat")}
+            </button>
+          </div>
+        )}
       </SharedCard>
     </li>
   );

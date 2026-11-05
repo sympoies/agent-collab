@@ -261,7 +261,7 @@ export function App({
   }, [identity.key, identity.storage, mobileConversation, rememberView, topic, view]);
   const [filesTopic, setFilesTopic] = useState<string | null>(null);
   const [questionExpansions, setQuestionExpansions] = useState<QuestionExpansionChoices>(() =>
-    readQuestionExpansionChoices(identity.key),
+    readQuestionExpansionChoices(identity.storage, identity.key),
   );
   const now = useNow(
     (source !== undefined && (source.pointInTime !== undefined || snapshot.lastChanged !== null)) ||
@@ -296,6 +296,10 @@ export function App({
     [selectedLoader],
   );
   const paging = useMergedSnapshot(pagedLoaders);
+  const filesHasOlder =
+    view === "files" && filesTopic === null && topicLayout && topicSession !== null
+      ? loadedTopics.some((name) => topicSession.loader(name).getSnapshot().hasOlder)
+      : paging.hasOlder;
   const [checkingLive, setCheckingLive] = useState(false);
   const [error, setError] = useState<unknown>(null);
   // A restored topic still has to read its first page.
@@ -646,7 +650,7 @@ export function App({
   const changeQuestionExpansion = (id: string, expanded: boolean) => {
     const next = updateQuestionExpansionChoices(questionExpansions, id, expanded);
     setQuestionExpansions(next);
-    saveQuestionExpansionChoices(identity.key, next);
+    saveQuestionExpansionChoices(identity.storage, identity.key, next);
   };
   useEffect(() => {
     const id = pendingJump.current;
@@ -1051,7 +1055,7 @@ export function App({
                   selectedTopic={topic}
                   scope={filesTopic}
                   onScopeChange={setFilesTopic}
-                  hasOlder={paging.hasOlder}
+                  hasOlder={filesHasOlder}
                 />
               )}
               {view === "chat" && (

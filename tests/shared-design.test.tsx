@@ -18,6 +18,15 @@ function stylesheets(directory: string): string[] {
   });
 }
 
+function fontSizeViolations(css: string) {
+  const declarations = [...css.matchAll(/([\w-]+)\s*:\s*([^;{}]+)/gim)];
+  return declarations.filter(
+    ([, property, value]) =>
+      /^(?:font-size|font)$/i.test(property ?? "") &&
+      !/^(?:var\(\s*--font-[\w-]+\s*\)|inherit)$/i.test((value ?? "").trim()),
+  );
+}
+
 describe("shared design layer", () => {
   const people = buildPeople(["alice-agent", "bob-agent"], EMPTY_PREFERENCES);
 
@@ -56,11 +65,7 @@ describe("shared design layer", () => {
           !resetValue.test(value ?? "")
         );
       });
-      const rawFontSizes = declarations.filter(
-        ([, property, value]) =>
-          /^(?:font-size|font)$/i.test(property ?? "") &&
-          /\b[\d.]+(?:px|em|rem|%|pt)\b/i.test(value ?? ""),
-      );
+      const rawFontSizes = fontSizeViolations(css);
       if (rawColors.length > 0 || rawFontSizes.length > 0) {
         violations.push(
           `${relative(uiRoot, path)}: raw colors [${rawColors.map(([, property, value]) => `${property ?? ""}: ${(value ?? "").trim()}`).join("; ")}], raw font sizes [${rawFontSizes.map(([, property, value]) => `${property ?? ""}: ${(value ?? "").trim()}`).join("; ")}]`,
@@ -68,5 +73,14 @@ describe("shared design layer", () => {
       }
     }
     expect(violations).toEqual([]);
+  });
+
+  it("rejects percentage, keyword, and calculated font declarations outside tokens", () => {
+    const invalid = `
+      .files { font-size: 80%; }
+      .file-excerpt { font-size: smaller; }
+      .file-row { font: calc(1rem + 2px) serif; }
+    `;
+    expect(fontSizeViolations(invalid)).toHaveLength(3);
   });
 });

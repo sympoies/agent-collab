@@ -21,13 +21,22 @@ describe("question expansion persistence", () => {
       choices = updateQuestionExpansionChoices(choices, `question-${index}`, index % 2 === 0);
     }
 
-    saveQuestionExpansionChoices("repo", choices);
+    saveQuestionExpansionChoices(window.localStorage, "repo", choices);
 
     const serialized = window.localStorage.getItem(questionExpansionStorageKey("repo")) ?? "";
-    const restored = readQuestionExpansionChoices("repo");
+    const restored = readQuestionExpansionChoices(window.localStorage, "repo");
     expect(serialized.length).toBeLessThanOrEqual(30_000);
     expect(Object.keys(restored)).toHaveLength(256);
     expect(restored["question-999"]).toBe(false);
     expect(restored).toEqual(choices);
+  });
+
+  it("keeps choices in memory only when the source has no storage", () => {
+    const choices = updateQuestionExpansionChoices({}, "question-1", true);
+
+    saveQuestionExpansionChoices(null, "demo", choices);
+
+    expect(readQuestionExpansionChoices(null, "demo")).toEqual({});
+    expect(Object.keys(window.localStorage)).toEqual([]);
   });
 });
