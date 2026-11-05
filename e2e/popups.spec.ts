@@ -48,13 +48,26 @@ const OPENERS: Record<string, (page: Page) => Promise<void>> = {
   },
 };
 
+// Only the More menu's trigger can sit at different places along the bar (the bar is given the
+// full width and its buttons are packed to the start, middle or end). The topic options button
+// ends the sticky bar, the tooltip is anchored to a message time and the profile panel is a
+// full-screen sheet, so those are checked once, as laid out.
+const MOVABLE = new Set([".menu"]);
 const POSITIONS = ["flex-start", "center", "flex-end"] as const;
+/** Where the middle of the More button must be, as a share of the viewport width, per position. */
+const EXPECTED_CENTER: Record<(typeof POSITIONS)[number], readonly [number, number]> = {
+  "flex-start": [0, 0.4],
+  center: [0.4, 0.8],
+  "flex-end": [0.8, 1],
+};
 const shots = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
 
-// Portrait phones, and a landscape one (still under the 720 px phone layout).
+// The portrait phones of the acceptance criteria (360, 390 and 430), and a landscape one (still
+// under the 720 px phone layout).
 const SIZES = [
   { width: 360, height: 740 },
   { width: 390, height: 740 },
+  { width: 430, height: 932 },
   { width: 640, height: 360 },
 ];
 
@@ -65,7 +78,7 @@ for (const { width, height } of SIZES) {
     });
 
     for (const popup of POPUPS) {
-      for (const position of POSITIONS) {
+      for (const position of MOVABLE.has(popup.selector) ? POSITIONS : (["as laid out"] as const)) {
         test(`${popup.selector} stays inside the viewport, trigger ${position} @csp`, async ({
           page,
         }) => {
@@ -76,10 +89,22 @@ for (const { width, height } of SIZES) {
           await page.goto("/");
           await page.getByRole("button", { name: en["nav.all"], exact: true }).click();
           await expect(page.locator(".message").first()).toBeVisible();
-          // The trigger's place along the bar: start, middle or end.
-          await page.locator(".bar-actions").evaluate((node, value) => {
-            node.style.justifyContent = value;
-          }, position);
+          if (position !== "as laid out") {
+            // Give the bar the full width and pack its buttons to the start, middle or end, then
+            // check the More button really moved there before opening the menu.
+            await page.locator(".bar-actions").evaluate((node, value) => {
+              node.style.width = "100%";
+              node.style.justifyContent = value;
+            }, position);
+            const trigger = await page
+              .getByRole("button", { name: en["bar.more"], exact: true })
+              .boundingBox();
+            expect(trigger).not.toBeNull();
+            const center = ((trigger?.x ?? 0) + (trigger?.width ?? 0) / 2) / width;
+            const [low, high] = EXPECTED_CENTER[position];
+            expect(center, "the trigger's place along the bar").toBeGreaterThanOrEqual(low);
+            expect(center, "the trigger's place along the bar").toBeLessThanOrEqual(high);
+          }
           const opener = OPENERS[popup.selector];
           expect(opener, popup.selector).toBeDefined();
           await opener?.(page);
@@ -102,7 +127,7 @@ for (const { width, height } of SIZES) {
               .map((node): string => node.getAttribute("class") ?? node.tagName),
           );
           expect(clipped, "clipped text").toEqual([]);
-          if (shots !== "" && position === "flex-start") {
+          if (shots !== "" && (position === "flex-start" || position === "as laid out")) {
             mkdirSync(shots, { recursive: true });
             await page.screenshot({
               path: join(
