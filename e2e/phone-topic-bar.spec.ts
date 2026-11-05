@@ -274,4 +274,11 @@ test.describe("the phone topic bar @csp", () => {
     await expect(page.locator(".topic-bar h2")).toHaveText(`#${LONG_TOPIC}`);
     await expectOneLine(page);
   });
+
+  test("the back control is a proper touch target @csp", async ({ page }) => {
+    await openTopic(page);
+    const box = await barBack(page).boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+  });
 });

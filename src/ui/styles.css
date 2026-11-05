@@ -1684,6 +1684,8 @@ span.chip {
 
   .topic-bar .back-to-topics {
     flex: none;
+    min-width: 44px;
+    min-height: 44px;
     padding-inline: 12px;
   }
 
