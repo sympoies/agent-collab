@@ -1432,7 +1432,9 @@ span.chip {
 
   /* The disclosure button and the Closed group take a full line under the topic chips. */
   .topics .show-all-topics,
-  .closed-topics {
+  .closed-topics,
+  .topics .topics-heading,
+  .questions-tree {
     flex: 1 1 100%;
   }
 

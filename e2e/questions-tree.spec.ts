@@ -5,7 +5,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { en } from "../src/i18n/catalog";
 import { messageText } from "../tests/support";
@@ -50,7 +50,7 @@ async function open(page: Page, width: number, scheme: "light" | "dark", saved?:
     await page.addInitScript((value) => {
       // A reload keeps what the test seeded the first time only.
       if (localStorage.getItem("seeded") === null) {
-        localStorage.setItem("agent-collab-viewer.view:hosted:http://127.0.0.1:4173/", value);
+        localStorage.setItem(`agent-collab-viewer.view:hosted:${location.origin}/`, value);
         localStorage.setItem("seeded", "1");
       }
     }, JSON.stringify(saved));
@@ -176,6 +176,10 @@ for (const scheme of ["light", "dark"] as const) {
         await child(page, /^carol-agent/).click();
         await expect(items(page)).toHaveCount(1);
         if (width < 721) await page.getByRole("button", { name: en["nav.back"] }).click();
+        // The page opens at its latest content; show it from the top.
+        await page.locator(".conversation").evaluate((node) => {
+          node.scrollTo({ top: 0, behavior: "instant" });
+        });
         const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
         mkdirSync(directory, { recursive: true });
         await page.screenshot({
@@ -200,3 +204,96 @@ test("on a phone a node opens its page and the system back returns to the list @
   await page.goBack();
   await expect(page.locator(".conversation")).toBeHidden();
 });
+
+// A topic row is one frame (the row's own): the name is plain text, and on a phone the expanded
+// tree and the Topics heading take full lines of the wrapping list instead of sharing one with
+// the rows around them.
+for (const scheme of ["light", "dark"] as const) {
+  for (const width of [360, 390, 430, 1280]) {
+    test(`the list has no nested frames and keeps its lines, ${scheme} ${String(width)} px @csp`, async ({
+      page,
+    }) => {
+      await open(page, width, scheme);
+      await row(page).click();
+      await expect(items(page)).toHaveCount(4);
+      if (width < 721) await page.getByRole("button", { name: en["nav.back"] }).click();
+      await expect(page.locator(".questions-tree")).toBeVisible();
+      const topicRows = page.locator(".topics button", { hasText: /^#/ });
+      await expect(topicRows.first()).toBeVisible();
+      await expect(page.locator(".topics button .shared-topic-chip")).toHaveCount(0);
+      const frames = await topicRows.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const name = node.querySelector(".topic-name");
+          return name === null ? -1 : parseFloat(getComputedStyle(name).borderTopWidth);
+        }),
+      );
+      expect(frames.every((frame) => frame === 0)).toBe(true);
+      // Lines of the list, top to bottom: Files, the Topics heading, the first topic row.
+      const box = async (locator: Locator) => {
+        const rect = await locator.boundingBox();
+        expect(rect).not.toBeNull();
+        return rect ?? { x: 0, y: 0, width: 0, height: 0 };
+      };
+      const files = await box(page.locator(".topics > button", { hasText: /^Files/ }));
+      const heading = await box(page.locator(".topics .topics-heading"));
+      const first = await box(topicRows.first());
+      const tree = await box(page.locator(".questions-tree"));
+      const nav = await box(page.locator(".topics"));
+      expect(heading.y).toBeGreaterThanOrEqual(files.y + files.height - 1);
+      expect(first.y).toBeGreaterThanOrEqual(heading.y + heading.height - 1);
+      expect(tree.width).toBeGreaterThanOrEqual(nav.width - 24);
+    });
+  }
+}
+
+// Screenshots for review at 360 px: the plain tree, and a Japanese list with long names.
+const LONG_PERSON = "a-participant-with-a-name-that-is-long-enough-to-wrap-agent";
+const LONG_TOPIC = "a-topic-name-that-is-long-enough-to-wrap-without-overflow-at-phone-width";
+const LONG_ID = `2026-11-04T0940-alice-agent-${LONG_TOPIC}-01`;
+const longSnapshot = JSON.stringify({
+  schemaVersion: 1,
+  generatedAt: "2026-11-04T09:59:00.000Z",
+  revision: "r1",
+  files: [
+    {
+      path: ".agent-collab",
+      text: `collab-protocol: 1\nparticipants: alice-agent, ${LONG_PERSON}\n`,
+    },
+    file(LONG_ID, "alice-agent", LONG_TOPIC, { type: "question", to: LONG_PERSON }),
+    file(Q_BOB, "alice-agent", "ops", { type: "question", to: LONG_PERSON }),
+  ],
+});
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`screenshots 360 ${scheme}`, async ({ page }) => {
+    await open(page, 360, scheme);
+    await openQuestions(page);
+    await page.getByRole("button", { name: en["nav.back"] }).click();
+    await child(page, /^carol-agent/).click();
+    await page.getByRole("button", { name: en["nav.back"] }).click();
+    const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
+    mkdirSync(directory, { recursive: true });
+    await page.screenshot({ path: join(directory, `tree-${scheme}-360.png`) });
+  });
+
+  test(`screenshots long labels in Japanese 360 ${scheme}`, async ({ page }) => {
+    await page.route("**/hosted-snapshot.json", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: longSnapshot }),
+    );
+    await page.addInitScript(() => {
+      localStorage.setItem("agent-collab-viewer.locale", "ja");
+    });
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.setViewportSize({ width: 360, height: 844 });
+    await page.goto("/");
+    await page.locator(".topics > button").nth(1).click();
+    await page.getByRole("button", { name: /^会話一覧に戻る$/ }).click();
+    await expect(page.locator(".questions-tree")).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
+    mkdirSync(directory, { recursive: true });
+    await page.screenshot({ path: join(directory, `tree-long-ja-${scheme}-360.png`) });
+  });
+}

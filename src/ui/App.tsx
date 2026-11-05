@@ -62,7 +62,6 @@ import {
 } from "./question-expansion";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
-import { TopicChip } from "./shared/components";
 import { mergeRosterSnapshot, useMergedSnapshot } from "./merged-snapshot";
 import { mapLimit } from "../source/map-limit";
 import { useTopicDigests } from "./useTopicDigests";
@@ -652,6 +651,8 @@ export function App({
     questionsNode.filter !== null && filterIsCurrent(questionsNode.filter, tree)
       ? questionsNode.filter
       : null;
+  // Only questions with a known state have filters; until then the node has nothing to expand.
+  const hasQuestionFilters = tree.open + tree.answered > 0;
   const shownGroups = useMemo(
     () => applyFilter(questionGroups, activeFilter, isKnown),
     [questionGroups, activeFilter, isKnown],
@@ -985,8 +986,10 @@ export function App({
                 </button>
                 <button
                   type="button"
-                  aria-pressed={view === "questions" && activeFilter === null}
-                  aria-expanded={questionsNode.open}
+                  aria-expanded={hasQuestionFilters && questionsNode.open}
+                  aria-controls={
+                    hasQuestionFilters && questionsNode.open ? "questions-tree" : undefined
+                  }
                   className="tree-node"
                   onClick={(event) => {
                     // Pressing the row of the page that is open collapses or expands the node;
@@ -1004,8 +1007,13 @@ export function App({
                     {t("nav.questionsOpen", { count: questionGroups.open.length })}
                   </span>
                 </button>
-                {questionsNode.open && tree.open + tree.answered > 0 && (
-                  <div className="questions-tree" role="group" aria-label={t("questions.filters")}>
+                {hasQuestionFilters && questionsNode.open && (
+                  <div
+                    id="questions-tree"
+                    className="questions-tree"
+                    role="group"
+                    aria-label={t("questions.filters")}
+                  >
                     <button
                       type="button"
                       aria-pressed={activeFilter?.kind === "open"}
@@ -1089,7 +1097,9 @@ export function App({
                         setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
                       }}
                     >
-                      <TopicChip topic={summary.topic} className="topic-name" />
+                      <span className="topic-name">
+                        {t("topic.label", { topic: summary.topic })}
+                      </span>
                       <span className="count">{summary.count}</span>
                       {summary.fresh > 0 && (
                         <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>

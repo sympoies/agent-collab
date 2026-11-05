@@ -80,8 +80,16 @@ describe("the tree in the left list", () => {
     document.body.replaceChildren();
   });
 
-  async function render(storage: PreferenceStorage | null, rememberView = true) {
-    const loader = new Loader(new FixtureSource(files));
+  async function render(
+    storage: PreferenceStorage | null,
+    rememberView = true,
+    rosterKnown = true,
+  ) {
+    const source = new FixtureSource(files);
+    // A browser folder input that omits the marker cannot name the participants: every question
+    // is in the unknown state.
+    if (!rosterKnown) Object.assign(source, { participantsKnown: false });
+    const loader = new Loader(source);
     await loader.open();
     const host = document.createElement("div");
     document.body.append(host);
@@ -218,5 +226,35 @@ describe("the tree in the left list", () => {
     await click(child(host, "carol-agent"));
     expect(shown(host)).toBe(1);
     expect([...storage.values.keys()].filter((key) => key.includes(".view:"))).toEqual([]);
+  });
+
+  it("renders topic rows as plain text, with the chip kept in the message meta line", async () => {
+    const host = await render(null);
+    const topicRows = [...host.querySelectorAll<HTMLButtonElement>(".topics button")].filter(
+      (button) => button.textContent.startsWith("#"),
+    );
+    expect(topicRows.length).toBeGreaterThan(0);
+    for (const row of topicRows) {
+      // A row is one frame: no outlined chip inside it.
+      expect(row.querySelector(".shared-topic-chip")).toBeNull();
+    }
+    expect(topicRows.map((row) => row.textContent.replace(/\d+$/, ""))).toContain("#api");
+    expect(host.querySelector(".group .shared-topic-chip")).not.toBeNull();
+  });
+
+  it("points the Questions row at its filters and leaves the page state to the children", async () => {
+    const host = await render(null);
+    await click(questionsRow(host));
+    const group = host.querySelector(".questions-tree");
+    expect(group?.id).toBeTruthy();
+    expect(questionsRow(host)?.getAttribute("aria-controls")).toBe(group?.id);
+    expect(questionsRow(host)?.hasAttribute("aria-pressed")).toBe(false);
+  });
+
+  it("does not offer an expander while every question is still unknown", async () => {
+    const host = await render(null, true, false);
+    await click(questionsRow(host));
+    expect(host.querySelector(".questions-tree")).toBeNull();
+    expect(questionsRow(host)?.getAttribute("aria-expanded")).toBe("false");
   });
 });
