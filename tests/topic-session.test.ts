@@ -7,6 +7,7 @@ import { TopicSession } from "../src/loader/topic-session";
 import { FixtureSource } from "../src/source/fixture";
 import { GitHubSource } from "../src/source/github";
 import { TopicLayoutSource } from "../src/source/topic-layout";
+import { mergeRosterSnapshot, mergeSnapshots } from "../src/ui/merged-snapshot";
 import { messageText } from "./support";
 
 const MARKER = "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent, bob-agent\n";
@@ -48,6 +49,45 @@ describe("the topic session", () => {
       status: "closed",
     });
     expect(session.inboxLayout).toBe("topic");
+  });
+
+  it("exposes roster metadata from the topic list before any topic messages are opened", async () => {
+    const source = new FixtureSource({
+      ...repository(),
+      ".agent-collab": `${MARKER}former-participants: carol-agent\n`,
+    });
+    const session = new TopicSession(source);
+    await session.open();
+
+    expect(session.rosterSnapshot).toEqual({
+      participants: ["alice-agent", "bob-agent"],
+      formerParticipants: ["carol-agent"],
+      rosterKnown: true,
+    });
+    expect(source.listings.some((path) => path.startsWith("topics/topic-1/inbox/"))).toBe(false);
+  });
+
+  it("uses the current root roster when unchanged topic loaders retain an older marker", async () => {
+    const source = new FixtureSource(repository());
+    const session = new TopicSession(source);
+    await session.open();
+    const loader = session.loader("topic-1");
+    await loader.open();
+
+    source.commit({
+      ...repository(),
+      ".agent-collab":
+        "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent\nformer-participants: bob-agent\n",
+    });
+    expect(await session.refresh()).toEqual([]);
+    expect(loader.getSnapshot().participants).toEqual(["alice-agent", "bob-agent"]);
+
+    const merged = mergeRosterSnapshot(
+      mergeSnapshots([loader.getSnapshot()]),
+      session.rosterSnapshot,
+    );
+    expect(merged.participants).toEqual(["alice-agent"]);
+    expect(merged.formerParticipants).toEqual(["bob-agent"]);
   });
 
   it("keeps a loader per topic for the session", async () => {

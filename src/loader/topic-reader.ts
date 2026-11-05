@@ -6,6 +6,7 @@ import {
   isKnownLayout,
   isTopicFolderName,
   markerLayout,
+  markerParticipants,
   MAX_INDEX_BYTES,
   parseRootIndex,
   type TopicSummary,
@@ -24,6 +25,13 @@ export interface TopicList {
   readonly topics: readonly TopicSummary[];
 }
 
+export interface RepositoryMetadata {
+  readonly layout: string;
+  readonly participants: readonly string[];
+  readonly formerParticipants: readonly string[];
+  readonly rosterKnown: boolean;
+}
+
 /**
  * Reads the marker, lists `topics/` and reads the root `index.md`: about six API requests for a
  * GitHub repository, whatever the number of topics and messages. A repository in another layout
@@ -33,7 +41,7 @@ export async function readTopicList(source: MessageSource): Promise<TopicList> {
   const head = await source.head(null);
   if (head === "not-modified") throw new SourceError("unexpected", "");
   const root = await source.listDirectory(head.revision, "");
-  const layout = await readLayout(source, root);
+  const { layout } = await readRepositoryMetadata(source, root);
   if (layout !== "topic") return { layout, topics: [] };
 
   const folders = await listOrEmpty(source, head.revision, "topics");
@@ -67,11 +75,11 @@ export async function readTopicList(source: MessageSource): Promise<TopicList> {
   return { layout, topics: [...withFolder.sort(byOrder), ...legacyOnly.sort(byOrder)] };
 }
 
-/** Reads the marker of a listed root and returns its layout; throws the setup errors. */
-export async function readLayout(
+/** Reads the marker of a listed root and returns its repository-level metadata. */
+export async function readRepositoryMetadata(
   source: MessageSource,
   root: readonly DirectoryEntry[],
-): Promise<string> {
+): Promise<RepositoryMetadata> {
   const marker = root.find((entry) => entry.kind === "file" && entry.name === MARKER_FILE);
   if (marker === undefined) {
     throw new SetupError(`not a collaboration repository (no ${MARKER_FILE} marker)`, "no-marker");
@@ -85,7 +93,11 @@ export async function readLayout(
   if (!isKnownLayout(layout)) {
     throw new SetupError(`unsupported inbox layout: ${layout}`, "layout", layout);
   }
-  return layout;
+  return {
+    layout,
+    ...markerParticipants(text),
+    rosterKnown: source.participantsKnown !== false,
+  };
 }
 
 async function listOrEmpty(source: MessageSource, revision: string, path: string) {

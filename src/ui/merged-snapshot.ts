@@ -22,6 +22,23 @@ const itemName = (item: LoaderSnapshot["items"][number]) => {
   return path.slice(path.lastIndexOf("/") + 1);
 };
 
+/** Adds repository-level roster metadata to the loaded messages without loading a topic. */
+export function mergeRosterSnapshot(
+  snapshot: LoaderSnapshot,
+  roster: Pick<LoaderSnapshot, "participants" | "formerParticipants" | "rosterKnown">,
+): LoaderSnapshot {
+  return {
+    ...snapshot,
+    participants: roster.rosterKnown
+      ? roster.participants
+      : [...new Set([...roster.participants, ...snapshot.participants])],
+    formerParticipants: roster.rosterKnown
+      ? roster.formerParticipants
+      : [...new Set([...roster.formerParticipants, ...snapshot.formerParticipants])],
+    rosterKnown: roster.rosterKnown || snapshot.rosterKnown,
+  };
+}
+
 /**
  * One snapshot over the topics loaded so far (the "All" view of a topic-layout repository). It
  * never pages: what a topic has not loaded is not in it, and the view says so by offering no

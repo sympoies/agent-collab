@@ -37,6 +37,39 @@ export function markerLayout(markerText: string): string {
   return "flat";
 }
 
+export interface MarkerParticipants {
+  readonly participants: readonly string[];
+  readonly formerParticipants: readonly string[];
+}
+
+/** Participant names from the marker, shared by topic-list and message loaders. */
+export function markerParticipants(markerText: string): MarkerParticipants {
+  const fields = new Map<string, string>();
+  for (const line of markerText
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .slice(1)) {
+    const colon = line.indexOf(":");
+    if (colon === -1) continue;
+    const key = line.slice(0, colon).trim();
+    if (key === "participants" || key === "former-participants") {
+      fields.set(key, line.slice(colon + 1).trim());
+    }
+  }
+  const split = (value: string | undefined): string[] =>
+    value === undefined
+      ? []
+      : value
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean);
+  return {
+    participants: split(fields.get("participants")),
+    formerParticipants: split(fields.get("former-participants")),
+  };
+}
+
 /** Layouts this viewer reads. */
 export function isKnownLayout(layout: string): boolean {
   return layout === "flat" || layout === "monthly" || layout === "topic";

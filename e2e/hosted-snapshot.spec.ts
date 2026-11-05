@@ -299,3 +299,64 @@ test("a hosted snapshot keeps Viewing as and the selected topic across a reload 
   );
   expect(foreign).toEqual([]);
 });
+
+for (const width of [360, 390, 430]) {
+  test(`Viewing as lists the hosted roster before opening a topic at ${String(width)}px @csp`, async ({
+    page,
+    browserName,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const id = "2026-11-04T0901-alice-agent-api-01";
+    const body = JSON.stringify({
+      schemaVersion: 1,
+      generatedAt: "2026-11-04T09:00:00.000Z",
+      revision: "r1",
+      files: [
+        {
+          path: ".agent-collab",
+          text: "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent, bob-agent\n",
+        },
+        {
+          path: `topics/api/inbox/2026-11/${id}.md`,
+          text: messageText(id, "alice-agent", "api", {}, "Topic message stays unopened."),
+        },
+      ],
+    });
+    await deploy(page, () => body);
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+    await expect(page.getByText("Topic message stays unopened.")).toHaveCount(0);
+
+    const identity = page.locator(".bar-actions .identity-button");
+    await identity.click();
+    const panel = page.getByRole("region", { name: en["profile.title"] });
+    const viewingAs = panel.getByLabel(en["bar.viewingAs"]);
+    await expect(viewingAs.locator("option")).toHaveText([
+      en["bar.observer"],
+      "alice-agent",
+      "bob-agent",
+    ]);
+    const screenshotDirectory = process.env.ROSTER_SCREENSHOT_DIR;
+    if (width === 390 && browserName === "chromium" && screenshotDirectory !== undefined) {
+      mkdirSync(screenshotDirectory, { recursive: true });
+      for (const scheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.screenshot({
+          path: join(screenshotDirectory, `viewing-as-roster-${scheme}-390.png`),
+        });
+      }
+      await page.emulateMedia({ colorScheme: "light" });
+    }
+    await viewingAs.selectOption("bob-agent");
+    await page.keyboard.press("Escape");
+    await expect(identity).toHaveAttribute(
+      "aria-label",
+      en["identity.button"].replace("{name}", "bob-agent"),
+    );
+
+    await page.reload();
+    await identity.click();
+    await expect(panel.getByLabel(en["bar.viewingAs"])).toHaveValue("bob-agent");
+    await expect(page.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+  });
+}
