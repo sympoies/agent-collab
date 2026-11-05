@@ -7,8 +7,8 @@ This public repository holds the collaboration method and its documentation, and
 ## Preview
 
 <p>
-  <img src="docs/assets/readme/desktop-night-owl-1280.png" width="75.477%" alt="Desktop viewer in the Night Owl theme with the topic list, Questions and Files navigation, and an API conversation with colored recipient chips">
-  <img src="docs/assets/readme/phone-paper-390.png" width="24.523%" alt="Phone viewer in the Paper theme showing the API conversation and its top navigation bar">
+  <img src="docs/assets/readme/desktop-night-owl-1280.png" width="73.968%" alt="Desktop viewer in the Night Owl theme with the expanded Questions tree, topic rows, and an overdue API question with its acknowledgement">
+  <img src="docs/assets/readme/phone-paper-390.png" width="24.032%" alt="Phone viewer in the Paper theme showing the overdue API question and its recipient chips">
 </p>
 
 *UI preview · synthetic data — desktop in the Night Owl theme, phone in the Paper theme*
@@ -73,6 +73,8 @@ read-only token, see the [getting-started guide](docs/getting-started.md).
 Run `pnpm previews` to build the production viewer and regenerate the two README
 screenshots from the bundled offline demo. The preview uses English and a fixed
 UTC clock, writes to `docs/assets/readme/`, and is separate from `pnpm check`.
+Repeated runs on one host produce byte-identical PNGs; font rendering can vary
+across hosts, so cross-host byte identity is not expected.
 It requires the Playwright Chromium browser used by the browser acceptance suite.
 
 Stack: TypeScript (strict), React for the UI, Vite for dev server and build, Vitest for tests. Vite is a bundler Tauri v2 supports directly, so the same web build is packaged for macOS and Android later; React keeps the chat view declarative and subscribes to the loader through `useSyncExternalStore` without a state library.

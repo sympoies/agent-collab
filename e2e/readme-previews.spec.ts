@@ -5,7 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 test.use({ locale: "en-US", timezoneId: "UTC" });
 
-const QUESTION_TEXT = "Please review the field draft in refs.";
+const OVERDUE_QUESTION_TEXT = "Please review the field draft in refs.";
 
 async function blockExternalRequests(page: Page): Promise<string[]> {
   const external: string[] = [];
@@ -21,16 +21,41 @@ async function blockExternalRequests(page: Page): Promise<string[]> {
   return external;
 }
 
-async function openOfflineDemo(page: Page): Promise<void> {
+async function openOfflineDemo(page: Page, expandQuestionTree = true): Promise<void> {
   await page.goto("/");
   await page.getByRole("button", { name: "Open saved repository" }).click();
   await page.getByRole("button", { name: "Open offline demo" }).click();
   await expect(page.getByRole("heading", { name: "Demo repository" })).toBeVisible();
+  if (expandQuestionTree) {
+    await page.getByRole("button", { name: /^Questions\s+\d+ open$/ }).click();
+    await expect(page.locator(".questions-tree")).toBeVisible();
+  }
   await page.getByRole("button", { name: /^#api/ }).click();
   await expect(
-    page.locator('.message[data-type="question"]').filter({ hasText: QUESTION_TEXT }),
+    page.locator('.message[data-type="question"]').filter({ hasText: OVERDUE_QUESTION_TEXT }),
   ).toBeVisible();
   await expect(page.locator(".message")).toHaveCount(4);
+}
+
+async function scrollConversationToLatest(page: Page, checkButtonBehavior = false): Promise<void> {
+  const main = page.getByRole("main");
+  const jumpButton = page.locator(".jump-to-latest");
+  await main.evaluate((element) => {
+    element.style.scrollBehavior = "auto";
+  });
+  if (checkButtonBehavior) {
+    await main.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await expect(jumpButton).toHaveCount(1);
+  }
+  const bottom = await main.evaluate((element) => {
+    const target = element.scrollHeight - element.clientHeight;
+    element.scrollTop = target;
+    return target;
+  });
+  await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBe(bottom);
+  await expect(jumpButton).toHaveCount(0);
 }
 
 test("capture the fictional desktop and phone README previews", async ({ page }) => {
@@ -47,17 +72,27 @@ test("capture the fictional desktop and phone README previews", async ({ page })
   await openOfflineDemo(page);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "night-owl");
   await expect(page.locator(".workspace")).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Questions\s+\d+ open$/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Questions\s+\d+ open$/ })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
   await expect(page.getByRole("button", { name: "Files", exact: true })).toBeVisible();
-  const question = page
+
+  const overdueQuestion = page
     .locator('.message[data-type="question"]')
-    .filter({ hasText: QUESTION_TEXT });
-  await expect(question.locator(".shared-recipient").first()).toBeVisible();
-  await page.getByRole("main").press("Home");
-  await page.getByRole("main").evaluate((main) => {
-    main.scrollTop = 0;
-  });
-  await expect(question).toBeInViewport();
+    .filter({ hasText: OVERDUE_QUESTION_TEXT });
+  const acknowledgement = page
+    .locator(".message")
+    .filter({ hasText: "Received; answer expected by Friday." });
+  await expect(page.locator(".questions-tree .count").first()).toHaveText(/\d+/);
+  await expect(page.locator(".topic-name").filter({ hasText: "api" })).toBeVisible();
+  await expect(overdueQuestion.locator(".due.shared-overdue")).toBeVisible();
+  await expect(overdueQuestion.locator(".shared-recipient").first()).toBeVisible();
+  await scrollConversationToLatest(page, true);
+  await expect(overdueQuestion).toBeInViewport({ ratio: 1 });
+  await expect(overdueQuestion.locator(".due.shared-overdue")).toBeInViewport({ ratio: 1 });
+  await expect(overdueQuestion.locator(".shared-recipient").first()).toBeInViewport({ ratio: 1 });
+  await expect(acknowledgement).toBeInViewport({ ratio: 1 });
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });
@@ -73,15 +108,13 @@ test("capture the fictional desktop and phone README previews", async ({ page })
   });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await openOfflineDemo(page);
+  await openOfflineDemo(page, false);
   await expect(page.locator("html")).toHaveAttribute("data-theme", "paper");
   await expect(page.locator(".workspace")).toHaveAttribute("data-mobile-view", "conversation");
   await expect(page.locator(".topic-bar")).toBeVisible();
-  await page.getByRole("main").press("Home");
-  await page.getByRole("main").evaluate((main) => {
-    main.scrollTop = 0;
-  });
-  await expect(question).toBeInViewport();
+  await scrollConversationToLatest(page);
+  await expect(overdueQuestion.locator(".shared-recipient").first()).toBeInViewport({ ratio: 1 });
+  await expect(overdueQuestion.locator(".due.shared-overdue")).toBeInViewport({ ratio: 1 });
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });

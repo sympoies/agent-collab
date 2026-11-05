@@ -60,7 +60,7 @@ import {
   updateQuestionExpansionChoices,
   type QuestionExpansionChoices,
 } from "./question-expansion";
-import { useFollowLatest, type DateLanding } from "./follow-latest";
+import { BOTTOM_THRESHOLD, useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
 import { mergeRosterSnapshot, useMergedSnapshot } from "./merged-snapshot";
 import { mapLimit } from "../source/map-limit";
@@ -677,6 +677,26 @@ export function App({
     pendingJump,
     dateLanding,
   );
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
+  useEffect(() => {
+    const pane = messagePane;
+    if (pane === null || view !== "chat") return;
+    const update = () => {
+      setShowJumpToLatest(
+        pane.scrollHeight - pane.clientHeight - pane.scrollTop > BOTTOM_THRESHOLD,
+      );
+    };
+    pane.addEventListener("scroll", update, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    const timeline = pane.querySelector(".timeline");
+    if (timeline !== null) observer?.observe(timeline);
+    const initialUpdate = window.requestAnimationFrame(update);
+    return () => {
+      window.cancelAnimationFrame(initialUpdate);
+      pane.removeEventListener("scroll", update);
+      observer?.disconnect();
+    };
+  }, [messagePane, rows, view]);
   const showMessage = (id: string) => {
     jumpInPage(`msg-${id}`);
     // The activated chip may be gone (another topic) or keep focus on itself; either way the
@@ -1227,7 +1247,7 @@ export function App({
                 />
               )}
             </main>
-            {view === "chat" && (
+            {view === "chat" && showJumpToLatest && (
               <a
                 className="jump-to-latest"
                 data-mobile-view={mobileConversation ? "conversation" : "topics"}

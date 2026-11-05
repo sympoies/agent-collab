@@ -21,6 +21,7 @@ describe("README UI previews", () => {
         dimensions: [390, 844],
       },
     ];
+    const widths: number[] = [];
     const heights = renderedHeights.map(({ path, dimensions }) => {
       const image = [...readme.matchAll(/<img\b[^>]*>/g)].find((match) =>
         match[0].includes(`src="${path}"`),
@@ -29,6 +30,7 @@ describe("README UI previews", () => {
       expect(image?.match(/\balt="([^"]*)"/)?.[1]?.trim()).toBeTruthy();
       const widthPercentage = Number(image?.match(/\bwidth="([\d.]+)%"/)?.[1]);
       expect(widthPercentage).toBeGreaterThan(0);
+      widths.push(widthPercentage);
 
       const asset = resolve(root, path);
       expect(existsSync(asset), `generated preview ${path}`).toBe(true);
@@ -44,6 +46,7 @@ describe("README UI previews", () => {
     const caption = readme.match(/\*UI preview[^*]*\*/)?.[0] ?? "";
     expect(caption).toContain("Night Owl");
     expect(caption).toContain("Paper");
+    expect(widths.reduce((total, width) => total + width, 0)).toBeLessThanOrEqual(98);
     expect(Math.abs((heights[0] as number) - (heights[1] as number))).toBeLessThan(0.0001);
   });
 });
