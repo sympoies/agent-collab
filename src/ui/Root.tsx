@@ -677,7 +677,11 @@ export function Root(props: RootProps) {
     // of the folder that was actually deleted.
     if (await folderMemory?.forget(found.name)) {
       writePreferences(props.storage, `local:${found.name}`, EMPTY_PREFERENCES);
-      writeViewState(props.storage, `local:${found.name}`, { view: "chat", topic: null });
+      writeViewState(props.storage, `local:${found.name}`, {
+        view: "chat",
+        topic: null,
+        conversation: false,
+      });
     }
     setRemembered((await folderMemory?.load()) ?? null);
     setReopenMessage(null);

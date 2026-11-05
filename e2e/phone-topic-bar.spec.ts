@@ -93,8 +93,7 @@ test.describe("the phone topic bar @csp", () => {
 
     await page.getByRole("button", { name: "#general", exact: true }).click();
     await page.reload();
-    await expect(page.getByRole("button", { name: "#general", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "#general", exact: true }).click();
+    // The topic screen comes back (phone-reload.spec.ts); back still leaves it for the list.
     await expect(page.getByText(`Message number ${String(COUNT)}.`)).toBeVisible();
     await page.goBack();
     await expect(page.getByRole("button", { name: "#general", exact: true })).toBeVisible();

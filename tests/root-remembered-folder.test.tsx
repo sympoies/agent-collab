@@ -43,6 +43,8 @@ function memoryWith(
     unreadable?: boolean;
     /** Reading the folder waits for this, like a slow disk. */
     gate?: Promise<void>;
+    /** Another tab replaced the folder: forgetting this name deletes nothing. */
+    forgetKeeps?: boolean;
   } | null,
 ) {
   let kept = start;
@@ -84,7 +86,7 @@ function memoryWith(
     },
     forget: (folder) => {
       calls.forget += 1;
-      if (kept?.name !== folder) return Promise.resolve(false);
+      if (kept?.name !== folder || kept.forgetKeeps === true) return Promise.resolve(false);
       kept = null;
       return Promise.resolve(true);
     },
@@ -355,6 +357,23 @@ describe("Root with a remembered local folder", () => {
       expect(host.querySelector('[role="alert"]')).toBeNull();
     });
 
+    it("clears the Reopen failure on Forget even when another folder stays remembered", async () => {
+      const { memory } = memoryWith({
+        name: "my-clone",
+        active: false,
+        permission: "granted",
+        unreadable: true,
+        forgetKeeps: true,
+      });
+      const host = await render(memory, null, undefined, { hosted: snapshot });
+      await openSettings(host);
+      await click(button(host, "Reopen my-clone"));
+      expect(host.querySelector(".remembered-folder [role='alert']")).not.toBeNull();
+      await click(button(host, "Forget this folder"));
+      expect(host.querySelector(".remembered-folder")).not.toBeNull();
+      expect(host.querySelector(".remembered-folder [role='alert']")).toBeNull();
+    });
+
     it("does not replace what the reader opened while the folder was still being read", async () => {
       let release: () => void = () => undefined;
       const gate = new Promise<void>((resolve) => {
@@ -434,6 +453,7 @@ describe("Root with a remembered local folder", () => {
       expect(JSON.parse(values.get("agent-collab-viewer.view:local:my-clone") ?? "{}")).toEqual({
         view: "chat",
         topic: null,
+        conversation: false,
       });
       expect(values.get("agent-collab-viewer.identity:local:other")).toContain("bob-agent");
     });
