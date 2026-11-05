@@ -36,6 +36,7 @@ import { Toolbar, useNarrow } from "./Toolbar";
 import { RangeBar } from "./RangeBar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
+import { jumpInPage, useInPageLinks } from "./in-page-jump";
 import { usePhoneHistory } from "./phone-history";
 import { TopicBar } from "./TopicBar";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
@@ -225,6 +226,7 @@ export function App({
   const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
   usePhoneHistory(mobileConversation, setMobileConversation);
+  useInPageLinks();
   // State, not a ref: the pane renders once the topics are known, and landing waits for it.
   const [messagePane, setMessagePane] = useState<HTMLElement | null>(null);
   const [dateLanding, setDateLanding] = useState<DateLanding | null>(null);
@@ -550,11 +552,9 @@ export function App({
     dateLanding,
   );
   const showMessage = (id: string) => {
-    // The hash scrolls to the message and styles it through :target.
-    if (window.location.hash === `#msg-${id}`) window.location.hash = "";
-    window.location.hash = `msg-${id}`;
+    jumpInPage(`msg-${id}`);
     // The activated chip may be gone (another topic) or keep focus on itself; either way the
-    // reader lands on the message, which the hash has already scrolled to.
+    // reader lands on the message, which has already been scrolled to.
     document.getElementById(`msg-${id}`)?.focus({ preventScroll: true });
   };
   /** Shows a message in the chat, in `nextTopic` (null shows every topic). */

@@ -35,11 +35,13 @@ const snapshot = JSON.stringify({
   ],
 });
 
-async function openTopic(page: Page) {
+async function openTopic(page: Page, afterOtherPage = false) {
   await page.route("**/hosted-snapshot.json", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: snapshot }),
   );
   await page.setViewportSize({ width: 390, height: 844 });
+  // A page of another origin before the viewer tells leaving the viewer from staying in it.
+  if (afterOtherPage) await page.goto("data:text/html,<p>before</p>");
   await page.goto("/");
   await page.getByRole("button", { name: "#general", exact: true }).click();
   await expect(page.getByText(`Message number ${String(COUNT)}.`)).toBeVisible();
@@ -117,54 +119,58 @@ test.describe("the phone topic bar @csp", () => {
     expect(overlaps).toBe(false);
   });
 
-  test("leaves no history entry behind after Jump to latest and back @csp", async ({ page }) => {
-    await openTopic(page);
-    await page.getByRole("link", { name: en["nav.jumpLatest"] }).click();
-    await page.locator(".topic-bar").getByRole("button", { name: en["nav.back"] }).click();
-    await expect(page.locator(".conversation")).toBeHidden();
-    // The next system back leaves the viewer; it must not reopen the topic.
-    await page.goBack();
-    await expect(page.locator(".conversation")).toBeHidden();
-  });
+  const barBack = (page: Page) =>
+    page.locator(".topic-bar").getByRole("button", { name: en["nav.back"] });
+  const listRow = (page: Page) => page.getByRole("button", { name: "#general", exact: true });
 
-  test("opening a question from Questions and going back leaves no entry behind @csp", async ({
+  // Links inside the viewer add no history entry, so one system back always closes the topic and
+  // the one after it leaves the viewer for the page the reader came from.
+  test("Jump to latest adds no history entry and system back closes the topic @csp", async ({
     page,
   }) => {
-    await openTopic(page);
-    await page.locator(".topic-bar").getByRole("button", { name: en["nav.back"] }).click();
+    await openTopic(page, true);
+    const before = await page.evaluate(() => history.length);
+    await page.getByRole("link", { name: en["nav.jumpLatest"] }).click();
+    expect(await page.evaluate(() => history.length)).toBe(before);
+    await page.goBack();
+    await expect(page.locator(".conversation")).toBeHidden();
+    await expect(listRow(page)).toBeVisible();
+    await page.goBack();
+    expect(page.url()).toMatch(/^data:/);
+  });
+
+  test("the bar's back after Jump to latest leaves the history as it was @csp", async ({
+    page,
+  }) => {
+    await openTopic(page, true);
+    await page.getByRole("link", { name: en["nav.jumpLatest"] }).click();
+    await barBack(page).click();
+    await expect(listRow(page)).toBeVisible();
+    // Opening the topic again and going back twice stays in the viewer the first time.
+    await listRow(page).click();
+    await barBack(page).click();
+    await expect(listRow(page)).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/");
+    await listRow(page).click();
+    await page.goBack();
+    await expect(listRow(page)).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/");
+    await page.goBack();
+    expect(page.url()).toMatch(/^data:/);
+  });
+
+  test("a question opened from Questions leaves no entry behind @csp", async ({ page }) => {
+    await openTopic(page, true);
+    await barBack(page).click();
     await page.getByRole("button", { name: /^Questions/ }).click();
     await page.locator(".question-link").first().click();
     await expect(page.locator("#conversation-heading")).toHaveText("#general");
-    await page.locator(".topic-bar").getByRole("button", { name: en["nav.back"] }).click();
+    await barBack(page).click();
     await expect(page.locator(".conversation")).toBeHidden();
+    await listRow(page).click();
     await page.goBack();
-    await expect(page.locator(".conversation")).toBeHidden();
-  });
-
-  test("system back from inside a topic after a link keeps the topic open @csp", async ({
-    page,
-  }) => {
-    await openTopic(page);
-    await page.getByRole("link", { name: en["nav.jumpLatest"] }).click();
-    await page.goBack();
-    await expect(page.locator(".conversation")).toBeVisible();
-    await page.goBack();
-    await expect(page.locator(".conversation")).toBeHidden();
-    await expect(page.getByRole("button", { name: "#general", exact: true })).toBeVisible();
-  });
-
-  test("two fragment entries do not close the topic on system back @csp", async ({ page }) => {
-    await openTopic(page);
-    await page.evaluate(() => {
-      window.location.hash = "#first";
-    });
-    await page.evaluate(() => {
-      window.location.hash = "#second";
-    });
-    await page.goBack();
-    await expect(page.locator(".conversation")).toBeVisible();
-    await page.goBack();
-    await expect(page.locator(".conversation")).toBeVisible();
+    await expect(listRow(page)).toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/");
   });
 
   test("the global header shrinks while a topic is open and returns on the list @csp", async ({
