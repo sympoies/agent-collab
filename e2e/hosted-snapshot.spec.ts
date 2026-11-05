@@ -292,6 +292,10 @@ test("a hosted snapshot keeps Viewing as and the selected topic across a reload 
   // The Files view comes back too, and the choices stay in this browser only.
   await page.getByRole("button", { name: en["nav.files"], exact: true }).click();
   await page.reload();
-  await expect(page.locator("#conversation-heading")).toHaveText("Files in #ops");
+  await expect(page.locator("#conversation-heading")).toHaveText("Files");
+  await expect(page.getByRole("button", { name: en["files.allTopics"] })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   expect(foreign).toEqual([]);
 });

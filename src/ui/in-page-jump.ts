@@ -9,7 +9,7 @@ export function jumpInPage(id: string): boolean {
   const element = document.getElementById(id);
   if (element === null) return false;
   document.querySelector("[data-jumped]")?.removeAttribute("data-jumped");
-  element.scrollIntoView();
+  element.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
   if (id.startsWith("msg-")) {
     element.setAttribute("data-jumped", "");
     // A link to a fragment would have moved the focus starting point to the target.

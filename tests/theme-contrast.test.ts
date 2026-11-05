@@ -4,7 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import { PALETTE_SIZE } from "../src/identity/preferences";
 
-const css = readFileSync(new URL("../src/ui/styles.css", import.meta.url), "utf8");
+const css = [
+  readFileSync(new URL("../src/ui/shared/tokens.css", import.meta.url), "utf8"),
+  readFileSync(new URL("../src/ui/styles.css", import.meta.url), "utf8"),
+].join("\n");
 
 type Channels = {
   readonly red: number;
@@ -139,7 +142,7 @@ describe("theme text contrast", () => {
       "--accent": "#82aaff",
       "--ok": "#22da6e",
       "--warn": "#ffcb8b",
-      "--error": "#ef5350",
+      "--error": "#ff6b6b",
       "--cyan": "#7fdbca",
       "--purple": "#c792ea",
       "--on-person": "#011627",

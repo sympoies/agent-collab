@@ -410,8 +410,9 @@ lists its topics from a few requests and reads messages only for the view that n
   All is the union of every topic that is not closed and any closed topic the viewer opened: it reads
   their newest pages in the background, four topics at a time, and says "Loading topics: n of m" (and
   "Loading messages..." in place of "No messages yet.") until all are read; closed topics are noted
-  as appearing once opened (topics-and-scale.md 6.1). Questions and Files work on the topics loaded
-  so far. On a phone the list is the first screen, a topic is a drill-down with a back control, and
+  as appearing once opened (topics-and-scale.md 6.1). Questions and Files in All-topics scope read
+  the same open topics when those pages are opened; a topic-scoped Files view reads only that
+  topic. On a phone the list is the first screen, a topic is a drill-down with a back control, and
   All reads nothing until it is chosen.
 
 On a phone the open view has a bar that stays at the top of the message pane: the back control, the
@@ -536,11 +537,14 @@ public blobs.
   detail is an inline "Recipients" disclosure, not a side panel, so it works
   the same on phone and desktop.
 - **Questions view.** The conversation list has a "Questions" entry that lists
-  every question grouped as open, concluded and answered (plus "not yet
-  known" while the roster or a topic is incomplete), newest first. Open
-  questions the viewer ("Viewing as") still has to answer are marked "Waiting
-  for you" and listed first. Choosing a question opens its topic at that
-  message.
+  every question grouped as open, concluded and answered (plus unknown when the
+  roster or a topic is incomplete). Groups keep open questions first; overdue
+  questions lead that group and entries run oldest to newest. Cards expand by
+  default except answered cards. Their headers show the question's first line,
+  participant, topic, time, status and answer count; expanded cards show the full
+  text, needs/due, recipients and answers. The per-question disclosure choice
+  stays in the browser when storage is available. Choosing a question opens its
+  topic at that message.
 - **Refs and attachments.** Each `refs` entry becomes a chip under the body.
   A safe `topics/` path (repository-relative segments only; no `.`, `..`,
   empty segments, backslashes, `%` escapes or control characters) is a file
@@ -568,13 +572,16 @@ public blobs.
   once per revision however often its card is opened (the failed read is not
   remembered, and nothing retries by itself), which matters for the anonymous
   request quota. A source that reports no size, such as the local folder
-  source today, shows metadata only until it reports one. The **Files** entry lists every
-  file and link referenced in the current conversation (all topics or the
-  selected one), newest reference first. It lists only loaded messages: it
-  shows the same "Load older messages" control as the chat and a note while
-  older pages are not loaded, so attachments of older messages are not silently
-  missing. Sources that cannot read bytes (the static snapshot) show images as
-  metadata only.
+  source today, shows metadata only until it reports one. The **Files** entry
+  starts with an explicit All topics scope; a selected topic can be chosen as a
+  filter, and that choice stays while switching pages. Rows show the reference,
+  the original message excerpt, colored sender, topic, time and a jump-to-message
+  link. Each excerpt expands to the full message, and hosts appear as links with
+  the same context. Rows run oldest to newest and the page opens at the bottom.
+  It lists only loaded messages: it shows the same "Load older messages"
+  control as the chat and a note while older pages are not loaded, so
+  attachments of older messages are not silently missing. Sources that cannot
+  read bytes (the static snapshot) show images as metadata only.
 
   Out of scope (follow-up): a "sidecar note" for data files, because the
   repository documents no naming convention for it; it is not invented here.

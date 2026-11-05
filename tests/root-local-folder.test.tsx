@@ -410,7 +410,8 @@ describe("Root with a local folder", () => {
       });
       document.body.replaceChildren();
       host = await mount();
-      expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files in #ops");
+      expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
+      expect(host.querySelector(".file-scope-all")?.getAttribute("aria-pressed")).toBe("true");
     });
 
     it("returns to the chosen person after a reload, and folders stay apart", async () => {

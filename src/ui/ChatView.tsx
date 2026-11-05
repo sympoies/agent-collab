@@ -7,16 +7,8 @@ import type { Message } from "../message/types";
 import { useT, type Translate } from "../i18n/LocaleProvider";
 import { RefList, type AttachmentContext } from "./Attachments";
 import { personSlot, type People } from "./people";
+import { ParticipantIdentity, TopicChip } from "./shared/components";
 import type { MessageView, Row } from "./timeline";
-
-function initials(name: string): string {
-  return name
-    .split("-")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 function recipients(to: readonly string[], people: People, t: Translate): readonly string[] {
   if (to.length === 0 || (to.length === 1 && to[0] === "all")) return [t("chat.everyone")];
@@ -289,24 +281,22 @@ function RowView({
     case "group":
       return (
         <li className="group" data-own={row.own} {...personSlot(people.slot(row.from))}>
-          <span className="avatar" aria-hidden="true">
-            {initials(row.from)}
-          </span>
           <div className="group-body">
             <div className="group-header">
-              <span
-                className="sender"
+              <ParticipantIdentity
+                name={row.from}
+                people={people}
+                avatar
                 title={row.from}
-                aria-label={
+                ariaLabel={
                   people.label(row.from) === row.from
                     ? row.from
                     : `${people.label(row.from)} (${row.from})`
                 }
-              >
-                {people.label(row.from)}
-              </span>
+                labelClassName="sender"
+              />
               {row.own && <span className="you">{t("chat.you")}</span>}
-              <span className="topic">#{row.topic}</span>
+              <TopicChip topic={row.topic} className="topic" />
             </div>
             {row.messages.map((view) => (
               <MessageRow

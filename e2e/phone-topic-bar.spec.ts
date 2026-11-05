@@ -202,7 +202,11 @@ test.describe("the phone topic bar @csp", () => {
     await openTopic(page, true);
     await barBack(page).click();
     await page.getByRole("button", { name: /^Questions/ }).click();
-    await page.locator(".question-link").first().click();
+    const question = page.locator(".question-item").first();
+    await question.locator(".question-toggle").click();
+    const before = await page.evaluate(() => history.length);
+    await question.locator(".question-open-chat").click();
+    expect(await page.evaluate(() => history.length)).toBe(before);
     await expect(page.locator("#conversation-heading")).toHaveText("#general");
     await expect(barBack(page)).toBeVisible();
     await barBack(page).click();

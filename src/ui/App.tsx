@@ -42,8 +42,15 @@ import { QuestionsView } from "./QuestionsView";
 import { jumpInPage, useInPageLinks } from "./in-page-jump";
 import { usePhoneHistory } from "./phone-history";
 import { TopicBar } from "./TopicBar";
+import {
+  readQuestionExpansionChoices,
+  saveQuestionExpansionChoices,
+  updateQuestionExpansionChoices,
+  type QuestionExpansionChoices,
+} from "./question-expansion";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
+import { TopicChip } from "./shared/components";
 import { useMergedSnapshot } from "./merged-snapshot";
 import { mapLimit } from "../source/map-limit";
 import { useTopicDigests } from "./useTopicDigests";
@@ -252,6 +259,10 @@ export function App({
       });
     }
   }, [identity.key, identity.storage, mobileConversation, rememberView, topic, view]);
+  const [filesTopic, setFilesTopic] = useState<string | null>(null);
+  const [questionExpansions, setQuestionExpansions] = useState<QuestionExpansionChoices>(() =>
+    readQuestionExpansionChoices(identity.storage, identity.key),
+  );
   const now = useNow(
     (source !== undefined && (source.pointInTime !== undefined || snapshot.lastChanged !== null)) ||
       view === "questions",
@@ -267,22 +278,28 @@ export function App({
   const announcedMessages = useRef<Set<string>>(new Set());
   const [arrivalAnnouncement, setArrivalAnnouncement] = useState("");
   const [busy, setBusy] = useState(true);
-  // The loader whose older pages and date jumps the chat offers: the open topic's, or the
-  // repository's own; null while All shows the topics loaded so far.
+  // Files scope is independent of the last chat topic, so its paging controls must follow the
+  // displayed topic when a scope is selected. All uses the current chat topic's loader when one
+  // is selected, and has no single loader otherwise.
+  const pagingTopic = view === "files" ? filesTopic : topic;
   const selectedLoader = useMemo(
     () =>
       !topicLayout
         ? loader
-        : topic !== null && topicSession !== null && openedTopics.includes(topic)
-          ? topicSession.loader(topic)
+        : pagingTopic !== null && topicSession !== null && openedTopics.includes(pagingTopic)
+          ? topicSession.loader(pagingTopic)
           : null,
-    [loader, openedTopics, topic, topicLayout, topicSession],
+    [loader, openedTopics, pagingTopic, topicLayout, topicSession],
   );
   const pagedLoaders = useMemo(
     () => (selectedLoader === null ? [] : [selectedLoader]),
     [selectedLoader],
   );
   const paging = useMergedSnapshot(pagedLoaders);
+  const filesHasOlder =
+    view === "files" && filesTopic === null && topicLayout && topicSession !== null
+      ? loadedTopics.some((name) => topicSession.loader(name).getSnapshot().hasOlder)
+      : paging.hasOlder;
   const [checkingLive, setCheckingLive] = useState(false);
   const [error, setError] = useState<unknown>(null);
   // A restored topic still has to read its first page.
@@ -475,11 +492,15 @@ export function App({
   if (!listHeld.pointer && !listHeld.focus && listedTopics !== sortedTopics) {
     setListedTopics(sortedTopics);
   }
-  // All is every topic that is not closed, read in the background (at most four at a time) while
-  // it is shown, plus any closed topic the viewer opened. Until every one is read the view says
+  // All, Questions, and Files in All-topics scope read every open topic in the background (at most
+  // four at a time), plus any closed topic the viewer opened. Until every one is read the view says
   // how many are, so a partial list is never taken for the whole. On a phone it waits for the
   // conversation pane, so the topic list stays free of reads.
-  const showingAll = view === "chat" && topic === null && topicLayout;
+  const showingAll =
+    topicLayout &&
+    ((view === "chat" && topic === null) ||
+      view === "questions" ||
+      (view === "files" && filesTopic === null));
   const allSession = showingAll && (!narrow || mobileConversation) ? topicSession : null;
   const allKey = allNames.join("\n");
   const allReadNow = useRef(allRead);
@@ -602,7 +623,7 @@ export function App({
   // Before the effect below consumes a pending jump: a message opened by link keeps its place.
   useFollowLatest(
     messagePane,
-    view === "chat" ? (topic ?? "") : null,
+    view === "chat" ? `chat:${topic ?? "all"}` : view,
     mobileConversation,
     rows,
     pendingJump,
@@ -625,6 +646,11 @@ export function App({
   };
   const openQuestion = (question: Message) => {
     jumpToMessage(question, question.topic);
+  };
+  const changeQuestionExpansion = (id: string, expanded: boolean) => {
+    const next = updateQuestionExpansionChoices(questionExpansions, id, expanded);
+    setQuestionExpansions(next);
+    saveQuestionExpansionChoices(identity.storage, identity.key, next);
   };
   useEffect(() => {
     const id = pendingJump.current;
@@ -945,7 +971,7 @@ export function App({
                         setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
                       }}
                     >
-                      <span className="topic-name">#{summary.topic}</span>
+                      <TopicChip topic={summary.topic} className="topic-name" />
                       <span className="count">{summary.count}</span>
                       {summary.fresh > 0 && (
                         <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>
@@ -967,7 +993,16 @@ export function App({
               ref={setMessagePane}
             >
               <TopicBar
-                headingClass={topicLayout && topic !== null ? "topic-heading" : undefined}
+                className={
+                  view === "questions" || view === "files" ? "content-column-bar" : undefined
+                }
+                headingClass={
+                  view === "questions" || view === "files"
+                    ? "content-column-heading"
+                    : topicLayout && topic !== null
+                      ? "topic-heading"
+                      : undefined
+                }
                 headingRef={conversationHeading}
                 onBack={() => {
                   setMobileConversation(false);
@@ -978,9 +1013,9 @@ export function App({
                     {view === "questions"
                       ? t("heading.questions")
                       : view === "files"
-                        ? topic === null
+                        ? filesTopic === null
                           ? t("heading.files")
-                          : t("heading.filesIn", { topic })
+                          : t("heading.filesIn", { topic: filesTopic })
                         : topic === null
                           ? t("heading.all")
                           : `#${topic}`}
@@ -1002,6 +1037,9 @@ export function App({
                   groups={questionGroups}
                   people={people}
                   now={now}
+                  rosterKnown={snapshot.rosterKnown}
+                  expansionChoices={questionExpansions}
+                  onExpansionChange={changeQuestionExpansion}
                   onOpen={openQuestion}
                 />
               )}
@@ -1020,14 +1058,13 @@ export function App({
               )}
               {view === "files" && (
                 <FilesView
-                  messages={
-                    topic === null
-                      ? messages
-                      : messages.filter((message) => message.topic === topic)
-                  }
+                  messages={messages}
                   context={attachments}
-                  label={(name) => people.label(name)}
-                  hasOlder={paging.hasOlder}
+                  people={people}
+                  selectedTopic={topic}
+                  scope={filesTopic}
+                  onScopeChange={setFilesTopic}
+                  hasOlder={filesHasOlder}
                 />
               )}
               {view === "chat" && (
