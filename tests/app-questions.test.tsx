@@ -8,6 +8,7 @@ import { Loader } from "../src/loader/loader";
 import { FixtureSource } from "../src/source/fixture";
 import { App } from "../src/ui/App";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
+import { questionExpansionStorageKey } from "../src/ui/question-expansion";
 import { messageText } from "./support";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -86,11 +87,13 @@ describe("receipts and the Questions view", () => {
     }
     mounted = null;
     document.body.replaceChildren();
+    window.localStorage.removeItem(questionExpansionStorageKey("test"));
   });
 
   async function render(
     ownNames: readonly string[],
     repository: Record<string, string> = files,
+    identityKey = "test",
   ): Promise<HTMLElement> {
     const loader = new Loader(new FixtureSource(repository));
     await loader.open();
@@ -105,7 +108,7 @@ describe("receipts and the Questions view", () => {
             loader={loader}
             title="Repo"
             selfNames={new Set(ownNames)}
-            identity={{ storage: null, key: "test" }}
+            identity={{ storage: null, key: identityKey }}
             notice={null}
             onOpenSettings={() => undefined}
           />
@@ -174,10 +177,96 @@ describe("receipts and the Questions view", () => {
     expect(host.querySelector("#conversation-heading")?.textContent).toBe("Questions");
   });
 
+  it("keeps question disclosure choices in the session when browser storage is unavailable", async () => {
+    const previous = Object.getOwnPropertyDescriptor(window, "localStorage");
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: () => {
+          throw new DOMException("blocked", "SecurityError");
+        },
+        setItem: () => {
+          throw new DOMException("blocked", "SecurityError");
+        },
+      },
+    });
+    try {
+      const host = await render([]);
+      await click(button(host, "Questions"));
+      const answered = host.querySelector<HTMLElement>(
+        'section[aria-label="Answered"] .question-toggle',
+      );
+      expect(answered?.getAttribute("aria-expanded")).toBe("false");
+      await click(answered ?? undefined);
+      expect(answered?.getAttribute("aria-expanded")).toBe("true");
+      await click(button(host, "Files"));
+      await click(button(host, "Questions"));
+      expect(
+        host
+          .querySelector('section[aria-label="Answered"] .question-toggle')
+          ?.getAttribute("aria-expanded"),
+      ).toBe("true");
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(window, "localStorage");
+      else Object.defineProperty(window, "localStorage", previous);
+    }
+  });
+
+  it("remembers a question disclosure choice in browser storage", async () => {
+    const host = await render([]);
+    await click(button(host, "Questions"));
+    const answered = host.querySelector<HTMLElement>(
+      'section[aria-label="Answered"] .question-toggle',
+    );
+    await click(answered ?? undefined);
+    expect(
+      JSON.parse(window.localStorage.getItem(questionExpansionStorageKey("test")) ?? "{}"),
+    ).toMatchObject({ [ANSWERED]: true });
+  });
+
+  it("restores a disclosure choice after remounting the viewer", async () => {
+    const host = await render([]);
+    await click(button(host, "Questions"));
+    await click(host.querySelector('section[aria-label="Answered"] .question-toggle') ?? undefined);
+    const root = mounted?.root;
+    expect(root).toBeDefined();
+    act(() => {
+      root?.unmount();
+    });
+    mounted = null;
+
+    const restored = await render([]);
+    await click(button(restored, "Questions"));
+    expect(
+      restored
+        .querySelector('section[aria-label="Answered"] .question-toggle')
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
+  it("does not restore disclosure choices from another repository", async () => {
+    const host = await render([]);
+    await click(button(host, "Questions"));
+    await click(host.querySelector('section[aria-label="Answered"] .question-toggle') ?? undefined);
+    const root = mounted?.root;
+    act(() => root?.unmount());
+    mounted = null;
+
+    const other = await render([], files, "other-repository");
+    await click(button(other, "Questions"));
+    expect(
+      other
+        .querySelector('section[aria-label="Answered"] .question-toggle')
+        ?.getAttribute("aria-expanded"),
+    ).toBe("false");
+  });
+
   it("opens a question in its conversation", async () => {
     const host = await render([]);
     await click(button(host, "Questions"));
-    await click(host.querySelector('section[aria-label="Concluded"] .question-link') ?? undefined);
+    await click(
+      host.querySelector('section[aria-label="Concluded"] .question-open-chat') ?? undefined,
+    );
     expect(host.querySelector("#conversation-heading")?.textContent).toBe("#ops");
     expect(host.querySelector(`#msg-${CONCLUDED}`)).not.toBeNull();
     expect(host.querySelector(`#msg-${OPEN}`)).toBeNull();

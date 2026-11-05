@@ -293,7 +293,7 @@ function RowView({
                     ? row.from
                     : `${people.label(row.from)} (${row.from})`
                 }
-                className="sender"
+                labelClassName="sender"
               />
               {row.own && <span className="you">{t("chat.you")}</span>}
               <TopicChip topic={row.topic} className="topic" />

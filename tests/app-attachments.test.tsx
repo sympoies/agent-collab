@@ -463,7 +463,7 @@ describe("attachments", () => {
     });
     await act(async () => {
       host
-        .querySelector(".files .file-from")
+        .querySelector(".files .file-jump")
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       await Promise.resolve();
     });
@@ -542,10 +542,12 @@ describe("attachments", () => {
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await Promise.resolve();
     });
-    // ... while the Files view has each file and link once, from the newest reference.
+    // ... while the Files view has each file and link once, using its newest reference.
     expect(host.querySelectorAll(".files .file-card")).toHaveLength(1);
     expect(host.querySelectorAll(".files a.chip")).toHaveLength(1);
-    expect(host.querySelector(".files .file-from")?.textContent).toContain("bob-agent");
+    expect(Array.from(host.querySelectorAll(".files .file-from")).at(-1)?.textContent).toContain(
+      "bob-agent",
+    );
   });
 
   it("offers older messages in the Files view and says only loaded messages are listed", async () => {

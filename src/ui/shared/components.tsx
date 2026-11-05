@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 
+import { useT } from "../../i18n/LocaleProvider";
 import { personSlot, type People } from "../people";
+
+function withClass(base: string, additional: string | undefined): string {
+  return additional === undefined ? base : [base, additional].join(" ");
+}
 
 function initials(name: string): string {
   return name
@@ -19,6 +24,7 @@ export function ParticipantIdentity({
   title,
   ariaLabel,
   className,
+  labelClassName,
 }: {
   readonly name: string;
   readonly people: People;
@@ -26,10 +32,11 @@ export function ParticipantIdentity({
   readonly title?: string;
   readonly ariaLabel?: string;
   readonly className?: string;
+  readonly labelClassName?: string;
 }) {
   return (
     <span
-      className={className === undefined ? "shared-participant" : `shared-participant ${className}`}
+      className={withClass("shared-participant", className)}
       title={title}
       aria-label={ariaLabel}
       {...personSlot(people.slot(name))}
@@ -39,7 +46,9 @@ export function ParticipantIdentity({
           {initials(name)}
         </span>
       )}
-      <span>{people.label(name)}</span>
+      <span className={labelClassName} title={title}>
+        {people.label(name)}
+      </span>
     </span>
   );
 }
@@ -52,39 +61,50 @@ export function TopicChip({
   readonly topic: string;
   readonly className?: string;
 }) {
+  const t = useT();
   return (
-    <span
-      className={className === undefined ? "shared-topic-chip" : `shared-topic-chip ${className}`}
-    >
-      #{topic}
-    </span>
+    <span className={withClass("shared-topic-chip", className)}>{t("topic.label", { topic })}</span>
   );
 }
 
 export function StatusChip({
   tone,
   children,
+  className,
 }: {
   readonly tone: "attention" | "success" | "danger" | "neutral";
   readonly children: ReactNode;
+  readonly className?: string;
 }) {
   return (
-    <span className="shared-status-chip" data-tone={tone}>
+    <span className={withClass("shared-status-chip", className)} data-tone={tone}>
       {children}
     </span>
   );
 }
 
-export function SharedCard({ children }: { readonly children: ReactNode }) {
-  return <section className="shared-card">{children}</section>;
+export function SharedCard({
+  children,
+  className,
+}: {
+  readonly children: ReactNode;
+  readonly className?: string;
+}) {
+  return <section className={withClass("shared-card", className)}>{children}</section>;
 }
 
 export function SectionHeader({ children }: { readonly children: ReactNode }) {
   return <div className="shared-section-header">{children}</div>;
 }
 
-export function MetaLine({ children }: { readonly children: ReactNode }) {
-  return <div className="shared-meta-line">{children}</div>;
+export function MetaLine({
+  children,
+  className,
+}: {
+  readonly children: ReactNode;
+  readonly className?: string;
+}) {
+  return <div className={withClass("shared-meta-line", className)}>{children}</div>;
 }
 
 export function EmptyState({ children }: { readonly children: ReactNode }) {

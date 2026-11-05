@@ -12,6 +12,14 @@ import { classifyRef, imageMime, type FileKind, type Ref } from "../message/refs
 import type { Message } from "../message/types";
 import { SourceError } from "../source/types";
 import { Markdown } from "./Markdown";
+import type { People } from "./people";
+import {
+  EmptyState,
+  MetaLine,
+  ParticipantIdentity,
+  SharedCard,
+  TopicChip,
+} from "./shared/components";
 
 /** Largest text, Markdown or CSV file that is previewed. */
 export const TEXT_PREVIEW_MAX_BYTES = 200 * 1024;
@@ -282,6 +290,7 @@ export function FileCard({
   return (
     <details
       className="file-card"
+      open={open}
       onToggle={(event) => {
         setOpen(event.currentTarget.open);
       }}
@@ -371,7 +380,7 @@ interface AttachmentItem {
   readonly message: Message;
 }
 
-/** Every file and link referenced in the given messages, once each; the newest reference wins. */
+/** Every file and link referenced in the given messages, once each; rows are oldest to newest. */
 export function collectAttachments(messages: readonly Message[]): AttachmentItem[] {
   const items = new Map<string, AttachmentItem>();
   for (const message of messages) {
@@ -381,69 +390,136 @@ export function collectAttachments(messages: readonly Message[]): AttachmentItem
       items.set(ref.kind === "file" ? ref.path : ref.href, { ref, message });
     }
   }
-  return [...items.values()].sort((a, b) => (a.message.id < b.message.id ? 1 : -1));
+  return [...items.values()].sort((a, b) => a.message.id.localeCompare(b.message.id));
 }
 
 export function FilesView({
   messages,
   context,
-  label,
+  people,
+  selectedTopic,
+  scope,
+  onScopeChange,
   hasOlder,
 }: {
   messages: readonly Message[];
   context: AttachmentContext;
-  label: (name: string) => string;
+  people: People;
+  selectedTopic: string | null;
+  scope: string | null;
+  onScopeChange: (topic: string | null) => void;
   /** Older messages are not loaded yet, so their attachments are not listed. */
   hasOlder: boolean;
 }) {
   const t = useT();
-  const items = collectAttachments(messages);
+  const items = collectAttachments(
+    scope === null ? messages : messages.filter((message) => message.topic === scope),
+  );
+  const topicOption = scope ?? selectedTopic;
   const note = hasOlder && <p className="note">{t("files.loadedOnly")}</p>;
-  if (items.length === 0) {
-    return (
-      <>
-        <p className="empty">{t("files.empty")}</p>
-        {note}
-      </>
-    );
-  }
   return (
-    <>
+    <div className="files-view">
+      <div className="file-scope" role="group" aria-label={t("files.scope")}>
+        <button
+          type="button"
+          className="file-scope-all"
+          aria-pressed={scope === null}
+          onClick={() => {
+            onScopeChange(null);
+          }}
+        >
+          {t("files.allTopics")}
+        </button>
+        {topicOption !== null && (
+          <button
+            type="button"
+            className="file-scope-topic"
+            aria-pressed={scope === topicOption}
+            onClick={() => {
+              onScopeChange(topicOption);
+            }}
+          >
+            {t("files.topicScope", { topic: topicOption })}
+          </button>
+        )}
+      </div>
       {note}
-      <FilesList items={items} context={context} label={label} />
-    </>
+      {items.length === 0 ? (
+        <EmptyState>{t("files.empty")}</EmptyState>
+      ) : (
+        <FilesList items={items} context={context} people={people} />
+      )}
+      <div id="latest-message" className="latest-anchor" aria-hidden="true" />
+    </div>
   );
 }
 
 function FilesList({
   items,
   context,
-  label,
+  people,
 }: {
   items: readonly AttachmentItem[];
   context: AttachmentContext;
-  label: (name: string) => string;
+  people: People;
 }) {
+  const t = useT();
   return (
     <ul className="files">
-      {items.map((item) => (
-        <li key={item.ref.kind === "file" ? item.ref.path : item.ref.href} className="file-item">
-          {item.ref.kind === "file" ? (
-            <FileCard file={item.ref} reader={context.reader} />
-          ) : (
-            <a className="chip" href={item.ref.href} target="_blank" rel="noopener noreferrer">
-              {item.ref.host}
-            </a>
-          )}
-          <a
-            className="file-from"
-            href={`#msg-${item.message.id}`}
-            onClick={jumpHandler(item.message.id, context)}
-          >
-            {label(item.message.from)} · #{item.message.topic} · {item.message.timestamp}
-          </a>
-        </li>
-      ))}
+      {items.map((item) => {
+        const key = item.ref.kind === "file" ? item.ref.path : item.ref.href;
+        const excerpt = messageExcerpt(item.message, t, 3);
+        return (
+          <li key={key} id={`file-${encodeURIComponent(key)}`} className="file-item">
+            <SharedCard className="file-row">
+              <div className="file-row-heading">
+                {item.ref.kind === "file" ? (
+                  <FileCard file={item.ref} reader={context.reader} />
+                ) : (
+                  <a
+                    className="chip file-link-name"
+                    href={item.ref.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span className="file-badge" aria-hidden="true">
+                      {t("files.badgeLink")}
+                    </span>
+                    <span>{item.ref.host}</span>
+                  </a>
+                )}
+                <MetaLine className="file-from">
+                  <ParticipantIdentity name={item.message.from} people={people} />
+                  {" · "}
+                  <TopicChip topic={item.message.topic} />
+                  {" · "}
+                  <time dateTime={item.message.timestamp.replace(" ", "T")}>
+                    {item.message.timestamp}
+                  </time>
+                </MetaLine>
+              </div>
+              <p className="file-excerpt">{excerpt}</p>
+              <details className="file-full-message">
+                <summary>{t("files.showMessage")}</summary>
+                <p>{messageExcerpt(item.message, t)}</p>
+              </details>
+              <a
+                className="shared-link file-jump"
+                href={`#msg-${item.message.id}`}
+                onClick={jumpHandler(item.message.id, context)}
+              >
+                {t("files.jumpToMessage")}
+              </a>
+            </SharedCard>
+          </li>
+        );
+      })}
     </ul>
   );
+}
+
+function messageExcerpt(message: Message, t: Translate, limit?: number): string {
+  if (message.body.state === "locked") return t("chat.encrypted");
+  const lines = message.body.lines.filter((line) => line.trim() !== "");
+  return limit === undefined ? lines.join("\n") : lines.slice(0, limit).join("\n");
 }

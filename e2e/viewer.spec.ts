@@ -278,6 +278,53 @@ function questionThread(): MessageFixture[] {
   ];
 }
 
+function questionOrderThread(includeWaiting = false): MessageFixture[] {
+  const questions = [1, 2, 3, ...(includeWaiting ? [4] : [])].map((index) =>
+    makeMessage(
+      "2026-10-07",
+      index === 3 ? "0905" : `09${String(index * 10).padStart(2, "0")}`,
+      index === 4 ? "bob-agent" : "alice-agent",
+      "api",
+      index,
+      "question",
+      `${index === 4 ? "Waiting" : "Open"} ordering question ${String(index)}.\nSecond line of question ${String(index)}.`,
+      index === 4 ? "alice-agent" : "bob-agent",
+      "",
+      "",
+      index === 3 ? "2026-12-01" : "2026-10-08",
+    ),
+  );
+  const answered = [1, 2, 3].map((index) =>
+    makeMessage(
+      "2026-10-07",
+      `10${String(index * 10).padStart(2, "0")}`,
+      "alice-agent",
+      "ops",
+      index,
+      "question",
+      `Answered ordering question ${String(index)}.`,
+      "bob-agent",
+    ),
+  );
+  return [
+    ...questions,
+    ...answered,
+    ...answered.map((question, index) =>
+      makeMessage(
+        "2026-10-07",
+        `10${String(index * 10 + 1).padStart(2, "0")}`,
+        "bob-agent",
+        "ops",
+        index + 4,
+        "answer",
+        `Answer to answered ordering question ${String(index + 1)}.`,
+        "alice-agent",
+        question.id,
+      ),
+    ),
+  ];
+}
+
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
@@ -414,6 +461,51 @@ function attachmentThread(): MessageFixture[] {
   ];
 }
 
+function filesRedesignThread(): MessageFixture[] {
+  return [
+    makeMessage(
+      "2026-10-07",
+      "0900",
+      "alice-agent",
+      "api",
+      1,
+      "info",
+      "Older API reference shared for review.\nIt explains the original field names.",
+      "bob-agent",
+      "",
+      "topics/api/fields.md, https://docs.example.com/fields",
+    ),
+    makeMessage(
+      "2026-10-08",
+      "0900",
+      "bob-agent",
+      "ops",
+      1,
+      "info",
+      "Release notes shared with the operations group.\nThey explain the rollout window.",
+      "alice-agent",
+      "",
+      "topics/ops/release.csv, https://release.example.com/notes",
+    ),
+    makeMessage(
+      "2026-10-09",
+      "0900",
+      "alice-agent",
+      "api",
+      2,
+      "info",
+      "Latest API example shared for implementation.\nIt shows the optional field.",
+      "bob-agent",
+      "",
+      "topics/api/example.txt, https://docs.example.com/example",
+    ),
+  ];
+}
+
+function designReviewThread(): MessageFixture[] {
+  return [...questionOrderThread(), ...filesRedesignThread()];
+}
+
 function treeEntry(path: string, sha: string, type: "blob" | "tree") {
   return { path, sha, type, mode: type === "tree" ? "040000" : "100644" };
 }
@@ -432,7 +524,10 @@ async function installApiStub(
   mode:
     | "long"
     | "questions"
+    | "questions-order"
     | "attachments"
+    | "files-redesign"
+    | "design-review"
     | "empty"
     | "error"
     | "long-topic"
@@ -444,15 +539,21 @@ async function installApiStub(
       ? longThread()
       : mode === "questions"
         ? questionThread()
-        : mode === "attachments"
-          ? attachmentThread()
-          : mode === "long-topic"
-            ? longTopicThread()
-            : mode === "history"
-              ? historyThread()
-              : mode === "history-monthly"
-                ? historyMonthlyThread()
-                : [];
+        : mode === "questions-order"
+          ? questionOrderThread(true)
+          : mode === "attachments"
+            ? attachmentThread()
+            : mode === "files-redesign"
+              ? filesRedesignThread()
+              : mode === "long-topic"
+                ? longTopicThread()
+                : mode === "design-review"
+                  ? designReviewThread()
+                  : mode === "history"
+                    ? historyThread()
+                    : mode === "history-monthly"
+                      ? historyMonthlyThread()
+                      : [];
   const arrivalOne = makeMessage(
     "2026-10-09",
     "1030",
@@ -627,7 +728,10 @@ async function openViewer(
   mode:
     | "long"
     | "questions"
+    | "questions-order"
     | "attachments"
+    | "files-redesign"
+    | "design-review"
     | "empty"
     | "error"
     | "long-topic"
@@ -787,7 +891,7 @@ test("long chat adapts across themes and viewports", async ({ page, context }) =
   await expect(page.locator("#conversation-heading")).toBeFocused();
   await expect(page.locator(".quote.missing")).toContainText("parent not shown");
   await expect(page.locator(".quote[href]")).toHaveCount(0);
-  const phoneSender = page.locator(".sender").last();
+  const phoneSender = page.locator(".group-header > .shared-participant .sender").last();
   const senderLayout = await phoneSender.evaluate((sender) => {
     const conversation = sender.closest(".conversation") ?? document.querySelector(".conversation");
     const senderBox = sender.getBoundingClientRect();
@@ -811,7 +915,7 @@ test("long chat adapts across themes and viewports", async ({ page, context }) =
   expect(senderLayout.textOverflow).toBe("ellipsis");
   expect(senderLayout.senderLeft).toBeGreaterThanOrEqual(senderLayout.conversationLeft);
   expect(senderLayout.senderRight).toBeLessThanOrEqual(senderLayout.conversationRight);
-  await expect(phoneSender).toHaveAttribute(
+  await expect(page.locator(".group-header > .shared-participant").last()).toHaveAttribute(
     "aria-label",
     "alice-agent-with-an-extraordinarily-long-name-for-overflow-checks",
   );
@@ -1385,6 +1489,215 @@ test("the Questions view shows the replies, the acknowledgement line and the rem
   assertRequests();
 });
 
+test("Questions cards prioritize overdue and waiting items, then stay oldest-first @csp", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  const assertRequests = await openViewer(page, "questions-order");
+  await page.getByRole("button", { name: /^Questions/ }).click();
+
+  const open = page.getByRole("region", { name: "Open" });
+  const openCards = open.locator(".question-item");
+  const openHeaders = open.locator(".question-toggle");
+  await expect(openCards).toHaveCount(4);
+  await expect(openHeaders).toHaveCount(4);
+  await expect(openHeaders.nth(0)).toContainText("Waiting ordering question 4.");
+  await expect(openHeaders.nth(1)).toContainText("Open ordering question 1.");
+  await expect(openHeaders.nth(2)).toContainText("Open ordering question 2.");
+  await expect(openHeaders.nth(3)).toContainText("Open ordering question 3.");
+  await expect(openHeaders.nth(0)).toContainText("Overdue");
+  await expect(openHeaders.nth(1)).toContainText("Overdue");
+  await expect(openHeaders.nth(2)).toContainText("Overdue");
+  await expect(openHeaders.nth(3)).not.toContainText("Overdue");
+  await expect(openCards.nth(0).locator(".you")).toHaveText("Waiting for you");
+  await expect(openHeaders.nth(0)).toHaveAttribute("aria-expanded", "true");
+  await expect(openCards.nth(0).locator(".question-body")).toBeVisible();
+
+  const answered = page.getByRole("region", { name: "Answered" });
+  const answeredCards = answered.locator(".question-item");
+  const answeredHeaders = answered.locator(".question-toggle");
+  await expect(answeredCards).toHaveCount(3);
+  await expect(answeredHeaders.nth(0)).toContainText("Answered ordering question 1.");
+  await expect(answeredHeaders.nth(1)).toContainText("Answered ordering question 2.");
+  await expect(answeredHeaders.nth(2)).toContainText("Answered ordering question 3.");
+  await expect(answeredHeaders.nth(0)).toHaveAttribute("aria-expanded", "false");
+  await expect(answeredCards.nth(0).locator(".question-body")).toBeHidden();
+
+  const pane = page.locator("main.conversation");
+  await expect
+    .poll(() => pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
+    .toBeLessThanOrEqual(2);
+  await expect(page.getByRole("link", { name: "Jump to latest" })).toHaveAttribute(
+    "href",
+    "#latest-message",
+  );
+
+  await answeredHeaders.nth(0).click();
+  await expect(answeredHeaders.nth(0)).toHaveAttribute("aria-expanded", "true");
+  await expect(answeredCards.nth(0).locator(".question-body")).toBeVisible();
+
+  await page.getByRole("button", { name: "Back to conversations" }).click();
+  await page.getByRole("button", { name: "Files" }).click();
+  await page.getByRole("button", { name: "Back to conversations" }).click();
+  await page.getByRole("button", { name: /^Questions/ }).click();
+  await expect(
+    page.getByRole("region", { name: "Answered" }).locator(".question-toggle").nth(0),
+  ).toHaveAttribute("aria-expanded", "true");
+  assertRequests();
+});
+
+for (const code of ["en", "ja", "zh-TW"] as const) {
+  test(`Files defaults to all topics, preserves its scope, and shows message context in ${LOCALE_NAMES[code]} @csp`, async ({
+    page,
+  }) => {
+    const messages = catalogsByLocale[code];
+    await page.setViewportSize({ width: 390, height: 600 });
+    const assertRequests = await openViewer(page, "files-redesign");
+    if (code !== "en") {
+      await page.getByRole("button", { name: /^(More|その他|更多)$/ }).click();
+      await page.getByRole("menuitemradio", { name: LOCALE_NAMES[code], exact: true }).click();
+    }
+    await page.getByRole("button", { name: /^#api/ }).click();
+    await page.getByRole("button", { name: messages["nav.back"] }).click();
+    await page.getByRole("button", { name: messages["nav.files"] }).click();
+
+    await expect(page.locator("#conversation-heading")).toHaveText(messages["heading.files"]);
+    await expect(page.getByRole("button", { name: messages["files.allTopics"] })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(page.locator(".file-item")).toHaveCount(6);
+    const pane = page.locator("main.conversation");
+    await expect
+      .poll(() => pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
+      .toBeLessThanOrEqual(2);
+    const releaseRows = page.locator(".file-item", {
+      hasText: "Release notes shared with the operations group.",
+    });
+    await expect(releaseRows).toHaveCount(2);
+    await expect(releaseRows.first()).toBeVisible();
+    const releaseLink = page.getByRole("link", { name: "release.example.com" });
+    await expect(releaseLink).toHaveAttribute("href", "https://release.example.com/notes");
+    const releaseLinkRow = page.locator(".file-item", { has: releaseLink });
+    await expect(releaseLinkRow.locator(".file-badge")).toHaveText(messages["files.badgeLink"]);
+    await expect(releaseLinkRow.locator(".file-excerpt")).toContainText(
+      "Release notes shared with the operations group.",
+    );
+    await expect(page.locator(".file-item").first().locator(".file-excerpt")).toContainText(
+      "Older API reference shared for review.",
+    );
+    await page.locator(".file-item").first().locator(".file-full-message summary").click();
+    await expect(page.locator(".file-item").first().locator(".file-full-message p")).toContainText(
+      "It explains the original field names.",
+    );
+    await expect(page.locator(".file-item").first().locator(".file-jump")).toHaveAttribute(
+      "href",
+      /#msg-2026-10-07T0900-alice-agent-api-01/,
+    );
+    const times = await page.locator(".file-item time").allTextContents();
+    expect(times).toEqual([
+      "2026-10-07 09:00",
+      "2026-10-07 09:00",
+      "2026-10-08 09:00",
+      "2026-10-08 09:00",
+      "2026-10-09 09:00",
+      "2026-10-09 09:00",
+    ]);
+    await page
+      .getByRole("button", { name: messages["files.topicScope"].replace("{topic}", "api") })
+      .click();
+    await expect(page.locator("#conversation-heading")).toHaveText(
+      messages["heading.filesIn"].replace("{topic}", "api"),
+    );
+    await expect(page.locator(".file-item")).toHaveCount(4);
+    await page.getByRole("button", { name: messages["nav.back"] }).click();
+    await page.getByRole("button", { name: messages["nav.questions"] }).click();
+    await page.getByRole("button", { name: messages["nav.back"] }).click();
+    await page.getByRole("button", { name: messages["nav.files"] }).click();
+    await expect(page.locator("#conversation-heading")).toHaveText(
+      messages["heading.filesIn"].replace("{topic}", "api"),
+    );
+    await expect(
+      page.getByRole("button", {
+        name: messages["files.topicScope"].replace("{topic}", "api"),
+      }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".file-item")).toHaveCount(4);
+    assertRequests();
+  });
+}
+
+for (const theme of ["light", "dark"] as const) {
+  for (const width of [390, 768, 1280] as const) {
+    test(`Issue 74 screenshots show the shared pages in ${theme} at ${String(width)}px @csp`, async ({
+      page,
+      browserName,
+    }) => {
+      await page.emulateMedia({ colorScheme: theme });
+      await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+      const assertRequests = await openViewer(page, "design-review");
+      await expect(page.locator(".message")).toHaveCount(12);
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-theme",
+        theme === "dark" ? "night-owl" : "paper",
+      );
+      const stem = `issue74-${browserName}-${theme}-${String(width)}`;
+      await saveScreenshot(page, `${stem}-topic-list.png`);
+
+      await page.getByRole("button", { name: /^Questions/ }).click();
+      await expect(page.locator(".question-item")).toHaveCount(6);
+      await expect(page.getByRole("link", { name: "Jump to latest" })).toHaveCount(0);
+      await page.locator("main.conversation").evaluate((pane) => {
+        pane.scrollTo({ top: 0, behavior: "instant" });
+      });
+      const questionBounds = await page.locator(".question-item").first().boundingBox();
+      expect(questionBounds).not.toBeNull();
+      await saveScreenshot(page, `${stem}-questions.png`);
+
+      if (width === 390) {
+        await page.locator("main.conversation").evaluate((pane) => {
+          pane.scrollTop = pane.scrollHeight;
+        });
+        await expect(page.locator(".topic-bar .back-to-topics")).toBeInViewport();
+        await page.getByRole("button", { name: "Back to conversations" }).click();
+      }
+      await page.getByRole("button", { name: "Files" }).click();
+      await expect(page.locator(".file-item")).toHaveCount(6);
+      await expect(page.getByRole("link", { name: "Jump to latest" })).toHaveCount(0);
+      const linkName = page.locator(".file-link-name").first();
+      const badgeBounds = await linkName.locator(".file-badge").boundingBox();
+      const hostBounds = await linkName.locator("span").last().boundingBox();
+      expect(badgeBounds).not.toBeNull();
+      expect(hostBounds).not.toBeNull();
+      if (badgeBounds !== null && hostBounds !== null) {
+        expect(hostBounds.x - badgeBounds.x - badgeBounds.width).toBeGreaterThan(4);
+      }
+      await page.locator("main.conversation").evaluate((pane) => {
+        pane.scrollTo({ top: 0, behavior: "instant" });
+      });
+      const fileBounds = await page.locator(".file-item").first().boundingBox();
+      expect(fileBounds).not.toBeNull();
+      if (questionBounds !== null && fileBounds !== null) {
+        expect(Math.abs(fileBounds.x - questionBounds.x)).toBeLessThanOrEqual(1);
+        expect(Math.abs(fileBounds.width - questionBounds.width)).toBeLessThanOrEqual(1);
+      }
+      await saveScreenshot(page, `${stem}-files.png`);
+
+      if (width === 390) {
+        await page.locator("main.conversation").evaluate((pane) => {
+          pane.scrollTop = pane.scrollHeight;
+        });
+        await expect(page.locator(".topic-bar .back-to-topics")).toBeInViewport();
+        await page.getByRole("button", { name: "Back to conversations" }).click();
+      }
+      await page.getByRole("button", { name: /^#api/ }).click();
+      await expect(page.locator(".message")).toHaveCount(5);
+      await saveScreenshot(page, `${stem}-chat.png`);
+      assertRequests();
+    });
+  }
+}
+
 test("the reply list of a question is reachable and expandable with the keyboard @csp", async ({
   page,
 }) => {
@@ -1631,7 +1944,7 @@ for (const identity of identityCases) {
     expect(overflow).toBeLessThanOrEqual(0);
     await saveScreenshot(page, `questions-${identity.label}-${identity.theme}.png`);
 
-    await concluded.locator(".question-link").click();
+    await concluded.locator(".question-open-chat").click();
     await expect(page.locator("#conversation-heading")).toHaveText("#ops");
     const jumped = page.locator("#msg-2026-10-08T0910-alice-agent-ops-01");
     await expect(jumped).toBeInViewport();
@@ -1801,8 +2114,8 @@ for (const identity of identityCases) {
     expect(filesOverflow).toBeLessThanOrEqual(0);
     await saveScreenshot(page, `files-${identity.label}-${identity.theme}.png`);
 
-    // The sender line of a file jumps back to the chat at that message.
-    await page.locator(".files .file-from").first().click();
+    // The jump link on a file row returns to the chat at its original message.
+    await page.locator(".files .file-jump").first().click();
     await expect(page.locator("#conversation-heading")).toHaveText("All conversations");
     await expect(page.locator("#msg-2026-10-08T0900-alice-agent-api-01")).toHaveCSS(
       "outline-style",
@@ -2492,12 +2805,12 @@ test("a topic folder snapshot keeps questions visible when WebKit omits the mark
   await expect(questions).toContainText(browserName === "chromium" ? "1 open" : "0 open");
   await questions.click();
   await expect(page.locator("#conversation-heading")).toHaveText("Questions");
-  await expect(page.getByText("Question about the API.")).toBeVisible();
+  await expect(page.locator(".question-text")).toContainText("Question about the API.");
   if (browserName === "webkit") {
-    await expect(page.getByRole("region", { name: /Not yet known/ })).toBeVisible();
     await expect(
-      page.getByText(/participants.*unavailable|participant roster.*unknown/i),
+      page.getByRole("region", { name: /Progress unknown: participants unavailable/ }),
     ).toBeVisible();
+    await expect(page.getByText(/participant list is unavailable/i)).toBeVisible();
   } else {
     await expect(page.getByRole("region", { name: "Open" })).toBeVisible();
   }
@@ -2663,8 +2976,8 @@ for (const code of LOCALES) {
         await page.getByRole("button", { name: messages["nav.back"] }).click();
       }
       await page.getByRole("button", { name: messages["nav.questions"] }).click();
-      await expectNoClipping(page, ".question-link, .question-group h3, .conversation h2");
-      await identityButton(page).click();
+      await expectNoClipping(page, ".question-toggle, .question-group h3, .conversation h2");
+      await toolbarAction(page, messages["bar.profile"]);
       await expect(page.getByRole("heading", { name: messages["profile.title"] })).toBeVisible();
       await expectNoClipping(
         page,

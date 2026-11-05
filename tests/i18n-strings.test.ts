@@ -11,6 +11,9 @@ import { join } from "node:path";
 
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { en } from "../src/i18n/catalog";
+import { ja } from "../src/i18n/ja";
+import { zhTW } from "../src/i18n/zh-TW";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 
@@ -147,6 +150,15 @@ describe("user-visible text lives in the catalog", () => {
       findHardCodedText(readFileSync(join(ROOT, path), "utf8"), path),
     );
     expect(all, `Move these into src/i18n (see docs/i18n.md):\n${all.join("\n")}`).toEqual([]);
+  });
+
+  it("labels an unavailable participant roster as unknown, not loading, in each locale", () => {
+    expect(en["questions.unknownRoster"]).toContain("participants unavailable in this browser");
+    expect(ja["questions.unknownRoster"]).toContain("参加者を利用できません");
+    expect(zhTW["questions.unknownRoster"]).toContain("無法取得參與者");
+    expect(en["questions.rosterNotice"]).toContain("cannot be determined");
+    expect(ja["questions.rosterNotice"]).toContain("確認できません");
+    expect(zhTW["questions.rosterNotice"]).toContain("無法判斷");
   });
 });
 

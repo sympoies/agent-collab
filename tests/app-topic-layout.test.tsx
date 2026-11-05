@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Loader } from "../src/loader/loader";
+import { TopicSession } from "../src/loader/topic-session";
 import { FixtureSource } from "../src/source/fixture";
 import { SourceError } from "../src/source/types";
 import { App } from "../src/ui/App";
@@ -55,7 +56,11 @@ describe("topic list screen", () => {
     });
   }
 
-  async function mount(source: FixtureSource, key = "topic-test"): Promise<void> {
+  async function mount(
+    source: FixtureSource,
+    key = "topic-test",
+    initialTopicSession?: TopicSession,
+  ): Promise<void> {
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -65,6 +70,7 @@ describe("topic list screen", () => {
           <App
             loader={new Loader(source)}
             topicSource={source}
+            {...(initialTopicSession === undefined ? {} : { initialTopicSession })}
             title="Repository"
             selfNames={new Set()}
             identity={{ storage: null, key }}
@@ -81,6 +87,13 @@ describe("topic list screen", () => {
   const entry = (label: string) => {
     const found = entries().find((button) => button.textContent.startsWith(label));
     if (found === undefined) throw new Error(`No entry starts with ${label}`);
+    return found;
+  };
+  const action = (label: string) => {
+    const found = [...host.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
+      button.textContent.startsWith(label),
+    );
+    if (found === undefined) throw new Error(`No action starts with ${label}`);
     return found;
   };
   const rowLabels = () =>
@@ -116,6 +129,131 @@ describe("topic list screen", () => {
     await click(entry("All"));
     await click(entry("Files"));
     expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
+  });
+
+  it("loads Questions and All-scoped Files across every open topic from the mobile topic list", async () => {
+    const apiId = "2026-10-01T0900-alice-agent-api-01";
+    const opsId = "2026-10-02T0900-bob-agent-ops-01";
+    const repository: Record<string, string> = {
+      ".agent-collab": MARKER,
+      "index.md": [
+        "| topic | title | status |",
+        "|---|---|---|",
+        "| api | API | open |",
+        "| ops | Ops | open |",
+      ].join("\n"),
+      [`topics/api/inbox/2026-10/${apiId}.md`]: messageText(
+        apiId,
+        "alice-agent",
+        "api",
+        { type: "question", refs: "topics/api/api.md" },
+        "API question",
+      ),
+      [`topics/ops/inbox/2026-10/${opsId}.md`]: messageText(
+        opsId,
+        "bob-agent",
+        "ops",
+        { type: "question", refs: "topics/ops/ops.txt" },
+        "Ops question",
+      ),
+      "topics/api/api.md": "API file",
+      "topics/ops/ops.txt": "Ops file",
+    };
+    const previousMatchMedia = Object.getOwnPropertyDescriptor(window, "matchMedia");
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: (query: string): MediaQueryList =>
+        ({
+          matches: query === "(max-width: 720px)",
+          media: query,
+          onchange: null,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          dispatchEvent: () => true,
+        }) as unknown as MediaQueryList,
+    });
+    try {
+      const questionSource = new FixtureSource(repository);
+      await mount(questionSource, "topic-questions-direct");
+      expect(questionSource.reads).not.toContain(`topics/api/inbox/2026-10/${apiId}.md`);
+      expect(questionSource.reads).not.toContain(`topics/ops/inbox/2026-10/${opsId}.md`);
+      await click(entry("Questions"));
+      expect([...host.querySelectorAll(".question-text")].map((node) => node.textContent)).toEqual([
+        "API question",
+        "Ops question",
+      ]);
+      expect(questionSource.reads).toContain(`topics/api/inbox/2026-10/${apiId}.md`);
+      expect(questionSource.reads).toContain(`topics/ops/inbox/2026-10/${opsId}.md`);
+
+      act(() => root?.unmount());
+      root = null;
+      document.body.replaceChildren();
+
+      const fileSource = new FixtureSource(repository);
+      await mount(fileSource, "topic-files-direct");
+      expect(fileSource.reads).not.toContain(`topics/api/inbox/2026-10/${apiId}.md`);
+      expect(fileSource.reads).not.toContain(`topics/ops/inbox/2026-10/${opsId}.md`);
+      await click(entry("Files"));
+      expect(host.querySelector(".file-scope-all")?.getAttribute("aria-pressed")).toBe("true");
+      expect(
+        [...host.querySelectorAll(".file-name")].map((node) => node.textContent).sort(),
+      ).toEqual(["api.md", "ops.txt"]);
+      expect(fileSource.reads).toContain(`topics/api/inbox/2026-10/${apiId}.md`);
+      expect(fileSource.reads).toContain(`topics/ops/inbox/2026-10/${opsId}.md`);
+    } finally {
+      if (previousMatchMedia === undefined) Reflect.deleteProperty(window, "matchMedia");
+      else Object.defineProperty(window, "matchMedia", previousMatchMedia);
+    }
+  });
+
+  it("loads older files from the retained Files topic scope after visiting another chat", async () => {
+    const repository: Record<string, string> = {
+      ".agent-collab": MARKER,
+      "index.md": [
+        "| topic | title | status |",
+        "|---|---|---|",
+        "| api | API | open |",
+        "| ops | Ops | open |",
+      ].join("\n"),
+    };
+    for (const [topic, day, file] of [
+      ["api", "01", "api-old.txt"],
+      ["api", "02", "api-new.txt"],
+      ["ops", "01", "ops-old.txt"],
+      ["ops", "02", "ops-new.txt"],
+    ] as const) {
+      const id = `2026-10-${day}T0900-alice-agent-${topic}-01`;
+      repository[`topics/${topic}/inbox/2026-10/${id}.md`] = messageText(
+        id,
+        "alice-agent",
+        topic,
+        { refs: `topics/${topic}/${file}` },
+        `${topic} ${day}`,
+      );
+      repository[`topics/${topic}/${file}`] = "fixture";
+    }
+    const source = new FixtureSource(repository);
+    const session = new TopicSession(source, { pageSize: 1 });
+    await session.open();
+    await mount(source, "topic-files-scope", session);
+
+    await click(entry("#api"));
+    await click(action("Files"));
+    expect(host.querySelector(".range-bar")).toBeNull();
+    expect(host.querySelector("button.older")).toBeNull();
+    await click(action("Use #api"));
+    await click(entry("#ops"));
+    await click(action("Files"));
+    expect(host.querySelector(".file-scope-topic")?.getAttribute("aria-pressed")).toBe("true");
+    expect([...host.querySelectorAll(".file-name")].map((node) => node.textContent)).toEqual([
+      "api-new.txt",
+    ]);
+
+    await click(action("Load older"));
+    expect([...host.querySelectorAll(".file-name")].map((node) => node.textContent)).toEqual([
+      "api-old.txt",
+      "api-new.txt",
+    ]);
   });
 
   describe("the All view", () => {

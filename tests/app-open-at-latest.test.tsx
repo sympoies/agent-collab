@@ -220,10 +220,8 @@ describe("a conversation opens at its latest message", () => {
     await click(button(host, "Questions"));
     scrollByReader(0);
     scrollTo.mockClear();
-    const open = [...host.querySelectorAll("button, a")].find((candidate) =>
-      candidate.textContent.includes("Is it final?"),
-    );
-    await click(open);
+    const open = host.querySelector('section[aria-label="Open"] .question-open-chat');
+    await click(open ?? undefined);
     expect(
       document
         .getElementById("msg-2026-09-01T0900-alice-agent-api-01")

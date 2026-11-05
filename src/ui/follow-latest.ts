@@ -35,23 +35,23 @@ const scrollTo = (pane: HTMLElement, top: number) => {
   pane.scrollTo({ top, behavior: "instant" });
 };
 
-/** The first message that is at least partly in view and where it sits in the pane. */
+/** The first message or reference card that is at least partly in view and its pane offset. */
 function visibleAnchor(pane: HTMLElement): { readonly id: string; readonly offset: number } | null {
-  const messages = pane.querySelectorAll<HTMLElement>(".message");
+  const entries = pane.querySelectorAll<HTMLElement>(".message, .question-item, .file-item");
   const top = pane.getBoundingClientRect().top;
-  // Messages are in document order, so the first one whose bottom is below the top edge is found
+  // Entries are in document order, so the first one whose bottom is below the top edge is found
   // by bisection.
   let low = 0;
-  let high = messages.length;
+  let high = entries.length;
   while (low < high) {
     const middle = (low + high) >> 1;
-    if ((messages[middle] as HTMLElement).getBoundingClientRect().bottom > top) high = middle;
+    if ((entries[middle] as HTMLElement).getBoundingClientRect().bottom > top) high = middle;
     else low = middle + 1;
   }
-  const message = messages[low];
-  return message === undefined
+  const entry = entries[low];
+  return entry === undefined || entry.id === ""
     ? null
-    : { id: message.id, offset: message.getBoundingClientRect().top - top };
+    : { id: entry.id, offset: entry.getBoundingClientRect().top - top };
 }
 
 /** The first message of `day` in the pane, else null. Ids start with their timestamp. */
@@ -148,12 +148,13 @@ export function useFollowLatest(
       current.landed = false;
       return;
     }
-    // The timeline is replaced when the pane switches view; watch the current one.
-    const timeline = element.querySelector(".timeline");
-    if (timeline !== current.observed) {
+    // A view root is replaced when the pane switches page; watch its size so expanding cards can
+    // keep the bottom in view when the reader was following the newest entries.
+    const content = element.querySelector(".timeline, .questions, .files-view, .files");
+    if (content !== current.observed) {
       current.observer?.disconnect();
-      if (timeline !== null) current.observer?.observe(timeline);
-      current.observed = timeline;
+      if (content !== null) current.observer?.observe(content);
+      current.observed = content;
     }
     const { first, last } = messageIds(rows);
     if (last === null) return;
@@ -163,18 +164,20 @@ export function useFollowLatest(
         current.firstLanding && document.getElementById(window.location.hash.slice(1)) !== null;
       current.firstLanding = false;
       if (pendingJump.current === null && !linked) scrollTo(element, element.scrollHeight);
-    } else if (first !== current.first && last === current.last) {
-      // Older messages were added above: keep the message that was in view where it was.
-      const kept = current.anchor === null ? null : document.getElementById(current.anchor.id);
-      if (current.anchor !== null && kept !== null) {
-        const moved =
-          kept.getBoundingClientRect().top -
-          element.getBoundingClientRect().top -
-          current.anchor.offset;
-        scrollTo(element, element.scrollTop + moved);
+    } else if (first !== current.first || last !== current.last) {
+      if (last !== current.last && current.following) {
+        scrollTo(element, element.scrollHeight);
+      } else if (!current.following) {
+        // Data arriving above the visible entry keeps that entry at the same screen offset.
+        const kept = current.anchor === null ? null : document.getElementById(current.anchor.id);
+        if (current.anchor !== null && kept !== null) {
+          const moved =
+            kept.getBoundingClientRect().top -
+            element.getBoundingClientRect().top -
+            current.anchor.offset;
+          scrollTo(element, element.scrollTop + moved);
+        }
       }
-    } else if (last !== current.last && current.following) {
-      scrollTo(element, element.scrollHeight);
     }
     current.first = first;
     current.last = last;

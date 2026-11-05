@@ -7,6 +7,8 @@ import { buildPeople } from "../src/ui/people";
 import { EMPTY_PREFERENCES } from "../src/identity/preferences";
 
 const uiRoot = resolve(import.meta.dirname, "../src/ui");
+const colorLiteral =
+  /#[\da-f]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\s*\(|\b(?:aliceblue|antiquewhite|aqua|aquamarine|azure|beige|bisque|black|blanchedalmond|blue|blueviolet|brown|burlywood|cadetblue|chartreuse|chocolate|coral|cornflowerblue|cornsilk|crimson|cyan|darkblue|darkcyan|darkgray|darkgreen|darkgrey|darkmagenta|darkorange|darkred|darksalmon|darkseagreen|darkslateblue|darkslategray|darkslategrey|darkturquoise|darkviolet|deeppink|deepskyblue|dimgray|dimgrey|dodgerblue|firebrick|floralwhite|forestgreen|fuchsia|gainsboro|ghostwhite|gold|goldenrod|gray|green|greenyellow|grey|honeydew|hotpink|indianred|indigo|ivory|khaki|lavender|lavenderblush|lawngreen|lemonchiffon|lightblue|lightcoral|lightcyan|lightgray|lightgreen|lightgrey|lightpink|lightsalmon|lightseagreen|lightskyblue|lightslategray|lightslategrey|lightsteelblue|lightyellow|lime|limegreen|linen|magenta|maroon|mediumaquamarine|mediumblue|mediumorchid|mediumpurple|mediumseagreen|mediumslateblue|mediumspringgreen|mediumturquoise|mediumvioletred|midnightblue|mintcream|mistyrose|moccasin|navajowhite|navy|oldlace|olive|olivedrab|orange|orangered|orchid|palegoldenrod|palegreen|paleturquoise|palevioletred|papayawhip|peachpuff|peru|pink|plum|powderblue|purple|rebeccapurple|red|rosybrown|royalblue|saddlebrown|salmon|sandybrown|seagreen|seashell|sienna|silver|skyblue|slateblue|slategray|slategrey|snow|springgreen|steelblue|tan|teal|thistle|tomato|turquoise|violet|wheat|white|whitesmoke|yellow|yellowgreen)\b/i;
 
 function stylesheets(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -42,13 +44,26 @@ describe("shared design layer", () => {
     for (const path of stylesheets(uiRoot)) {
       if (relative(uiRoot, path) === "shared/tokens.css") continue;
       const css = readFileSync(path, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
-      const rawColors = [...css.matchAll(/(?:^|[;\s{])[-a-z]+\s*:[^;{}]*#[\da-f]{3,8}\b/gim)];
-      const rawFontSizes = [
-        ...css.matchAll(/font-size\s*:\s*(?!var\()[\d.]+(?:px|em|rem|%|pt)\b/gim),
-      ];
+      const declarations = [...css.matchAll(/(?:^|[;{])\s*([\w-]+)\s*:\s*([^;{}]+)/gim)];
+      const colorProperties =
+        /^(?:color|background(?:-color)?|border(?:-(?:top|right|bottom|left))?(?:-color)?|outline(?:-color)?|box-shadow|text-shadow|fill|stroke)$/i;
+      const resetValue = /\b(?:none|transparent|inherit|initial|unset|currentcolor)\b|^\s*0\s*$/i;
+      const rawColors = declarations.filter(([, property, value]) => {
+        if (colorLiteral.test(value ?? "")) return true;
+        return (
+          colorProperties.test(property ?? "") &&
+          !/\bvar\(/i.test(value ?? "") &&
+          !resetValue.test(value ?? "")
+        );
+      });
+      const rawFontSizes = declarations.filter(
+        ([, property, value]) =>
+          /^(?:font-size|font)$/i.test(property ?? "") &&
+          /\b[\d.]+(?:px|em|rem|%|pt)\b/i.test(value ?? ""),
+      );
       if (rawColors.length > 0 || rawFontSizes.length > 0) {
         violations.push(
-          `${relative(uiRoot, path)}: ${rawColors.length} raw color(s), ${rawFontSizes.length} raw font size(s)`,
+          `${relative(uiRoot, path)}: raw colors [${rawColors.map(([, property, value]) => `${property ?? ""}: ${(value ?? "").trim()}`).join("; ")}], raw font sizes [${rawFontSizes.map(([, property, value]) => `${property ?? ""}: ${(value ?? "").trim()}`).join("; ")}]`,
         );
       }
     }
