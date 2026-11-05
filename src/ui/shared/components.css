@@ -210,13 +210,22 @@
   overflow-wrap: anywhere;
 }
 
-.question-due[data-overdue="true"],
-.question-overdue {
+/*
+ * An overdue date, in the chat and on the Questions cards: the error colour on a low-opacity tint
+ * of itself. The "! " keeps the meaning from resting on colour alone.
+ */
+.shared-overdue {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--error) 14%, transparent);
   color: var(--error);
   font-weight: 650;
+  text-decoration: none;
 }
 
-.question-overdue::before {
+.shared-overdue::before {
   content: "! ";
 }
 

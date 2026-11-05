@@ -55,6 +55,9 @@ describe("ChatView with the demo repository", () => {
     expect(html).toContain('title="2026-10-08 09:05"');
     expect(html).toContain("Needs:");
     expect(html).toContain('data-overdue="true"');
+    // An overdue due line gets the shared highlight; one that is not overdue stays plain.
+    expect(html).toMatch(/<p class="due shared-overdue" data-overdue="true"/);
+    expect(html).toMatch(/<p class="due" data-overdue="false"/);
   });
 
   it("renders a malformed file as a card with its errors", async () => {

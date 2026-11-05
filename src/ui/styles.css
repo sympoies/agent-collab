@@ -885,11 +885,6 @@ a.quote {
   font-size: var(--font-small);
 }
 
-.due[data-overdue="true"] {
-  text-decoration: underline wavy var(--error);
-  text-underline-offset: 2px;
-}
-
 .receipts {
   display: flex;
   flex-direction: column;
