@@ -36,6 +36,8 @@ import { Toolbar, useNarrow } from "./Toolbar";
 import { RangeBar } from "./RangeBar";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
+import { usePhoneHistory } from "./phone-history";
+import { TopicBar } from "./TopicBar";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
 import { useMergedSnapshot } from "./merged-snapshot";
@@ -222,6 +224,7 @@ export function App({
   );
   const pendingJump = useRef<string | null>(null);
   const [mobileConversation, setMobileConversation] = useState(false);
+  usePhoneHistory(mobileConversation, setMobileConversation);
   // State, not a ref: the pane renders once the topics are known, and landing waits for it.
   const [messagePane, setMessagePane] = useState<HTMLElement | null>(null);
   const [dateLanding, setDateLanding] = useState<DateLanding | null>(null);
@@ -625,6 +628,25 @@ export function App({
   }, [retryAt]);
   const retryingAfterLimit = retryAt !== null && readyRetryAt?.getTime() !== retryAt.getTime();
 
+  const range =
+    view !== "questions" && selectedLoader !== null ? (
+      <RangeBar
+        messages={pagedMessages}
+        jumpedTo={paging.jumpedTo}
+        disabled={busy || retryingAfterLimit}
+        onJump={(date) => {
+          run(
+            async () => {
+              await selectedLoader.jumpTo(date);
+              setDateLanding({ date });
+            },
+            0,
+            "jump",
+          );
+        }}
+      />
+    ) : null;
+
   return (
     <div className="app app-shell">
       <header className="bar">
@@ -887,31 +909,28 @@ export function App({
             tabIndex={0}
             ref={setMessagePane}
           >
-            <button
-              type="button"
-              className="back-to-topics"
-              onClick={() => {
+            <TopicBar
+              headingClass={topicLayout && topic !== null ? "topic-heading" : undefined}
+              headingRef={conversationHeading}
+              onBack={() => {
                 setMobileConversation(false);
               }}
-            >
-              {t("nav.back")}
-            </button>
-            <h2
-              id="conversation-heading"
-              className={topicLayout && topic !== null ? "topic-heading" : undefined}
-              ref={conversationHeading}
-              tabIndex={-1}
-            >
-              {view === "questions"
-                ? t("heading.questions")
-                : view === "files"
-                  ? topic === null
-                    ? t("heading.files")
-                    : t("heading.filesIn", { topic })
-                  : topic === null
-                    ? t("heading.all")
-                    : `#${topic}`}
-            </h2>
+              menu={narrow ? range : null}
+              heading={
+                <>
+                  {view === "questions"
+                    ? t("heading.questions")
+                    : view === "files"
+                      ? topic === null
+                        ? t("heading.files")
+                        : t("heading.filesIn", { topic })
+                      : topic === null
+                        ? t("heading.all")
+                        : `#${topic}`}
+                </>
+              }
+            />
+            {!narrow && range}
             {topicLayout && loadedTopics.length === 0 && (
               <p className="topic-prompt">{t("topic.selectPrompt")}</p>
             )}
@@ -928,23 +947,6 @@ export function App({
                 people={people}
                 now={now}
                 onOpen={openQuestion}
-              />
-            )}
-            {view !== "questions" && selectedLoader !== null && (
-              <RangeBar
-                messages={pagedMessages}
-                jumpedTo={paging.jumpedTo}
-                disabled={busy || retryingAfterLimit}
-                onJump={(date) => {
-                  run(
-                    async () => {
-                      await selectedLoader.jumpTo(date);
-                      setDateLanding({ date });
-                    },
-                    0,
-                    "jump",
-                  );
-                }}
               />
             )}
             {view !== "questions" && selectedLoader !== null && paging.hasOlder && (

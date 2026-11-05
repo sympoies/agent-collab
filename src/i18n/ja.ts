@@ -35,6 +35,7 @@ export const ja: Messages = {
   "topic.showAll": "{count} 件のトピックをすべて表示",
   "topic.showFewer": "表示を減らす",
   "topic.selectPrompt": "トピックを選ぶとメッセージが表示されます。",
+  "topic.menu": "トピックのオプション",
   "opening.loading": "リポジトリを読み込んでいます…",
   "opening.retry": "リポジトリを読み込めませんでした。更新してもう一度お試しください。",
   "nav.fresh": "新着 {count} 件",

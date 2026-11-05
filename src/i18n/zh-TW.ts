@@ -34,6 +34,7 @@ export const zhTW: Messages = {
   "topic.showAll": "顯示全部 {count} 個主題",
   "topic.showFewer": "顯示較少",
   "topic.selectPrompt": "選擇主題以檢視訊息。",
+  "topic.menu": "主題選項",
   "opening.loading": "正在讀取儲存庫…",
   "opening.retry": "無法讀取儲存庫。請按「重新整理」再試一次。",
   "nav.fresh": "{count} 則新訊息",

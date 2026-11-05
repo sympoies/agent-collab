@@ -753,6 +753,11 @@ button:hover {
   border: 0;
 }
 
+/* On a wide screen the bar only groups the heading; it is a sticky bar on a phone. */
+.topic-bar {
+  display: contents;
+}
+
 .back-to-topics {
   display: none;
   margin-bottom: 12px;
@@ -1599,6 +1604,61 @@ span.chip {
 
   .back-to-topics {
     display: inline-flex;
+    flex: none;
+    margin-bottom: 0;
+  }
+
+  /* The name and the back control stay at the top while the messages scroll under them. */
+  .topic-bar {
+    position: sticky;
+    /* Sticky offsets count from inside the pane's padding. */
+    top: -12px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: -12px -10px 10px;
+    padding: 8px 10px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .topic-bar h2 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: 1.05rem;
+    overflow-wrap: anywhere;
+  }
+
+  .topic-menu {
+    flex: none;
+  }
+
+  .topic-menu summary {
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .topic-menu-body {
+    position: absolute;
+    right: 10px;
+    left: 10px;
+    top: 100%;
+    padding: 10px;
+    background: var(--floating);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--popover-shadow);
+  }
+
+  /* Only the toolbar stays in the global header while a topic is open. */
+  .app-shell:has(.workspace[data-mobile-view="conversation"]) .bar h1,
+  .app-shell:has(.workspace[data-mobile-view="conversation"]) .source-indicator {
+    display: none;
   }
 
   .group {

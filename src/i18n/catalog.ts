@@ -47,6 +47,7 @@ export const en = {
   "topic.showAll": "Show all {count} topics",
   "topic.showFewer": "Show fewer",
   "topic.selectPrompt": "Choose a topic to view its messages.",
+  "topic.menu": "Topic options",
   "opening.loading": "Reading the repository…",
   "opening.retry": "The repository could not be read. Use Refresh to try again.",
   "nav.fresh": "{count} new",
