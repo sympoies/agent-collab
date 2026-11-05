@@ -93,6 +93,19 @@ for (const width of [390, 1280]) {
       await expect(hint).toHaveCount(0);
     });
 
+    test("keeps the topic bar title on one line next to the options menu @csp", async ({
+      page,
+    }) => {
+      await open(page, width);
+      const heading = page.locator(".topic-bar h2");
+      await expect(heading).toHaveText(en["heading.all"]);
+      const { height, fontSize } = await heading.evaluate((node) => ({
+        height: node.getBoundingClientRect().height,
+        fontSize: parseFloat(getComputedStyle(node).fontSize),
+      }));
+      expect(height).toBeLessThanOrEqual(fontSize * 1.7);
+    });
+
     test("shows no hint when the marker names no participants @csp", async ({ page }) => {
       await open(page, width, "collab-protocol: 1\n");
       await expect(identity(page)).toBeVisible();

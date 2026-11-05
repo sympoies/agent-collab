@@ -1652,8 +1652,7 @@ span.chip {
   }
 
   .back-to-topics {
-    display: inline-flex;
-    flex: none;
+    display: inline-block;
     margin-bottom: 0;
   }
 
@@ -1672,12 +1671,20 @@ span.chip {
     border-bottom: 1px solid var(--border);
   }
 
+  /* The title is one line, cut with an ellipsis; the back control shrinks first. */
   .topic-bar h2 {
     flex: 1;
     min-width: 0;
     margin: 0;
     font-size: 1.05rem;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topic-bar .back-to-topics {
+    flex: none;
+    padding-inline: 12px;
   }
 
   .topic-menu {

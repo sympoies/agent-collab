@@ -12,6 +12,8 @@ import { en } from "../src/i18n/catalog";
 import { messageText } from "../tests/support";
 
 const COUNT = 40;
+const LONG_TOPIC = "a-topic-name-that-is-long-enough-to-wrap-without-overflow-at-phone-width";
+const LONG_ID = `2026-11-04T0950-alice-agent-${LONG_TOPIC}-01`;
 const id = (n: number) => `2026-11-04T09${String(n).padStart(2, "0")}-alice-agent-general-01`;
 const snapshot = JSON.stringify({
   schemaVersion: 1,
@@ -36,6 +38,10 @@ const snapshot = JSON.stringify({
         `Message number ${String(n + 1)}.\n\nA second line so each message is tall enough to scroll.`,
       ),
     })),
+    {
+      path: `topics/${LONG_TOPIC}/inbox/2026-11/${LONG_ID}.md`,
+      text: messageText(LONG_ID, "alice-agent", LONG_TOPIC, {}, "A message in a long topic."),
+    },
   ],
 });
 
@@ -245,5 +251,27 @@ test.describe("the phone topic bar @csp", () => {
     await expect(page.locator(`#msg-${id(1)}`)).toBeFocused();
     expect(await page.evaluate(() => history.length)).toBe(before.length);
     expect(page.url()).toBe(before.url);
+  });
+
+  // The title is one line of text: a long name is cut with an ellipsis, never broken mid-word.
+  const expectOneLine = async (page: Page) => {
+    const heading = page.locator(".topic-bar h2");
+    const { height, fontSize } = await heading.evaluate((node) => ({
+      height: node.getBoundingClientRect().height,
+      fontSize: parseFloat(getComputedStyle(node).fontSize),
+    }));
+    expect(height).toBeLessThanOrEqual(fontSize * 1.7);
+  };
+
+  test("the bar title is one line for All and for a long topic name @csp", async ({ page }) => {
+    await openTopic(page);
+    await barBack(page).click();
+    await page.getByRole("button", { name: en["nav.all"], exact: true }).click();
+    await expect(page.locator(".topic-bar h2")).toHaveText(en["heading.all"]);
+    await expectOneLine(page);
+    await barBack(page).click();
+    await page.getByRole("button", { name: `#${LONG_TOPIC}`, exact: true }).click();
+    await expect(page.locator(".topic-bar h2")).toHaveText(`#${LONG_TOPIC}`);
+    await expectOneLine(page);
   });
 });
