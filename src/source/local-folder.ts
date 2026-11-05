@@ -21,6 +21,7 @@ export interface LocalDirectoryHandle extends LocalHandle {
   getDirectoryHandle(name: string): Promise<LocalDirectoryHandle>;
   getFileHandle(name: string): Promise<LocalFileHandle>;
   queryPermission?(descriptor?: { readonly mode: "read" }): Promise<PermissionState>;
+  requestPermission?(descriptor?: { readonly mode: "read" }): Promise<PermissionState>;
 }
 
 export interface LocalFileHandle extends LocalHandle {

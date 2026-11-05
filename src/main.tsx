@@ -7,6 +7,7 @@ import { demoFiles } from "./demo/fixtures";
 import type { ViewerSettings } from "./settings/model";
 import { FixtureSource } from "./source/fixture";
 import { FileListFolderSource, filesFromFolderDrop } from "./source/file-list-folder";
+import { folderMemory } from "./source/folder-memory";
 import { LocalFolderSource, type LocalDirectoryHandle } from "./source/local-folder";
 import { GitHubSource } from "./source/github";
 import { CachedDemoSource } from "./source/cached-demo";
@@ -92,16 +93,23 @@ function createLiveDemoSource(token: Secret | null): MessageSource {
 
 /**
  * The browser's folder picker, or null where it does not exist (Firefox, Safari, insecure pages).
- * It must be called straight from a click; the handle stays in memory and is never stored.
+ * It must be called straight from a click. A folder that opened is remembered in IndexedDB on this
+ * origin (folder-memory.ts; the accepted same-origin risk is in docs/design/local-source.md).
  */
-function folderPicker(): (() => Promise<{ source: MessageSource; name: string }>) | null {
+const folders = folderMemory(indexedDbRecords("agent-collab-viewer-folder"));
+
+function folderPicker(): (() => Promise<LocalFolderOpen>) | null {
   const picker = (
     window as { showDirectoryPicker?: (options: { mode: "read" }) => Promise<LocalDirectoryHandle> }
   ).showDirectoryPicker;
   if (typeof picker !== "function") return null;
   return async () => {
     const handle = await picker.call(window, { mode: "read" });
-    return { source: new LocalFolderSource(handle), name: handle.name };
+    return {
+      source: new LocalFolderSource(handle),
+      name: handle.name,
+      remember: () => folders.save(handle),
+    };
   };
 }
 
@@ -136,6 +144,7 @@ createRoot(root).render(
           createDemoSource={() => new FixtureSource(demoFiles)}
           createLiveDemoSource={createLiveDemoSource}
           openLocalFolder={folderPicker()}
+          folderMemory={folders}
           createHostedSource={hosted}
           openLocalFileList={fileListFolder}
         />

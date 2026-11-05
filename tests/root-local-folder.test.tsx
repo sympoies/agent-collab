@@ -190,7 +190,7 @@ describe("Root with a local folder", () => {
     const last = host.querySelector(".last-changed");
     expect(last?.textContent).toBe("Last change seen 5 minutes ago");
     expect(last?.getAttribute("title")).toContain(formatDateTime("en", changed));
-    // Read-only: nothing in the page offers to write, and no identity is saved for the folder.
+    // Read-only: nothing in the page offers to write.
     expect(button(host, "Local folder")).toBeDefined();
   });
 
