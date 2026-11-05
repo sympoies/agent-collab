@@ -1,5 +1,5 @@
 // The viewer's toolbar. Wide screens show every control as an icon button; narrow screens keep the
-// refresh button and "Viewing as" and put the rest behind one "More" menu. The set of controls and
+// refresh button and the identity button and put the rest behind one "More" menu. The set of controls and
 // their order are the same in both.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -7,7 +7,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { LOCALE_NAMES, LOCALES, type MessageKey } from "../i18n/catalog";
 import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
 import { IconButton } from "./IconButton";
-import { FolderIcon, GlobeIcon, MoonIcon, SettingsIcon, SunIcon, UserIcon } from "./icons";
+import { FolderIcon, GlobeIcon, MoonIcon, SettingsIcon, SunIcon } from "./icons";
 import { MenuGroup, MenuItem, OverflowMenu } from "./OverflowMenu";
 import { ThemeToggle, useThemeAction } from "./ThemeProvider";
 
@@ -35,18 +35,15 @@ export function useNarrow(): boolean {
 
 export function Toolbar({
   primary,
-  viewingAs,
-  profileOpen,
-  onToggleProfile,
+  identity,
   onPickLocalFolder,
   localFolderActionLabel,
   onOpenSettings,
 }: {
   /** The refresh (or check-live) button, always first. */
   readonly primary: ReactNode;
-  readonly viewingAs: ReactNode;
-  readonly profileOpen: boolean;
-  readonly onToggleProfile: () => void;
+  /** The identity button, which opens the profile panel. */
+  readonly identity: ReactNode;
   readonly onPickLocalFolder: (() => void) | undefined;
   readonly localFolderActionLabel?: MessageKey;
   readonly onOpenSettings: () => void;
@@ -54,22 +51,19 @@ export function Toolbar({
   const { t, locale, setLocale } = useLocale();
   const narrow = useNarrow();
   const theme = useThemeAction();
-  const profile = t("bar.profile");
   const menuOpen = useRef(false);
   const bar = useRef<HTMLDivElement | null>(null);
 
   // Crossing the width threshold swaps the layout. When the menu was open its focused item is
-  // gone, so focus goes to the control that replaces it: the More button on a phone, the first
-  // control that left the menu (Profile & colors) on a wide screen.
+  // gone, so focus goes to the control that replaces it: the More button on a phone, the identity
+  // button (the control next to the icons that left the menu) on a wide screen.
   useEffect(() => {
     if (!menuOpen.current) return;
     menuOpen.current = false;
     const active = document.activeElement;
     if (active === null || active === document.body || !document.body.contains(active)) {
       bar.current
-        ?.querySelector<HTMLElement>(
-          narrow ? "[aria-haspopup=menu]" : "[aria-controls=profile-panel]",
-        )
+        ?.querySelector<HTMLElement>(narrow ? "[aria-haspopup=menu]" : ".identity-button")
         ?.focus();
     }
   }, [narrow]);
@@ -78,21 +72,13 @@ export function Toolbar({
     return (
       <div ref={bar} className="bar-actions" data-layout="menu">
         {primary}
-        {viewingAs}
+        {identity}
         <OverflowMenu
           label={t("bar.more")}
           onOpenChange={(open) => {
             menuOpen.current = open;
           }}
         >
-          <MenuItem
-            role="menuitemcheckbox"
-            checked={profileOpen}
-            icon={<UserIcon />}
-            onSelect={onToggleProfile}
-          >
-            {profile}
-          </MenuItem>
           {onPickLocalFolder !== undefined && (
             <MenuItem icon={<FolderIcon />} onSelect={onPickLocalFolder}>
               {t(localFolderActionLabel ?? "bar.localFolder")}
@@ -127,15 +113,7 @@ export function Toolbar({
   return (
     <div ref={bar} className="bar-actions" data-layout="icons">
       {primary}
-      {viewingAs}
-      <IconButton
-        label={profile}
-        aria-expanded={profileOpen}
-        aria-controls="profile-panel"
-        onClick={onToggleProfile}
-      >
-        <UserIcon />
-      </IconButton>
+      {identity}
       {onPickLocalFolder !== undefined && (
         <IconButton
           label={t(localFolderActionLabel ?? "bar.localFolder")}

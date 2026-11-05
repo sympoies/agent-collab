@@ -373,8 +373,13 @@ describe("Root with a local folder", () => {
       await click(button(host, "Open local folder"));
       return host;
     }
-    const viewingAs = (host: HTMLElement) =>
-      host.querySelector<HTMLSelectElement>(".viewing-as select");
+    // The select lives in the profile panel, opened from the identity button.
+    const viewingAs = async (host: HTMLElement) => {
+      if (host.querySelector("#profile-panel") === null) {
+        await click(host.querySelector(".bar-actions .identity-button") ?? undefined);
+      }
+      return host.querySelector<HTMLSelectElement>(".viewing-as select");
+    };
 
     it("returns to the topic and the Files view of a topic-layout folder after a reload", async () => {
       const storage = storageMap();
@@ -411,7 +416,7 @@ describe("Root with a local folder", () => {
     it("returns to the chosen person after a reload, and folders stay apart", async () => {
       const storage = storageMap();
       let host = await openFolder(storage, "clone-a");
-      const select = viewingAs(host);
+      const select = await viewingAs(host);
       act(() => {
         if (select === null) return;
         select.value = "alice-agent";
@@ -425,14 +430,14 @@ describe("Root with a local folder", () => {
       });
       document.body.replaceChildren();
       host = await openFolder(storage, "clone-a");
-      expect(viewingAs(host)?.value).toBe("alice-agent");
+      expect((await viewingAs(host))?.value).toBe("alice-agent");
 
       act(() => {
         mounted?.root.unmount();
       });
       document.body.replaceChildren();
       host = await openFolder(storage, "clone-b");
-      expect(viewingAs(host)?.value).toBe("");
+      expect((await viewingAs(host))?.value).toBe("");
     });
   });
 });

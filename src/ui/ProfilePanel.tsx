@@ -33,6 +33,11 @@ export interface ProfilePanelProps {
   readonly order: readonly string[];
   readonly preferences: IdentityPreferences;
   readonly people: People;
+  /** The person the viewer is; null for Observer. */
+  readonly viewer: string | null;
+  /** Who the viewer can be: the participants, or the senders seen while the roster is unknown. */
+  readonly viewingAsOptions: readonly string[];
+  readonly onViewingAs: (person: string | null) => void;
   readonly onColor: (person: string, slot: number | null) => void;
   readonly onDisplayName: (person: string, name: string) => void;
   readonly onReset: () => void;
@@ -43,6 +48,9 @@ export function ProfilePanel({
   order,
   preferences,
   people,
+  viewer,
+  viewingAsOptions,
+  onViewingAs,
   onColor,
   onDisplayName,
   onReset,
@@ -75,6 +83,22 @@ export function ProfilePanel({
           </button>
         </div>
       </div>
+      <label className="viewing-as">
+        <span>{t("bar.viewingAs")}</span>
+        <select
+          value={viewer ?? ""}
+          onChange={(event) => {
+            onViewingAs(event.target.value === "" ? null : event.target.value);
+          }}
+        >
+          <option value="">{t("bar.observer")}</option>
+          {viewingAsOptions.map((name) => (
+            <option key={name} value={name}>
+              {people.label(name)}
+            </option>
+          ))}
+        </select>
+      </label>
       <p className="note">{t("profile.note")}</p>
       {order.length === 0 ? (
         <p className="note">{t("profile.empty")}</p>

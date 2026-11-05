@@ -665,6 +665,32 @@ async function toolbarAction(page: Page, name: string) {
     .click();
 }
 
+const identityButton = (page: Page) => page.locator(".bar-actions .identity-button");
+
+/** Opens the profile panel from the identity button unless it is open. */
+async function openProfilePanel(page: Page) {
+  const panel = page.getByRole("region", { name: "Profile & colors" });
+  if (!(await panel.isVisible())) await identityButton(page).click();
+  await expect(panel).toBeVisible();
+  return panel;
+}
+
+/** Chooses who the viewer is in the profile panel and closes it with Escape. */
+async function chooseViewer(page: Page, value: string) {
+  const panel = await openProfilePanel(page);
+  await panel.getByLabel("Viewing as").selectOption(value);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+}
+
+/** Reads who the viewer is from the profile panel and closes it with Escape. */
+async function expectViewer(page: Page, value: string) {
+  const panel = await openProfilePanel(page);
+  await expect(panel.getByLabel("Viewing as")).toHaveValue(value);
+  await page.keyboard.press("Escape");
+  await expect(panel).toHaveCount(0);
+}
+
 async function saveScreenshot(page: Page, filename: string) {
   mkdirSync(screenshotDir, { recursive: true });
   await page.screenshot({ path: join(screenshotDir, filename), fullPage: true });
@@ -859,9 +885,9 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   expect(focused.outlineStyle).toBe("solid");
   expect(focused.outlineWidth).toBe("3px");
 
-  // Viewing as, Profile & colors, Local folder, language, theme, Settings, Questions, Files, All, then the first topic.
+  // The identity button, Local folder, language, theme, Settings, Questions, Files, All, then the first topic.
   // The signed-in banner's Remove token button is one more stop before the topics.
-  for (let tab = 0; tab < 11; tab += 1) await page.keyboard.press("Tab");
+  for (let tab = 0; tab < 10; tab += 1) await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "#release" })).toHaveAttribute(
     "aria-pressed",
@@ -1208,7 +1234,7 @@ for (const identity of identityCases) {
 
     // "My names" makes alice the default viewer: her groups carry the You tag.
     const firstGroup = page.locator(".timeline .group").first();
-    await expect(page.getByLabel("Viewing as")).toHaveValue("alice-agent");
+    await expectViewer(page, "alice-agent");
     await expect(page.locator('.group[data-own="true"] .you').first()).toHaveText("You");
     await expect(firstGroup.locator(".sender")).toHaveCSS("color", identity.alice);
     await expect(firstGroup.locator(".avatar")).toHaveCSS("background-color", identity.alice);
@@ -1221,15 +1247,15 @@ for (const identity of identityCases) {
     await expect(bobGroup.locator(".you")).toHaveCount(0);
 
     // Messages that name bob are highlighted when viewing as bob, and nothing is marked as Observer.
-    await page.getByLabel("Viewing as").selectOption("bob-agent");
+    await chooseViewer(page, "bob-agent");
     await expect(page.locator('.group[data-own="true"] .sender').first()).toHaveText("bob-agent");
     await expect(page.locator('.message[data-addressed="true"]').first()).toBeVisible();
-    await page.getByLabel("Viewing as").selectOption("");
+    await chooseViewer(page, "");
     await expect(page.locator(".you")).toHaveCount(0);
     await expect(page.locator('.message[data-addressed="true"]')).toHaveCount(0);
-    await page.getByLabel("Viewing as").selectOption("alice-agent");
+    await chooseViewer(page, "alice-agent");
 
-    await toolbarAction(page, "Profile & colors");
+    await identityButton(page).click();
     const panel = page.getByRole("region", { name: "Profile & colors" });
     await expect(panel).toBeVisible();
     await panel
@@ -1283,7 +1309,7 @@ test("identity choices still work when browser storage rejects reads and writes"
   });
   const assertRequests = await openViewer(page, "long");
   await expect(page.locator(".message").first()).toBeVisible();
-  await page.getByLabel("Viewing as").selectOption("bob-agent");
+  await chooseViewer(page, "bob-agent");
   await expect(page.locator('.group[data-own="true"] .sender').first()).toHaveText("bob-agent");
   const counts = await page.evaluate(
     () =>
@@ -1597,7 +1623,7 @@ for (const identity of identityCases) {
     await expect(concluded.locator(".question-text")).toHaveText(["Which region ships first?"]);
     await expect(concluded.locator(".conclusion-text")).toHaveText("We chose North.");
     await expect(open.locator(".you")).toHaveCount(0);
-    await page.getByLabel("Viewing as").selectOption("bob-agent");
+    await chooseViewer(page, "bob-agent");
     await expect(open.locator(".you")).toHaveText("Waiting for you");
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
@@ -2101,8 +2127,8 @@ test("no inline style attribute and no CSP violation of ours @csp", async ({
   await expectClean("overflow menu");
   await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 1280, height: 800 });
-  await expect(page.getByRole("button", { name: "Profile & colors" })).toBeVisible();
-  await page.getByRole("button", { name: "Profile & colors" }).click();
+  await expect(identityButton(page)).toBeVisible();
+  await identityButton(page).click();
   await expect(page.locator(".profile .swatch").first()).toBeVisible();
   await expectClean("profile");
   await page.getByRole("button", { name: "Settings" }).click();
@@ -2171,7 +2197,7 @@ for (const theme of ["paper", "night-owl"] as const) {
     await page.emulateMedia({ colorScheme: theme === "paper" ? "light" : "dark" });
     const assertRequests = await openViewer(page, "attachments");
     await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
-    await page.getByRole("button", { name: "Profile & colors" }).click();
+    await identityButton(page).click();
     const person = page.locator(".profile-person").first();
     const swatches = person.locator(".swatch");
     await expect(swatches).toHaveCount(PALETTES[theme].length);
@@ -2458,8 +2484,9 @@ test("a topic folder snapshot keeps questions visible when WebKit omits the mark
   await expect(page.getByRole("heading", { name: /local-folder/ })).toBeVisible();
   await page.getByRole("button", { name: /^#api/ }).click();
   await expect(page.getByText("Question about the API.")).toBeVisible();
-  const viewingAs = page.getByLabel("Viewing as");
+  const viewingAs = (await openProfilePanel(page)).getByLabel("Viewing as");
   await expect(viewingAs.locator("option")).toHaveText(["Observer", "alice-agent", "bob-agent"]);
+  await page.keyboard.press("Escape");
 
   const questions = page.getByRole("button", { name: /^Questions/ });
   await expect(questions).toContainText(browserName === "chromium" ? "1 open" : "0 open");
@@ -2611,13 +2638,10 @@ for (const code of LOCALES) {
           name: view.size.width < 721 ? messages["bar.more"] : messages["bar.settings"],
         }),
       ).toBeVisible();
-      await expect(toolbar.getByLabel(messages["bar.viewingAs"])).toBeVisible();
+      await expect(toolbar.locator(".identity-button")).toBeVisible();
       await expect(page.getByRole("button", { name: messages["nav.questions"] })).toBeVisible();
       // On the phone this is the topics list with its counters, before any topic is chosen.
-      await expectNoClipping(
-        page,
-        ".bar-actions button, .bar-actions select, .topics button, .topics-pane h2",
-      );
+      await expectNoClipping(page, ".bar-actions button, .topics button, .topics-pane h2");
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
       ).toBeLessThanOrEqual(0);
@@ -2640,7 +2664,7 @@ for (const code of LOCALES) {
       }
       await page.getByRole("button", { name: messages["nav.questions"] }).click();
       await expectNoClipping(page, ".question-link, .question-group h3, .conversation h2");
-      await toolbarAction(page, messages["bar.profile"]);
+      await identityButton(page).click();
       await expect(page.getByRole("heading", { name: messages["profile.title"] })).toBeVisible();
       await expectNoClipping(
         page,
@@ -2828,15 +2852,17 @@ for (const view of [
 
       // Names: the computed accessible name of every control, and the tooltip of every icon button.
       const nameOf = en;
-      await expect(page.getByRole("combobox", { name: nameOf["bar.viewingAs"] })).toBeVisible();
+      const identity = bar.locator(".identity-button");
+      await expect(identity).toHaveAccessibleName(
+        nameOf["identity.button"].replace("{name}", "alice-agent"),
+      );
+      await expectReadable(identity, "identity button");
       if (!phone) {
         await expect(page.getByRole("combobox", { name: nameOf["language.label"] })).toBeVisible();
       }
       const iconNames = [
         nameOf["bar.refresh"],
-        ...(phone
-          ? [nameOf["bar.more"]]
-          : [nameOf["bar.profile"], nameOf["bar.localFolder"], nameOf["bar.settings"]]),
+        ...(phone ? [nameOf["bar.more"]] : [nameOf["bar.localFolder"], nameOf["bar.settings"]]),
       ];
       for (const name of iconNames) {
         const button = bar.getByRole("button", { name, exact: true });
@@ -2869,7 +2895,7 @@ for (const view of [
           await more.focus();
           await page.keyboard.press(keyName);
           await expect(page.getByRole("menu")).toBeVisible();
-          await expect(page.getByRole("menuitemcheckbox").first()).toBeFocused();
+          await expect(page.locator('[role^="menuitem"]').first()).toBeFocused();
           await page.keyboard.press("Escape");
           await expect(page.getByRole("menu")).toHaveCount(0);
           await expect(more).toBeFocused();
@@ -2878,7 +2904,6 @@ for (const view of [
         const menu = page.getByRole("menu");
         // Every item has a computed name, and the glyphs read on the floating surface.
         const names = [
-          nameOf["bar.profile"],
           nameOf["bar.localFolder"],
           ...LOCALES.map((code) => LOCALE_NAMES[code]),
           nameOf["theme.use"].replace("{theme}", nameOf["theme.paper"]),
@@ -2893,9 +2918,6 @@ for (const view of [
             .or(menu.getByRole("menuitem", { name: nightOwl, exact: true }));
           await expect(item.first()).toHaveAccessibleName(/\S/);
         }
-        await expect(
-          menu.getByRole("menuitemcheckbox", { name: nameOf["bar.profile"] }),
-        ).toHaveAttribute("aria-checked", "false");
         for (const glyph of await menu.locator(".menu-icon svg").all()) {
           await expectReadable(glyph, "menu glyph");
         }
@@ -2908,17 +2930,20 @@ for (const view of [
         // An outside click on nothing focusable returns focus to the trigger; the target is not in the menu.
         await more.click();
         await expect(menu).toBeVisible();
-        const outside = page.locator(".topics-pane").first();
-        expect(await outside.evaluate((node) => node.closest(".menu") === null)).toBe(true);
-        await outside.click({ position: { x: 5, y: 5 } });
+        // The bottom edge of the screen holds nothing focusable and is not in the menu.
+        expect(
+          await page.evaluate(
+            () => document.elementFromPoint(5, window.innerHeight - 5)?.closest(".menu") ?? null,
+          ),
+        ).toBeNull();
+        await page.mouse.click(5, 844 - 5);
         await expect(menu).toHaveCount(0);
         await expect(more).toBeFocused();
-        // An outside click on a focusable control leaves the focus on that control.
+        // An outside click on a control closes the menu and activates that control.
         await more.click();
-        const viewing = page.getByRole("combobox", { name: nameOf["bar.viewingAs"] });
-        await viewing.click();
+        await identity.click();
         await expect(menu).toHaveCount(0);
-        await expect(viewing).toBeFocused();
+        await expect(page.getByRole("region", { name: nameOf["profile.title"] })).toBeVisible();
       }
       expect(checked.length).toBeGreaterThan(iconNames.length);
       assertRequests();
@@ -3259,7 +3284,7 @@ test("the Profile & colors panel opens over the content and closes with Escape o
     top: node.scrollTop,
     box: node.getBoundingClientRect().top,
   }));
-  const opener = page.getByRole("button", { name: "Profile & colors" });
+  const opener = identityButton(page);
   await opener.click();
   const panel = page.getByRole("region", { name: "Profile & colors" });
   await expect(panel).toBeVisible();
@@ -3331,8 +3356,7 @@ for (const code of LOCALES) {
     expect((await fits()).document).toBeLessThanOrEqual(0);
     expect((await fits()).sideways).toBeLessThanOrEqual(0);
 
-    await page.getByRole("button", { name: messages["bar.more"], exact: true }).click();
-    await page.getByRole("menuitemcheckbox", { name: messages["bar.profile"] }).click();
+    await identityButton(page).click();
     const panel = page.getByRole("region", { name: messages["profile.title"] });
     await expect(panel).toBeVisible();
     await expect(page.locator("h1")).toHaveCount(1);
@@ -3349,14 +3373,11 @@ for (const code of LOCALES) {
         ),
       ).toBe(true);
     }
-    // Escape closes the sheet and focus returns to the More button.
+    // Escape closes the sheet and focus returns to the identity button.
     await page.keyboard.press("Escape");
     await expect(panel).toHaveCount(0);
-    await expect(
-      page.getByRole("button", { name: messages["bar.more"], exact: true }),
-    ).toBeFocused();
-    await page.getByRole("button", { name: messages["bar.more"], exact: true }).click();
-    await page.getByRole("menuitemcheckbox", { name: messages["bar.profile"] }).click();
+    await expect(identityButton(page)).toBeFocused();
+    await identityButton(page).click();
     await expect(panel).toBeVisible();
     const box = await panel.boundingBox();
     expect(box?.x).toBe(0);

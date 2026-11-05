@@ -72,6 +72,12 @@ describe("the demos keep the reader's choices in memory only", () => {
       const { host, storage, press, root } = await openDemo(via);
       expect(host.textContent).toContain("In the demo.");
       const reads = storage.getItem.mock.calls.length;
+      await act(async () => {
+        host
+          .querySelector(".bar-actions .identity-button")
+          ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+      });
       const select = host.querySelector<HTMLSelectElement>(".viewing-as select");
       expect(select).not.toBeNull();
       act(() => {

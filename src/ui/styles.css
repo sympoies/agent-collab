@@ -271,6 +271,45 @@ button:hover {
   font-size: 0.9rem;
 }
 
+.profile .viewing-as {
+  margin: 8px 0;
+}
+
+.identity {
+  position: relative;
+}
+
+.identity-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 4px;
+  border-radius: 999px;
+}
+
+.identity-button .avatar {
+  width: 26px;
+  height: 26px;
+  font-size: 0.7rem;
+}
+
+/* Observer has no person colour. */
+.identity-button:not([data-slot]) .avatar {
+  background: var(--border);
+  color: var(--text);
+}
+
+.identity-hint {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.identity-hint button {
+  margin-left: 8px;
+}
+
 .language-switcher select,
 .viewing-as select {
   font: inherit;
@@ -1535,6 +1574,15 @@ span.chip {
 
   .bar-actions {
     justify-content: flex-end;
+  }
+
+  /* On a phone the identity button is the avatar alone; its accessible name carries the name. */
+  .identity-name {
+    display: none;
+  }
+
+  .identity-button {
+    padding: 3px;
   }
 
   .workspace {
