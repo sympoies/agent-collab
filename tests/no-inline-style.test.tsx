@@ -259,8 +259,6 @@ describe("no inline style attributes", () => {
         onSave={() => Promise.resolve(null)}
         onRemoveCredentials={() => Promise.resolve()}
         onCancel={null}
-        onOpenDemo={() => undefined}
-        onOpenLiveDemo={() => undefined}
       />,
     );
     expect(html).not.toMatch(/\sstyle=/);

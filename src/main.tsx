@@ -7,6 +7,7 @@ import { demoFiles } from "./demo/fixtures";
 import type { ViewerSettings } from "./settings/model";
 import { FixtureSource } from "./source/fixture";
 import { FileListFolderSource, filesFromFolderDrop } from "./source/file-list-folder";
+import { forgetStored, isForgettable } from "./settings/forget-stored";
 import { folderMemory } from "./source/folder-memory";
 import { LocalFolderSource, type LocalDirectoryHandle } from "./source/local-folder";
 import { GitHubSource } from "./source/github";
@@ -19,11 +20,12 @@ import { LocaleProvider } from "./i18n/LocaleProvider";
 import { ThemeProvider } from "./ui/ThemeProvider";
 import "./ui/shared/tokens.css";
 import "./ui/shared/components.css";
+import "./ui/data-sources.css";
 import "./ui/styles.css";
 
 // Composition root: the only module that picks concrete providers and stores.
 
-function safeBrowserStorage(): Pick<Storage, "getItem" | "setItem"> {
+function safeBrowserStorage(): Pick<Storage, "getItem" | "setItem"> & { forget(): void } {
   const fallback = new Map<string, string>();
   let storage: Storage | null = null;
   try {
@@ -33,6 +35,11 @@ function safeBrowserStorage(): Pick<Storage, "getItem" | "setItem"> {
   }
 
   return {
+    /** Forgets the viewer's keys in the browser's storage and in the in-memory fallback. */
+    forget() {
+      for (const key of [...fallback.keys()]) if (isForgettable(key)) fallback.delete(key);
+      if (storage !== null) forgetStored(storage);
+    },
     getItem(key) {
       if (fallback.has(key)) return fallback.get(key) ?? null;
       if (storage !== null) {
@@ -147,6 +154,9 @@ createRoot(root).render(
           createLiveDemoSource={createLiveDemoSource}
           openLocalFolder={folderPicker()}
           folderMemory={folders}
+          forgetStored={() => {
+            storage.forget();
+          }}
           createHostedSource={hosted}
           openLocalFileList={fileListFolder}
         />

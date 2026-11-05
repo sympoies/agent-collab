@@ -49,8 +49,6 @@ describe("acceptance polish", () => {
       onSave={() => Promise.resolve({ repository: "settings.error.repository" })}
       onRemoveCredentials={() => Promise.resolve()}
       onCancel={null}
-      onOpenDemo={() => undefined}
-      onOpenLiveDemo={() => undefined}
     />
   );
 

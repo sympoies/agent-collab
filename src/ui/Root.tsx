@@ -40,6 +40,7 @@ import { App, type AppProps, type SourceIndicator } from "./App";
 import { EMPTY_PREFERENCES, writePreferences } from "../identity/preferences";
 import { writeViewState } from "../identity/view-state";
 import type { FolderMemory, RememberedFolder } from "../source/folder-memory";
+import { DataSources, ForgetSection } from "./DataSources";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
 
@@ -66,6 +67,8 @@ export interface RootProps extends SettingsDeps {
   readonly openLocalFolder: (() => Promise<LocalFolderOpen>) | null;
   /** Creates a read-only source from a directory input or dropped folder. */
   readonly openLocalFileList?: (selection: LocalFolderSelection) => Promise<LocalFolderOpen>;
+  /** Removes what the viewer keeps in browser storage (Settings: "Forget what this browser remembers"). */
+  readonly forgetStored?: () => void;
   /** The folder this browser remembers between visits; absent when it remembers none. */
   readonly folderMemory?: FolderMemory;
   /** Reads the snapshot this deployment serves next to the app; null when it serves none. */
@@ -180,6 +183,8 @@ export function Root(props: RootProps) {
   const createHostedSource = props.createHostedSource ?? null;
   const folderMemory = props.folderMemory ?? null;
   const [remembered, setRemembered] = useState<RememberedFolder | null>(null);
+  /** Remounts the GitHub form, so what was forgotten does not stay in its fields. */
+  const [formKey, setFormKey] = useState(0);
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
   const viewers = useRef(0);
   const navigation = useRef(0);
@@ -671,6 +676,42 @@ export function Root(props: RootProps) {
     );
   };
 
+  const openOfflineDemo = () => {
+    setScreen(
+      viewer(
+        new Loader(createDemoSource()),
+        { key: "app.demoTitle" },
+        ["alice-agent"],
+        MEMORY_ONLY,
+      ),
+    );
+  };
+
+  /** Forgets the saved repository and token, the remembered folder and every stored choice. */
+  const forgetEverything = async (): Promise<void> => {
+    const operation = ++navigation.current;
+    let failed = false;
+    try {
+      await removeCredentials(props);
+    } catch {
+      failed = true;
+    }
+    forgetToken();
+    // The record that is stored now, which another tab may have replaced since this page loaded.
+    const stored = (await folderMemory?.load()) ?? null;
+    if (stored !== null && !(await folderMemory?.forget(stored.name))) failed = true;
+    props.forgetStored?.();
+    setRemembered(null);
+    setReopenMessage(null);
+    setLocalMessage(null);
+    // Nothing is left to go back to: the open session read with what was just forgotten.
+    if (operation === navigation.current) {
+      setFormKey((count) => count + 1);
+      await showSettings(null);
+    }
+    if (failed) throw new Error("Something remembered could not be removed.");
+  };
+
   /** Forgets the folder handle and, with it, the choices made in that folder. */
   const forgetRemembered = async (found: RememberedFolder): Promise<void> => {
     // Another tab may have replaced the folder since this page loaded it: only reset the choices
@@ -828,8 +869,32 @@ export function Root(props: RootProps) {
               <ThemeToggle />
             </div>
           </header>
-          {rememberedFolder}
+          <h2 className="settings-title">{t("settings.title")}</h2>
+          <DataSources
+            hosted={createHostedSource === null ? null : () => void showHosted()}
+            local={{
+              pickFolder:
+                openLocalFolder === null
+                  ? null
+                  : () => {
+                      void chooseLocalFolder(null);
+                    },
+              pickFiles:
+                openLocalFileList === undefined
+                  ? null
+                  : () => {
+                      beginFilePick(null);
+                    },
+              message: localMessage,
+              remembered: rememberedFolder,
+            }}
+            onLiveDemo={() => {
+              void showLiveDemo();
+            }}
+            onOfflineDemo={openOfflineDemo}
+          />
           <SettingsView
+            key={formKey}
             initial={screen.draft}
             storedEndpoints={screen.storedEndpoints}
             onSave={save}
@@ -856,21 +921,9 @@ export function Root(props: RootProps) {
                     );
                   }
             }
-            onOpenDemo={() => {
-              setScreen(
-                viewer(
-                  new Loader(createDemoSource()),
-                  { key: "app.demoTitle" },
-                  ["alice-agent"],
-                  MEMORY_ONLY,
-                ),
-              );
-            }}
-            onOpenLiveDemo={() => {
-              void showLiveDemo();
-            }}
             focusToken={screen.focusToken}
           />
+          <ForgetSection onForget={forgetEverything} />
         </div>
       );
     }

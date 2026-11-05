@@ -1,0 +1,66 @@
+/* The settings screen's data-source cards and the forget section. Built on the shared tokens. */
+
+.data-sources,
+.forget-all {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 640px;
+}
+
+.data-sources {
+  margin-bottom: var(--space-4);
+}
+
+.forget-all {
+  margin-top: var(--space-5);
+}
+
+.data-sources h2,
+.forget-all h2 {
+  margin: 0;
+  font-size: var(--font-heading);
+}
+
+.source-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.source-card h3 {
+  margin: 0;
+  font-size: var(--font-body);
+}
+
+.source-card p {
+  margin: 0;
+}
+
+.source-card button,
+.forget-all button,
+.shared-link {
+  min-height: 44px;
+}
+
+.source-card .shared-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+.forget-all .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.forget-all .danger {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.settings-title {
+  margin: var(--space-4) 0 var(--space-3);
+  font-size: var(--font-heading);
+}
