@@ -1523,13 +1523,15 @@ test("the Questions view shows the replies, the acknowledgement line and the rem
   // Nothing in the list reads as an answer yet, and the question says how long it has waited.
   await expect(asked.locator('.question-reply[data-kind="answer"]')).toHaveCount(0);
   await expect(asked.locator(".question-waiting")).toHaveText(/^Unanswered for \d+ days$/);
-  await expect(asked.locator(".question-overdue")).toHaveText("Overdue · due 2026-10-09");
+  await expect(asked.locator(".question-toggle .shared-overdue")).toHaveText(
+    "Overdue · due 2026-10-09",
+  );
   const answered = page.getByRole("region", { name: "Answered" });
   await answered.locator(".question-toggle").click();
   const reply = answered.locator('.question-reply[data-kind="answer"]');
   await expect(reply.locator(".badge")).toHaveText("answer");
   await expect(reply).toContainText("Yes, it can.");
-  await expect(answered.locator(".question-waiting, .question-overdue")).toHaveCount(0);
+  await expect(answered.locator(".question-waiting, .shared-overdue")).toHaveCount(0);
   assertRequests();
 });
 
@@ -1558,7 +1560,7 @@ test("Questions cards prioritize overdue and waiting items, then stay oldest-fir
     "data-tone",
     "attention",
   );
-  await expect(openCards.nth(1).locator(".question-overdue")).toHaveAttribute(
+  await expect(openCards.nth(1).locator(".question-toggle .shared-overdue")).toHaveAttribute(
     "data-tone",
     "danger",
   );
@@ -1888,12 +1890,12 @@ for (const code of ["en", "ja", "zh-TW"] as const) {
     await expect(page.locator("html")).toHaveAttribute("lang", code);
     await page.getByRole("button", { name: new RegExp(`^${messages["nav.questions"]}`) }).click();
     // The overdue badge is always there: the question's due date is fixed in the past.
-    await expect(page.locator(".question-overdue").first()).toContainText(
+    await expect(page.locator(".shared-overdue").first()).toContainText(
       messages["questions.overdue"].replace("{date}", "2026-10-09"),
     );
     await expectNoClipping(
       page,
-      ".question-badges, .question-overdue, .question-waiting, .question-replies, .question-reply, .reply-head, .reply-text, .replies-toggle",
+      ".question-badges, .shared-overdue, .question-waiting, .question-replies, .question-reply, .reply-head, .reply-text, .replies-toggle",
     );
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
@@ -2004,7 +2006,7 @@ for (const scheme of ["light", "dark"] as const) {
     await page.getByRole("button", { name: /^Questions/ }).click();
     const answered = page.getByRole("region", { name: "Answered" });
     await answered.locator(".question-toggle").first().click();
-    await expectReadable(page.locator(".question-overdue").first(), "overdue");
+    await expectReadable(page.locator(".shared-overdue").first(), "overdue");
     for (const kind of ["answer", "ack", "reminder"]) {
       await expectReadable(
         page.locator(`.question-reply .badge[data-kind="${kind}"]`).first(),

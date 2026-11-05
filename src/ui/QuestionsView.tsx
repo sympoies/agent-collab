@@ -1,5 +1,6 @@
 // Questions grouped by derived state (open, concluded, answered), from deriveQuestionStates.
 
+import { classes } from "./classes";
 import { useState } from "react";
 
 import { useT, type Translate } from "../i18n/LocaleProvider";
@@ -176,7 +177,7 @@ function Item({
             <time dateTime={question.timestamp.replace(" ", "T")}>{question.timestamp}</time>
             <StatusChip
               tone={tone}
-              {...(overdueDate === null ? {} : { className: "question-overdue" })}
+              {...(overdueDate === null ? {} : { className: "shared-overdue" })}
             >
               {status}
             </StatusChip>
@@ -199,7 +200,10 @@ function Item({
               </p>
             )}
             {question.due !== null && (
-              <p className="question-due" data-overdue={overdueDate !== null}>
+              <p
+                className={classes("question-due", overdueDate !== null && "shared-overdue")}
+                data-overdue={overdueDate !== null}
+              >
                 {overdueDate !== null
                   ? t("chat.dueOverdue", { date: question.due })
                   : t("chat.due", { date: question.due })}

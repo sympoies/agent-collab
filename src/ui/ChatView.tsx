@@ -1,5 +1,6 @@
 // Chat timeline. Message text is always rendered as React text, never as HTML.
 
+import { classes } from "./classes";
 import { createContext, Fragment, useContext, type ReactNode } from "react";
 
 import type { MessageReceipts } from "../message/receipts";
@@ -245,7 +246,7 @@ function MessageRow({
         </p>
       )}
       {message.due !== null && (
-        <p className="due" data-overdue={view.overdue}>
+        <p className={classes("due", view.overdue && "shared-overdue")} data-overdue={view.overdue}>
           {t(view.overdue ? "chat.dueOverdue" : "chat.due", { date: message.due })}
         </p>
       )}

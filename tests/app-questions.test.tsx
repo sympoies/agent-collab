@@ -473,9 +473,7 @@ describe("receipts and the Questions view", () => {
     it("shows the overdue badge and the reminder count on a partly answered question, without a waiting time", async () => {
       const host = await open();
       const asked = item(host, "Ship it?");
-      expect(asked?.querySelector(".question-overdue")?.textContent).toBe(
-        "Overdue · due 2026-09-30",
-      );
+      expect(asked?.querySelector(".shared-overdue")?.textContent).toBe("Overdue · due 2026-09-30");
       expect(asked?.querySelector(".reminder-count")?.textContent).toBe(
         "1 reminder, last 2026-10-01 09:10",
       );
@@ -498,7 +496,7 @@ describe("receipts and the Questions view", () => {
       const host = await open();
       const quiet = item(host, "Any objection?");
       expect(quiet?.querySelector(".question-waiting")?.textContent).toBe("Unanswered for 3 days");
-      expect(quiet?.querySelector(".question-overdue")).toBeNull();
+      expect(quiet?.querySelector(".shared-overdue")).toBeNull();
       const fresh = item(host, "Fresh one?");
       expect(fresh?.closest("section")?.getAttribute("aria-label")).toBe("Open");
       expect(fresh?.querySelector(".question-waiting")).toBeNull();
@@ -532,7 +530,7 @@ describe("receipts and the Questions view", () => {
       await expand(done);
       expect(done?.closest("section")?.getAttribute("aria-label")).toBe("Answered");
       expect(done?.querySelector(".question-waiting")).toBeNull();
-      expect(done?.querySelector(".question-overdue")).toBeNull();
+      expect(done?.querySelector(".shared-overdue")).toBeNull();
       expect(done?.querySelector(".question-reply")?.textContent).toContain("Done.");
     });
   });
