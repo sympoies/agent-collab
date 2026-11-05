@@ -16,8 +16,14 @@ export function TopicBar({ heading, headingClass, headingRef, onBack, menu }: To
   const t = useT();
   return (
     <div className="topic-bar">
-      <button type="button" className="back-to-topics" onClick={onBack}>
-        {t("nav.back")}
+      <button
+        type="button"
+        className="back-to-topics"
+        aria-label={t("nav.back")}
+        title={t("nav.back")}
+        onClick={onBack}
+      >
+        <span aria-hidden="true">←</span>
       </button>
       <h2 id="conversation-heading" className={headingClass} ref={headingRef} tabIndex={-1}>
         {heading}

@@ -271,6 +271,45 @@ button:hover {
   font-size: 0.9rem;
 }
 
+.profile .viewing-as {
+  margin: 8px 0;
+}
+
+.identity {
+  position: relative;
+}
+
+.identity-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 12px 3px 4px;
+  border-radius: 999px;
+}
+
+.identity-button .avatar {
+  width: 26px;
+  height: 26px;
+  font-size: 0.7rem;
+}
+
+/* Observer has no person colour. */
+.identity-button:not([data-slot]) .avatar {
+  background: var(--border);
+  color: var(--text);
+}
+
+.identity-hint {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+}
+
+.identity-hint button {
+  margin-left: 8px;
+}
+
 .language-switcher select,
 .viewing-as select {
   font: inherit;
@@ -1537,6 +1576,15 @@ span.chip {
     justify-content: flex-end;
   }
 
+  /* On a phone the identity button is the avatar alone; its accessible name carries the name. */
+  .identity-name {
+    display: none;
+  }
+
+  .identity-button {
+    padding: 3px;
+  }
+
   .workspace {
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
@@ -1604,8 +1652,7 @@ span.chip {
   }
 
   .back-to-topics {
-    display: inline-flex;
-    flex: none;
+    display: inline-block;
     margin-bottom: 0;
   }
 
@@ -1624,12 +1671,22 @@ span.chip {
     border-bottom: 1px solid var(--border);
   }
 
+  /* The title is one line, cut with an ellipsis; the back control shrinks first. */
   .topic-bar h2 {
     flex: 1;
     min-width: 0;
     margin: 0;
     font-size: 1.05rem;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .topic-bar .back-to-topics {
+    flex: none;
+    min-width: 44px;
+    min-height: 44px;
+    padding-inline: 12px;
   }
 
   .topic-menu {

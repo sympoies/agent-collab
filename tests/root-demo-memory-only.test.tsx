@@ -72,6 +72,12 @@ describe("the demos keep the reader's choices in memory only", () => {
       const { host, storage, press, root } = await openDemo(via);
       expect(host.textContent).toContain("In the demo.");
       const reads = storage.getItem.mock.calls.length;
+      await act(async () => {
+        host
+          .querySelector(".bar-actions .identity-button")
+          ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
+      });
       const select = host.querySelector<HTMLSelectElement>(".viewing-as select");
       expect(select).not.toBeNull();
       act(() => {
@@ -82,6 +88,10 @@ describe("the demos keep the reader's choices in memory only", () => {
       await press("Files");
       expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
       expect(storage.setItem).not.toHaveBeenCalled();
+      // Opening the panel dismissed the hint for this view only: no hint key anywhere.
+      expect(
+        Object.keys(window.localStorage).filter((key) => key.includes("identity-hint")),
+      ).toEqual([]);
       expect(storage.getItem.mock.calls.length).toBe(reads);
       act(() => {
         root.unmount();

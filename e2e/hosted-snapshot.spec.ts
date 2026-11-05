@@ -260,7 +260,12 @@ test("a hosted snapshot keeps Viewing as and the selected topic across a reload 
   await page.goto("/");
   await page.getByRole("button", { name: "#ops", exact: true }).click();
   await expect(page.getByText("Message in ops.")).toBeVisible();
-  await page.getByLabel(en["bar.viewingAs"]).selectOption("bob-agent");
+  await page.locator(".bar-actions .identity-button").click();
+  await page
+    .getByRole("region", { name: en["profile.title"] })
+    .getByLabel(en["bar.viewingAs"])
+    .selectOption("bob-agent");
+  await page.keyboard.press("Escape");
   // Scrolled to the top before the reload, the restored topic still opens at its latest message.
   const pane = page.getByRole("main");
   await pane.evaluate((node) => {
@@ -268,7 +273,11 @@ test("a hosted snapshot keeps Viewing as and the selected topic across a reload 
   });
 
   await page.reload();
-  await expect(page.getByLabel(en["bar.viewingAs"])).toHaveValue("bob-agent");
+  await page.locator(".bar-actions .identity-button").click();
+  await expect(
+    page.getByRole("region", { name: en["profile.title"] }).getByLabel(en["bar.viewingAs"]),
+  ).toHaveValue("bob-agent");
+  await page.keyboard.press("Escape");
   await expect(page.getByRole("button", { name: "#ops", exact: true })).toHaveAttribute(
     "aria-pressed",
     "true",

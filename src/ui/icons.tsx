@@ -2,7 +2,7 @@
 // stroke (so they follow the theme), round caps and joins, hidden from assistive technology: the
 // button that holds a glyph carries the accessible name. No dependency, no remote asset.
 //
-// The gear, folder, globe, sun, moon, three dots and user outlines follow the Feather icon set
+// The gear, folder, globe, sun, moon and three dots outlines follow the Feather icon set
 // (https://feathericons.com, MIT License, Copyright (c) 2013-2023 Cole Bemis). The refresh glyph
 // (one arc, one arrowhead) is drawn here.
 
@@ -30,13 +30,6 @@ export const RefreshIcon = () => (
   <Glyph>
     <path d="M20 12a8 8 0 1 1-2.5-5.8" />
     <polyline points="20.5 3.5 20.5 8.5 15.5 8.5" />
-  </Glyph>
-);
-
-export const UserIcon = () => (
-  <Glyph>
-    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-    <circle cx="12" cy="7" r="4" />
   </Glyph>
 );
 

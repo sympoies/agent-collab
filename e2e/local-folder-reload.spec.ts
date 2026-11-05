@@ -56,12 +56,17 @@ test("a reload returns to the local folder and the person chosen in it", async (
   await page.goto("/");
   await page.getByRole("button", { name: "Open local folder (experimental)" }).click();
   await expect(page.getByText("The first message from the local clone.")).toBeVisible();
-  await page.getByLabel("Viewing as").selectOption("bob-agent");
+  await page.locator(".bar-actions .identity-button").click();
+  const panel = page.getByRole("region", { name: "Profile & colors" });
+  await panel.getByLabel("Viewing as").selectOption("bob-agent");
+  await page.keyboard.press("Escape");
 
   await page.reload();
   await expect(page.locator("h1")).toHaveText("Local folder: demo-clone");
   await expect(page.getByText("The first message from the local clone.")).toBeVisible();
-  await expect(page.getByLabel("Viewing as")).toHaveValue("bob-agent");
+  await page.locator(".bar-actions .identity-button").click();
+  await expect(panel.getByLabel("Viewing as")).toHaveValue("bob-agent");
+  await page.keyboard.press("Escape");
 });
 
 test("after leaving the folder a reload offers Reopen, and Forget removes it", async ({ page }) => {

@@ -210,6 +210,7 @@ describe("Root with a served snapshot", () => {
       const storage = memoryStorage();
       let host = await open(storage);
       await click(topicButton(host, "ops"));
+      await click(host.querySelector(".bar-actions .identity-button") as Element);
       const select = host.querySelector<HTMLSelectElement>(
         ".viewing-as select",
       ) as HTMLSelectElement;
@@ -219,6 +220,7 @@ describe("Root with a served snapshot", () => {
       });
 
       host = await reload(storage);
+      await click(host.querySelector(".bar-actions .identity-button") as Element);
       expect(host.querySelector<HTMLSelectElement>(".viewing-as select")?.value).toBe("bob-agent");
       expect(host.querySelector("h2.topic-heading")?.textContent).toMatch(/^#?ops$/);
       expect(topicButton(host, "ops").getAttribute("aria-pressed")).toBe("true");

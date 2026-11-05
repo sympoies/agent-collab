@@ -157,6 +157,14 @@ describe("Root with a remembered local folder", () => {
       candidate.textContent.startsWith(text),
     );
 
+  // The select lives in the profile panel, opened from the identity button.
+  async function viewingAs(host: HTMLElement) {
+    if (host.querySelector("#profile-panel") === null) {
+      await click(host.querySelector(".bar-actions .identity-button") ?? undefined);
+    }
+    return host.querySelector<HTMLSelectElement>(".viewing-as select");
+  }
+
   async function click(element: Element | undefined): Promise<void> {
     expect(element).toBeDefined();
     await act(async () => {
@@ -540,7 +548,7 @@ describe("Root with a remembered local folder", () => {
       const { memory } = memoryWith(null);
       let host = await render(memory, () => Promise.resolve(clone("clone-a")), storage);
       await click(button(host, "Open local folder"));
-      const select = host.querySelector<HTMLSelectElement>(".viewing-as select");
+      const select = await viewingAs(host);
       act(() => {
         if (select === null) return;
         select.value = "alice-agent";
@@ -555,9 +563,7 @@ describe("Root with a remembered local folder", () => {
       document.body.replaceChildren();
       host = await render(memory, () => Promise.resolve(clone("clone-a")), storage);
       await click(button(host, "Open local folder"));
-      expect(host.querySelector<HTMLSelectElement>(".viewing-as select")?.value).toBe(
-        "alice-agent",
-      );
+      expect((await viewingAs(host))?.value).toBe("alice-agent");
 
       act(() => {
         mounted?.unmount();
@@ -565,7 +571,7 @@ describe("Root with a remembered local folder", () => {
       document.body.replaceChildren();
       host = await render(memory, () => Promise.resolve(clone("clone-b")), storage);
       await click(button(host, "Open local folder"));
-      expect(host.querySelector<HTMLSelectElement>(".viewing-as select")?.value).toBe("");
+      expect((await viewingAs(host))?.value).toBe("");
     });
   });
 });

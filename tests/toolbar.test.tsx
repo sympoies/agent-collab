@@ -68,7 +68,7 @@ describe("Toolbar", () => {
   });
 
   async function render(
-    options: { picker?: boolean; profileOpen?: boolean; onProfile?: () => void } = {},
+    options: { picker?: boolean; onFolder?: () => void } = {},
   ): Promise<HTMLElement> {
     const host = document.createElement("div");
     document.body.append(host);
@@ -80,10 +80,14 @@ describe("Toolbar", () => {
           <ThemeProvider storage={storage}>
             <Toolbar
               primary={<button type="button">primary</button>}
-              viewingAs={<span>viewing</span>}
-              profileOpen={options.profileOpen ?? false}
-              onToggleProfile={options.onProfile ?? (() => undefined)}
-              onPickLocalFolder={options.picker === false ? undefined : () => undefined}
+              identity={
+                <button type="button" className="identity-button">
+                  identity
+                </button>
+              }
+              onPickLocalFolder={
+                options.picker === false ? undefined : (options.onFolder ?? (() => undefined))
+              }
               onOpenSettings={() => undefined}
             />
           </ThemeProvider>
@@ -113,9 +117,7 @@ describe("Toolbar", () => {
     const host = await render();
     expect(host.querySelector(".bar-actions")?.getAttribute("data-layout")).toBe("icons");
     expect(host.querySelector('[aria-haspopup="menu"]')).toBeNull();
-    expect(names(host)).toEqual(
-      expect.arrayContaining(["Profile & colors", "Local folder", "Settings"]),
-    );
+    expect(names(host)).toEqual(expect.arrayContaining(["identity", "Local folder", "Settings"]));
   });
 
   it("Local folder is absent in both layouts when the browser has no picker", async () => {
@@ -131,21 +133,12 @@ describe("Toolbar", () => {
     expect(host.querySelectorAll('[role="menuitem"]').length).toBeGreaterThan(0);
   });
 
-  it("the menu lists Profile as a checkbox that follows the panel state", async () => {
+  it("the menu has no profile item: the identity button stays outside it", async () => {
     mockMatchMedia(true);
-    const closed = await render({ profileOpen: false });
-    await openMenu(closed);
-    const item = () => closed.querySelector('[role="menuitemcheckbox"]');
-    expect(item()?.getAttribute("aria-checked")).toBe("false");
-    act(() => {
-      mounted?.root.unmount();
-    });
-    document.body.replaceChildren();
-    const open = await render({ profileOpen: true });
-    await openMenu(open);
-    expect(open.querySelector('[role="menuitemcheckbox"]')?.getAttribute("aria-checked")).toBe(
-      "true",
-    );
+    const host = await render();
+    expect(host.querySelector(".bar-actions > .identity-button")).not.toBeNull();
+    await openMenu(host);
+    expect(host.querySelector('[role="menuitemcheckbox"]')).toBeNull();
   });
 
   it("the language radios show the current locale and switch it", async () => {
@@ -205,12 +198,12 @@ describe("Toolbar", () => {
     const target = document.createElement("input");
     document.body.append(target);
     const host = await render({
-      onProfile: () => {
+      onFolder: () => {
         target.focus();
       },
     });
     await openMenu(host);
-    await click(host.querySelector('[role="menuitemcheckbox"]'));
+    await click(host.querySelector('[role="menuitem"]'));
     expect(document.activeElement).toBe(target);
   });
 
@@ -219,20 +212,20 @@ describe("Toolbar", () => {
     const host = await render();
     expect(media.listeners.size).toBeGreaterThan(0);
     await openMenu(host);
-    expect(document.activeElement?.getAttribute("role")).toBe("menuitemcheckbox");
+    expect(document.activeElement?.getAttribute("role")).toBe("menuitem");
     await act(async () => {
       media.setNarrow(false);
       await Promise.resolve();
     });
     expect(host.querySelector('[role="menu"]')).toBeNull();
-    expect(document.activeElement).toBe(host.querySelector("[aria-controls=profile-panel]"));
+    expect(document.activeElement).toBe(host.querySelector(".identity-button"));
 
     // And back: the More trigger takes focus only if the menu had been open.
     await act(async () => {
       media.setNarrow(true);
       await Promise.resolve();
     });
-    expect(document.activeElement).toBe(document.body);
+    expect(document.activeElement).toBe(host.querySelector(".identity-button"));
     await openMenu(host);
     await act(async () => {
       media.setNarrow(false);
@@ -243,7 +236,7 @@ describe("Toolbar", () => {
       await Promise.resolve();
     });
     // Closed menu, no focus theft on the way back.
-    expect(document.activeElement).toBe(document.body);
+    expect(document.activeElement).toBe(host.querySelector(".identity-button"));
 
     act(() => {
       mounted?.root.unmount();

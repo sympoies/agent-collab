@@ -33,8 +33,10 @@ import { errorText, say } from "./errorText";
 import { IconButton } from "./IconButton";
 import { RefreshIcon } from "./icons";
 import { localDate, relativeTime } from "./relativeTime";
+import { readHintDismissed, writeHintDismissed } from "../identity/hint";
 import { Toolbar, useNarrow } from "./Toolbar";
 import { RangeBar } from "./RangeBar";
+import { IdentityButton, IdentityHint } from "./IdentityButton";
 import { ProfilePanel } from "./ProfilePanel";
 import { QuestionsView } from "./QuestionsView";
 import { jumpInPage, useInPageLinks } from "./in-page-jump";
@@ -298,6 +300,13 @@ export function App({
     identity.storage === null ? EMPTY_PREFERENCES : readPreferences(identity.storage, identity.key),
   );
   const [profileOpen, setProfileOpen] = useState(false);
+  const [hintDismissed, setHintDismissed] = useState(() =>
+    readHintDismissed(identity.storage, identity.key),
+  );
+  const dismissHint = () => {
+    setHintDismissed(true);
+    writeHintDismissed(identity.storage, identity.key);
+  };
 
   // The panel is an overlay: Escape or a click outside closes it and focus goes back to the
   // control that opens it (the icon button, or the More button on a phone).
@@ -539,6 +548,14 @@ export function App({
     [preferences, selfNames, viewingAsParticipants],
   );
   const people = useMemo(() => buildPeople(order, preferences), [order, preferences]);
+  // Nothing saved and no configured own name is a participant: ask once who the viewer is.
+  const showIdentityHint =
+    snapshot.rosterKnown &&
+    snapshot.participants.length > 0 &&
+    preferences.viewingAs === undefined &&
+    viewer === null &&
+    !hintDismissed &&
+    !profileOpen;
   const messages = useMemo(
     () => snapshot.items.flatMap((item) => (item.kind === "message" ? [item.message] : [])),
     [snapshot.items],
@@ -757,33 +774,18 @@ export function App({
               </IconButton>
             )
           }
-          viewingAs={
-            <label className="viewing-as">
-              <span>{t("bar.viewingAs")}</span>
-              <select
-                value={viewer ?? ""}
-                onChange={(event) => {
-                  updatePreferences(
-                    withViewingAs(
-                      preferences,
-                      event.target.value === "" ? null : event.target.value,
-                    ),
-                  );
-                }}
-              >
-                <option value="">{t("bar.observer")}</option>
-                {viewingAsParticipants.map((name) => (
-                  <option key={name} value={name}>
-                    {people.label(name)}
-                  </option>
-                ))}
-              </select>
-            </label>
+          identity={
+            <IdentityButton
+              viewer={viewer}
+              people={people}
+              open={profileOpen}
+              onToggle={() => {
+                if (!profileOpen) dismissHint();
+                setProfileOpen(!profileOpen);
+              }}
+              hint={showIdentityHint}
+            />
           }
-          profileOpen={profileOpen}
-          onToggleProfile={() => {
-            setProfileOpen(!profileOpen);
-          }}
           onPickLocalFolder={onPickLocalFolder}
           {...(source?.actionLabel === undefined
             ? {}
@@ -796,6 +798,11 @@ export function App({
               order={order}
               preferences={preferences}
               people={people}
+              viewer={viewer}
+              viewingAsOptions={viewingAsParticipants}
+              onViewingAs={(person) => {
+                updatePreferences(withViewingAs(preferences, person));
+              }}
               onColor={(person, slot) => {
                 updatePreferences(withColor(preferences, person, slot));
               }}
@@ -810,6 +817,7 @@ export function App({
           </div>
         )}
       </header>
+      {showIdentityHint && <IdentityHint onDismiss={dismissHint} />}
       {notice !== null && (
         <p className="notice" role="status">
           {say(notice, t)}

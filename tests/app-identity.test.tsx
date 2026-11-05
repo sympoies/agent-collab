@@ -100,7 +100,14 @@ describe("App identity controls", () => {
     });
   }
 
+  /** Opens the profile panel from the identity button unless it is open. */
+  async function openProfile(host: HTMLElement): Promise<void> {
+    if (host.querySelector("#profile-panel") !== null) return;
+    await click(host.querySelector(".bar-actions .identity-button") ?? undefined);
+  }
+
   async function viewAs(host: HTMLElement, value: string): Promise<void> {
+    await openProfile(host);
     const select = host.querySelector<HTMLSelectElement>(".viewing-as select");
     expect(select).not.toBeNull();
     await act(async () => {
@@ -163,12 +170,14 @@ describe("App identity controls", () => {
     });
     document.body.replaceChildren();
     const again = await render(storage);
+    await openProfile(again);
     expect((again.querySelector(".viewing-as select") as HTMLSelectElement).value).toBe("");
     expect(youGroups(again)).toEqual([]);
   });
 
   it("lists the participants and Observer, and works when storage is missing or throws", async () => {
     const host = await render(throwingStorage);
+    await openProfile(host);
     const options = [...host.querySelectorAll(".viewing-as option")].map(
       (node) => node.textContent,
     );
@@ -194,7 +203,7 @@ describe("App identity controls", () => {
       host.querySelector<HTMLElement>(".timeline .group")?.getAttribute("data-slot");
     expect(aliceSlot()).toBe("0");
 
-    await click(button(host, "Profile & colors"));
+    await openProfile(host);
     const swatch = [
       ...host.querySelectorAll<HTMLInputElement>('input[name="color-alice-agent"]'),
     ][4];
@@ -228,6 +237,7 @@ describe("App identity controls", () => {
       JSON.stringify({ names: { "alice-agent": "Sam", "bob-agent": "Sam" } }),
     );
     const host = await render(storage);
+    await openProfile(host);
     const options = [...host.querySelectorAll(".viewing-as option")].map(
       (node) => node.textContent,
     );
@@ -243,14 +253,21 @@ describe("App identity controls", () => {
       JSON.stringify({ viewingAs: "ghost-agent" }),
     );
     const stale = await render(storage, []);
+    await openProfile(stale);
     expect((stale.querySelector(".viewing-as select") as HTMLSelectElement).value).toBe("");
     expect(youGroups(stale)).toEqual([]);
+    // Ignored, not forgotten: the saved choice is still there after the roster loaded and the
+    // panel opened.
+    expect(JSON.parse(storage.values.get(`agent-collab-viewer.identity:${KEY}`) ?? "{}")).toEqual({
+      viewingAs: "ghost-agent",
+    });
 
     act(() => {
       mounted?.root.unmount();
     });
     document.body.replaceChildren();
     const withDefault = await render(storage, ["alice-agent"]);
+    await openProfile(withDefault);
     expect((withDefault.querySelector(".viewing-as select") as HTMLSelectElement).value).toBe(
       "alice-agent",
     );
@@ -278,7 +295,7 @@ describe("App identity controls", () => {
       );
       await Promise.resolve();
     });
-    await click(button(host, "Profile & colors"));
+    await openProfile(host);
     expect(host.querySelector(".profile")?.textContent).toContain("No people to show yet.");
     expect(
       [...host.querySelectorAll(".viewing-as option")].map((node) => node.textContent),

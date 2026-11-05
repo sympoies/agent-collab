@@ -178,7 +178,12 @@ describe("no inline style attributes", () => {
     );
     expect(slots.length).toBeGreaterThan(0);
     expect(slots.every((slot) => /^[0-7]$/.test(slot ?? ""))).toBe(true);
-    await press(host, "Profile & colors");
+    await act(async () => {
+      host
+        .querySelector(".bar-actions .identity-button")
+        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
     check("profile");
     expect(host.querySelectorAll(".profile-who[data-slot]").length).toBeGreaterThan(0);
     expect(host.querySelectorAll(".swatch[data-slot]").length).toBeGreaterThanOrEqual(8);
