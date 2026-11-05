@@ -1490,7 +1490,7 @@ for (const code of ["ja", "zh-TW"] as const) {
 test("the Questions view shows the replies, the acknowledgement line and the reminders @csp", async ({
   page,
 }) => {
-  await page.clock.setFixedTime(new Date("2026-10-20T12:00:00"));
+  await page.clock.setFixedTime(new Date("2026-10-20T12:00:00.000Z"));
   const assertRequests = await openViewer(page, "questions");
   await page.getByRole("button", { name: /^Questions/ }).click();
   const open = page.getByRole("region", { name: "Open" });
@@ -1511,6 +1511,7 @@ test("the Questions view shows the replies, the acknowledgement line and the rem
   await expect(asked.locator(".question-waiting")).toHaveText(/^Unanswered for \d+ days$/);
   await expect(asked.locator(".question-overdue")).toHaveText("Overdue · due 2026-10-09");
   const answered = page.getByRole("region", { name: "Answered" });
+  await answered.locator(".question-toggle").click();
   const reply = answered.locator('.question-reply[data-kind="answer"]');
   await expect(reply.locator(".badge")).toHaveText("answer");
   await expect(reply).toContainText("Yes, it can.");
@@ -1605,19 +1606,18 @@ test("question cards expand and collapse with Enter and Space @csp", async ({ pa
   assertRequests();
 });
 
-test("Questions ordering stays stable after the fixed clock passes a due date @csp", async ({
-  page,
-}) => {
-  await page.clock.setFixedTime(new Date("2026-12-15T12:00:00"));
+test("Questions ordering prioritizes overdue items then oldest-first @csp", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-12-15T12:00:00.000Z"));
   const assertRequests = await openViewer(page, "questions-order");
   await page.getByRole("button", { name: /^Questions/ }).click();
   const open = page.getByRole("region", { name: "Open" });
   const headers = open.locator(".question-toggle");
   await expect(headers).toHaveCount(4);
   await expect(headers.nth(0)).toContainText("Waiting ordering question 4.");
-  await expect(headers.nth(1)).toContainText("Open ordering question 1.");
-  await expect(headers.nth(2)).toContainText("Open ordering question 2.");
-  await expect(headers.nth(3)).toContainText("Open ordering question 3.");
+  // Question 3's December 1 due date has passed; within the overdue group it is oldest.
+  await expect(headers.nth(1)).toContainText("Open ordering question 3.");
+  await expect(headers.nth(2)).toContainText("Open ordering question 1.");
+  await expect(headers.nth(3)).toContainText("Open ordering question 2.");
   await expect(headers.nth(1)).toContainText("Overdue");
   await expect(headers.nth(2)).toContainText("Overdue");
   await expect(headers.nth(3)).toContainText("Overdue");
@@ -1917,6 +1917,7 @@ for (const scheme of ["light", "dark"] as const) {
   test(`type badges and the overdue badge keep their borders at 3:1 and their text at 4.5:1 in ${scheme}`, async ({
     page,
   }) => {
+    await page.clock.setFixedTime(new Date("2026-10-20T12:00:00.000Z"));
     await page.emulateMedia({ colorScheme: scheme });
     const assertRequests = await openViewer(page, "questions");
     const checked: string[] = [];
@@ -1958,6 +1959,8 @@ for (const scheme of ["light", "dark"] as const) {
       );
     }
     await page.getByRole("button", { name: /^Questions/ }).click();
+    const answered = page.getByRole("region", { name: "Answered" });
+    await answered.locator(".question-toggle").first().click();
     await expectReadable(page.locator(".question-overdue").first(), "overdue");
     for (const kind of ["answer", "ack", "reminder"]) {
       await expectReadable(
