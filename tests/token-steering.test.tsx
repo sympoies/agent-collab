@@ -112,8 +112,6 @@ describe("the Settings link, through the screen", () => {
             onSave={() => Promise.resolve(null)}
             onRemoveCredentials={() => Promise.resolve()}
             onCancel={null}
-            onOpenDemo={() => undefined}
-            onOpenLiveDemo={() => undefined}
           />
         </ThemeProvider>,
       );

@@ -21,8 +21,6 @@ export interface SettingsViewProps {
   readonly onSave: (draft: SettingsDraft) => Promise<DraftErrors | null>;
   readonly onRemoveCredentials: () => Promise<void>;
   readonly onCancel: (() => void) | null;
-  readonly onOpenDemo: () => void;
-  readonly onOpenLiveDemo: () => void;
   /** Scroll to the token section and focus its field when the screen opens. */
   readonly focusToken?: boolean;
 }
@@ -120,8 +118,8 @@ export function SettingsView(props: SettingsViewProps) {
   };
 
   return (
-    <form className="settings" onSubmit={submit} autoComplete="off">
-      <h2>{t("settings.title")}</h2>
+    <form id="github-form" className="settings" onSubmit={submit} autoComplete="off">
+      <h2>{t("sources.githubFormHeading")}</h2>
       {field("platform", t("settings.platform"), (aria) => (
         <select
           {...aria}
@@ -267,12 +265,6 @@ export function SettingsView(props: SettingsViewProps) {
             {t("settings.remove")}
           </button>
         )}
-        <button type="button" disabled={saving} onClick={props.onOpenDemo}>
-          {t("settings.openOffline")}
-        </button>
-        <button type="button" disabled={saving} onClick={props.onOpenLiveDemo}>
-          {t("welcome.openLiveDemo")}
-        </button>
       </div>
     </form>
   );

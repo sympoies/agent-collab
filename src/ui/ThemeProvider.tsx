@@ -6,7 +6,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 type Theme = "night-owl" | "paper";
 type ThemeStorage = Pick<Storage, "getItem" | "setItem">;
 
-const THEME_KEY = "agent-collab-viewer.theme";
+export const THEME_KEY = "agent-collab-viewer.theme";
 
 interface ThemeContextValue {
   readonly theme: Theme;

@@ -24,19 +24,11 @@ function render(
       onSave={() => Promise.resolve(null)}
       onRemoveCredentials={() => Promise.resolve()}
       onCancel={null}
-      onOpenDemo={() => undefined}
-      onOpenLiveDemo={() => undefined}
     />,
   );
 }
 
 describe("SettingsView", () => {
-  it("offers separate offline and live demo actions", () => {
-    const html = render(false);
-    expect(html).toContain("Open offline demo");
-    expect(html).toContain("Open live demo");
-  });
-
   it("masks the token input and leaves it empty", () => {
     const secretInputs = render(true).match(/<input[^>]*type="password"[^>]*>/g) ?? [];
     expect(secretInputs).toHaveLength(1);

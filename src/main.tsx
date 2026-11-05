@@ -7,6 +7,7 @@ import { demoFiles } from "./demo/fixtures";
 import type { ViewerSettings } from "./settings/model";
 import { FixtureSource } from "./source/fixture";
 import { FileListFolderSource, filesFromFolderDrop } from "./source/file-list-folder";
+import { forgetStored } from "./settings/forget-stored";
 import { folderMemory } from "./source/folder-memory";
 import { LocalFolderSource, type LocalDirectoryHandle } from "./source/local-folder";
 import { GitHubSource } from "./source/github";
@@ -19,6 +20,7 @@ import { LocaleProvider } from "./i18n/LocaleProvider";
 import { ThemeProvider } from "./ui/ThemeProvider";
 import "./ui/shared/tokens.css";
 import "./ui/shared/components.css";
+import "./ui/data-sources.css";
 import "./ui/styles.css";
 
 // Composition root: the only module that picks concrete providers and stores.
@@ -147,6 +149,9 @@ createRoot(root).render(
           createLiveDemoSource={createLiveDemoSource}
           openLocalFolder={folderPicker()}
           folderMemory={folders}
+          forgetStored={() => {
+            forgetStored(window.localStorage);
+          }}
           createHostedSource={hosted}
           openLocalFileList={fileListFolder}
         />
