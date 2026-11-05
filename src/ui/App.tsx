@@ -986,11 +986,12 @@ export function App({
                 </button>
                 <button
                   type="button"
-                  aria-expanded={hasQuestionFilters && questionsNode.open}
+                  aria-expanded={hasQuestionFilters ? questionsNode.open : undefined}
                   aria-controls={
                     hasQuestionFilters && questionsNode.open ? "questions-tree" : undefined
                   }
-                  className="tree-node"
+                  aria-current={view === "questions" && activeFilter === null ? "page" : undefined}
+                  className={hasQuestionFilters ? "tree-node" : undefined}
                   onClick={(event) => {
                     // Pressing the row of the page that is open collapses or expands the node;
                     // any other press opens the page with every question and expands it.

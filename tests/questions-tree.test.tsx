@@ -251,10 +251,28 @@ describe("the tree in the left list", () => {
     expect(questionsRow(host)?.hasAttribute("aria-pressed")).toBe(false);
   });
 
-  it("does not offer an expander while every question is still unknown", async () => {
+  it("offers no expander at all while every question is still unknown", async () => {
     const host = await render(null, true, false);
     await click(questionsRow(host));
     expect(host.querySelector(".questions-tree")).toBeNull();
-    expect(questionsRow(host)?.getAttribute("aria-expanded")).toBe("false");
+    // No chevron (the tree-node class draws it) and no aria-expanded either.
+    expect(questionsRow(host)?.hasAttribute("aria-expanded")).toBe(false);
+    expect(questionsRow(host)?.classList.contains("tree-node")).toBe(false);
+  });
+
+  it("marks the Questions row as the current page unless a filter is chosen", async () => {
+    const host = await render(null);
+    expect(questionsRow(host)?.hasAttribute("aria-current")).toBe(false);
+    await click(questionsRow(host));
+    expect(questionsRow(host)?.getAttribute("aria-current")).toBe("page");
+    await click(child(host, "carol-agent"));
+    expect(questionsRow(host)?.hasAttribute("aria-current")).toBe(false);
+    await click(host.querySelector(".question-filter button"));
+    expect(questionsRow(host)?.getAttribute("aria-current")).toBe("page");
+    // Another view takes the mark away.
+    await click(
+      [...host.querySelectorAll(".topics > button")].find((b) => b.textContent === "All"),
+    );
+    expect(questionsRow(host)?.hasAttribute("aria-current")).toBe(false);
   });
 });

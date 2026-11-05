@@ -242,6 +242,24 @@ for (const scheme of ["light", "dark"] as const) {
       expect(heading.y).toBeGreaterThanOrEqual(files.y + files.height - 1);
       expect(first.y).toBeGreaterThanOrEqual(heading.y + heading.height - 1);
       expect(tree.width).toBeGreaterThanOrEqual(nav.width - 24);
+      // One column: All above Questions above its tree (indented), then Files, the heading and
+      // every topic row on a line of its own with the same left edge.
+      const all = await box(page.locator(".topics > button", { hasText: /^All/ }));
+      const questions = await box(row(page));
+      expect(all.y + all.height).toBeLessThanOrEqual(questions.y + 1);
+      expect(questions.y + questions.height).toBeLessThanOrEqual(tree.y + 1);
+      expect(tree.x).toBeGreaterThan(questions.x);
+      expect(files.y).toBeGreaterThanOrEqual(tree.y + tree.height - 1);
+      const rects = await topicRows.evaluateAll((nodes) =>
+        nodes.map((node) => {
+          const rect = node.getBoundingClientRect();
+          return { x: rect.x, top: rect.top, bottom: rect.bottom };
+        }),
+      );
+      for (const [index, rect] of rects.entries()) {
+        expect(rect.x).toBeCloseTo(rects[0]?.x ?? 0, 0);
+        if (index > 0) expect(rect.top).toBeGreaterThanOrEqual((rects[index - 1]?.bottom ?? 0) - 1);
+      }
     });
   }
 }
@@ -295,5 +313,45 @@ for (const scheme of ["light", "dark"] as const) {
     const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
     mkdirSync(directory, { recursive: true });
     await page.screenshot({ path: join(directory, `tree-long-ja-${scheme}-360.png`) });
+  });
+}
+
+// The Questions row is shown as the current page like the other rows are when selected.
+for (const scheme of ["light", "dark"] as const) {
+  test(`the unfiltered Questions row looks selected, ${scheme} @csp`, async ({ page }) => {
+    await open(page, 1280, scheme);
+    // How a row looks: its fill, its border and its text color (a selected row differs in some).
+    const background = async (locator: Locator) => {
+      // Not under the pointer: a hovered row has a fill of its own.
+      await page.mouse.move(1270, 5);
+      return locator.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return `${style.backgroundColor}|${style.borderTopColor}|${style.color}`;
+      });
+    };
+    const all = page.locator(".topics > button", { hasText: /^All/ });
+    const selected = await background(all);
+    const files = await background(page.locator(".topics > button", { hasText: /^Files/ }));
+    expect(selected).not.toBe(files);
+    await row(page).click();
+    await expect(row(page)).toHaveAttribute("aria-current", "page");
+    expect(await background(row(page))).toBe(selected);
+    await child(page, /^carol-agent/).click();
+    await expect(row(page)).not.toHaveAttribute("aria-current", "page");
+    expect(await background(row(page))).toBe(files);
+    await page.locator(".question-filter button").click();
+    expect(await background(row(page))).toBe(selected);
+  });
+}
+
+// The unfiltered Questions page with its row shown as the current one.
+for (const scheme of ["light", "dark"] as const) {
+  test(`screenshots unfiltered ${scheme}`, async ({ page }) => {
+    await open(page, 1280, scheme);
+    await openQuestions(page);
+    await page.mouse.move(1270, 5);
+    const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
+    mkdirSync(directory, { recursive: true });
+    await page.screenshot({ path: join(directory, `tree-unfiltered-${scheme}-1280.png`) });
   });
 }

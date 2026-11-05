@@ -35,7 +35,8 @@ button:disabled {
   cursor: default;
 }
 
-button[aria-pressed="true"] {
+button[aria-pressed="true"],
+button[aria-current="page"] {
   border-color: var(--accent);
   color: var(--accent);
 }
@@ -468,7 +469,8 @@ button:hover {
   flex: none;
 }
 
-.topics button[aria-pressed="true"] {
+.topics button[aria-pressed="true"],
+.topics button[aria-current="page"] {
   background: var(--floating);
 }
 
@@ -1420,22 +1422,9 @@ span.chip {
     display: none;
   }
 
+  /* The list stays one column, as on a wide screen: every row, the tree and the heading line up. */
   .topics {
-    flex-flow: row wrap;
     padding: 2px;
-  }
-
-  .topics button {
-    width: auto;
-    max-width: 100%;
-  }
-
-  /* The disclosure button and the Closed group take a full line under the topic chips. */
-  .topics .show-all-topics,
-  .closed-topics,
-  .topics .topics-heading,
-  .questions-tree {
-    flex: 1 1 100%;
   }
 
   .closed-topics button {
