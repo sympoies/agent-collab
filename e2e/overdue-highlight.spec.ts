@@ -123,6 +123,8 @@ test.describe("screenshots", () => {
         await message.first().screenshot({
           path: join(directory, `${prefix ?? "shot"}-chat-${String(width)}-${theme}.png`),
         });
+        if (width === 390)
+          await page.getByRole("button", { name: "Back to conversations" }).click();
         await page.getByRole("button", { name: /^Questions/ }).click();
         const card = page.locator(".question-item").first();
         const toggle = card.locator(".question-toggle");
