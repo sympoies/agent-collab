@@ -57,6 +57,15 @@ describe("the shared overdue highlight", () => {
     expect(shared).toMatch(/\.shared-overdue::before\s*\{[^}]*content:\s*"! "/);
   });
 
+  it("beats the chat's later .due colour and stays a chip inside the flex column of a card", () => {
+    expect(shared).toMatch(
+      /\.shared-overdue,\s*\.due\.shared-overdue,\s*\.question-due\.shared-overdue\s*\{/,
+    );
+    expect(highlight).toMatch(/align-self:\s*flex-start/);
+    // The competing rule is in the stylesheet that loads after the shared one.
+    expect(rule(styles, ".due")).toMatch(/color:\s*inherit/);
+  });
+
   it("uses a tint of 12 to 16 percent", () => {
     const percent = Number(/var\(--error\)\s*(\d+)%/.exec(highlight)?.[1]);
     expect(percent).toBeGreaterThanOrEqual(12);

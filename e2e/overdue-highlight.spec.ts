@@ -9,6 +9,8 @@ import { join } from "node:path";
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { ja } from "../src/i18n/ja";
+import { zhTW } from "../src/i18n/zh-TW";
 import { flat, MARKER, messageText } from "../tests/support";
 
 const LATE = "2026-10-01T0901-alice-agent-api-01";
@@ -59,7 +61,19 @@ async function open(page: Page, width: number, theme: string) {
 const style = (locator: Locator) =>
   locator.evaluate((node) => {
     const own = getComputedStyle(node);
+    // The theme's error colour as the browser resolves it, whatever notation the token uses.
+    const probe = document.createElement("span");
+    probe.style.color = "var(--error)";
+    document.body.append(probe);
+    const error = getComputedStyle(probe).color;
+    probe.remove();
+    const box = node.getBoundingClientRect();
+    const container = (node.parentElement ?? node).getBoundingClientRect();
     return {
+      color: own.color,
+      error,
+      width: box.width,
+      containerWidth: container.width,
       underline: own.textDecorationLine,
       background: own.backgroundColor,
       prefix: getComputedStyle(node, "::before").content,
@@ -81,9 +95,11 @@ for (const width of [390, 1280] as const) {
         expect(overdue.underline).toBe("none");
         expect(overdue.background).not.toBe("rgba(0, 0, 0, 0)");
         expect(overdue.prefix).toContain("!");
+        expect(overdue.color).toBe(overdue.error);
         const normal = await style(plain);
         expect(normal.background).toBe("rgba(0, 0, 0, 0)");
         expect(normal.prefix === "none" || normal.prefix === "normal").toBe(true);
+        expect(normal.color).not.toBe(normal.error);
       });
 
       test("the same highlight is on the Questions card @csp", async ({ page }) => {
@@ -97,6 +113,7 @@ for (const width of [390, 1280] as const) {
         const chipStyle = await style(chip);
         expect(chipStyle.underline).toBe("none");
         expect(chipStyle.background).not.toBe("rgba(0, 0, 0, 0)");
+        expect(chipStyle.color).toBe(chipStyle.error);
         const toggle = card.locator(".question-toggle");
         if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
         const due = card.locator(".question-due[data-overdue='true']");
@@ -105,9 +122,66 @@ for (const width of [390, 1280] as const) {
         expect(dueStyle.underline).toBe("none");
         expect(dueStyle.background).not.toBe("rgba(0, 0, 0, 0)");
         expect(dueStyle.prefix).toContain("!");
+        expect(dueStyle.color).toBe(dueStyle.error);
+        // A snug chip like the chat line, not a bar across the card.
+        expect(dueStyle.width).toBeLessThan(dueStyle.containerWidth - 8);
+        // A due date that is not overdue stays plain on the card too.
+        const later = page.locator(".question-item", { hasText: "And what comes after that?" });
+        const laterToggle = later.locator(".question-toggle");
+        if ((await laterToggle.getAttribute("aria-expanded")) !== "true") await laterToggle.click();
+        const plain = later.locator(".question-due[data-overdue='false']");
+        await expect(plain).toBeVisible();
+        const plainStyle = await style(plain);
+        expect(plainStyle.background).toBe("rgba(0, 0, 0, 0)");
+        expect(plainStyle.prefix === "none" || plainStyle.prefix === "normal").toBe(true);
+        expect(plainStyle.color).not.toBe(plainStyle.error);
+        await expect(later.locator(".shared-overdue")).toHaveCount(0);
       });
     });
   }
+}
+
+// Long translations wrap inside the tinted block instead of overflowing the phone.
+for (const [locale, name, messages] of [
+  ["ja", "Japanese", ja],
+  ["zh-TW", "Traditional Chinese", zhTW],
+] as const) {
+  test.describe(`${name} at 390 px @csp`, () => {
+    test.use({ locale });
+
+    test("the tinted lines wrap inside the card @csp", async ({ page }) => {
+      await open(page, 390, "paper");
+      const chat = page.locator("[data-overdue='true']").first();
+      await expect(chat).toBeVisible();
+      const inChat = await style(chat);
+      expect(inChat.color).toBe(inChat.error);
+      expect(inChat.width).toBeLessThanOrEqual(inChat.containerWidth);
+      const shots = process.env.OVERDUE_SHOTS;
+      const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
+      if (shots !== undefined) {
+        mkdirSync(directory, { recursive: true });
+        await page
+          .locator(".message", { has: page.locator("[data-overdue='true']") })
+          .first()
+          .screenshot({ path: join(directory, `${shots}-chat-390-${locale}.png`) });
+      }
+      await page.getByRole("button", { name: messages["nav.back"] }).click();
+      await page.getByRole("button", { name: new RegExp(`^${messages["nav.questions"]}`) }).click();
+      const card = page.locator(".question-item").first();
+      const toggle = card.locator(".question-toggle");
+      if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click();
+      const due = card.locator(".question-due[data-overdue='true']");
+      await expect(due).toBeVisible();
+      if (shots !== undefined)
+        await card.screenshot({ path: join(directory, `${shots}-questions-390-${locale}.png`) });
+      const onCard = await style(due);
+      expect(onCard.color).toBe(onCard.error);
+      expect(onCard.width).toBeLessThanOrEqual(onCard.containerWidth);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        390,
+      );
+    });
+  });
 }
 
 const prefix = process.env.OVERDUE_SHOTS;

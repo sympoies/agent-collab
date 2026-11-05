@@ -212,10 +212,14 @@
 
 /*
  * An overdue date, in the chat and on the Questions cards: the error colour on a low-opacity tint
- * of itself. The "! " keeps the meaning from resting on colour alone.
+ * of itself. The "! " keeps the meaning from resting on colour alone. The chat's `.due` rule loads
+ * later and sets `color: inherit`, so the due lines repeat their own class to win the cascade.
  */
-.shared-overdue {
+.shared-overdue,
+.due.shared-overdue,
+.question-due.shared-overdue {
   display: inline-block;
+  align-self: flex-start;
   max-width: 100%;
   padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
