@@ -212,6 +212,31 @@ describe("a reload reopens the last GitHub repository", () => {
     expect(host.querySelector("#github-form")).toBeNull();
   });
 
+  for (const how of ["Remove token", "Remove stored credentials"] as const) {
+    it(`goes back to the welcome screen after a reload once ${how} was used`, async () => {
+      const storage = storageMap({
+        "agent-collab-viewer.settings": SETTINGS,
+        "agent-collab-viewer.last-source": "github",
+      });
+      const credentials = await tokenStore();
+      let host = await mount({ storage, credentials });
+      expect(host.querySelector("h1")?.textContent).toBe("alice-org/collab");
+      if (how === "Remove token") {
+        await click(button(host, "Remove token"));
+      } else {
+        await click(host.querySelector('button[aria-label="Settings"]') ?? undefined);
+        await click(button(host, "Remove stored credentials"));
+      }
+      expect(await credentials.get("access-token")).toBeNull();
+
+      unmount();
+      host = await mount({ storage, credentials });
+      expect(host.querySelector("h1")?.textContent).toBe("Collab Viewer");
+      expect(host.querySelector("#github-form")).toBeNull();
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+    });
+  }
+
   it("keeps the demos out of storage", async () => {
     const storage = storageMap();
     const setItem = vi.spyOn(storage, "setItem");

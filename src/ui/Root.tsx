@@ -465,6 +465,8 @@ export function Root(props: RootProps) {
       return;
     }
     forgetToken();
+    // The token is gone: a reload must not try to reopen the repository it opened.
+    writeLastSource(props.storage, "other");
     if (operation === navigation.current) setScreen({ kind: "welcome" });
   };
 
@@ -972,6 +974,7 @@ export function Root(props: RootProps) {
               const operation = ++navigation.current;
               await removeCredentials(props);
               forgetToken();
+              writeLastSource(props.storage, "other");
               if (operation !== navigation.current) return;
               await showSettings(null);
             }}
