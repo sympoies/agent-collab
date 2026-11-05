@@ -3043,10 +3043,8 @@ for (const code of LOCALES) {
           // An outside click closes it too.
           await more.click();
           await expect(menu).toBeVisible();
-          await page
-            .locator(".conversation, .topics-pane")
-            .first()
-            .click({ position: { x: 5, y: 5 } });
+          // The menu spans the top of the screen: click on the page below it.
+          await page.mouse.click(5, view.size.height - 5);
           await expect(menu).toHaveCount(0);
         } else {
           await expect(

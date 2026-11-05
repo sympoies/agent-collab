@@ -1622,6 +1622,25 @@ span.chip {
     padding: 10px;
   }
 
+  /*
+   * A popup never leaves the screen: the menu spans the bar (which sits inside the page margin)
+   * under it, whichever end of the bar its trigger is at.
+   */
+  .bar-actions .overflow-menu {
+    position: static;
+  }
+
+  .bar-actions .overflow-menu .menu {
+    top: 100%;
+    right: 0;
+    left: 0;
+    min-width: 0;
+    /* Room for the bar above it and the edge below; a short screen scrolls the menu. */
+    max-height: calc(100dvh - 96px);
+    margin-top: 6px;
+    overflow-y: auto;
+  }
+
   /* A full-screen sheet with its own close button. */
   #profile-panel {
     position: fixed;
