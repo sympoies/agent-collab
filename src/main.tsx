@@ -93,7 +93,8 @@ function createLiveDemoSource(token: Secret | null): MessageSource {
 
 /**
  * The browser's folder picker, or null where it does not exist (Firefox, Safari, insecure pages).
- * It must be called straight from a click; the handle stays in memory and is never stored.
+ * It must be called straight from a click. A folder that opened is remembered in IndexedDB on this
+ * origin (folder-memory.ts; the accepted same-origin risk is in docs/design/local-source.md).
  */
 const folders = folderMemory(indexedDbRecords("agent-collab-viewer-folder"));
 

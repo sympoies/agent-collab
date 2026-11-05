@@ -37,6 +37,8 @@ import { SourceError, type MessageSource } from "../source/types";
 import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
 import { say } from "./errorText";
 import { App, type AppProps, type SourceIndicator } from "./App";
+import { EMPTY_PREFERENCES, writePreferences } from "../identity/preferences";
+import { writeViewState } from "../identity/view-state";
 import type { FolderMemory, RememberedFolder } from "../source/folder-memory";
 import { SettingsView } from "./SettingsView";
 import { ThemeToggle } from "./ThemeProvider";
@@ -626,6 +628,44 @@ export function Root(props: RootProps) {
     await openLocalSource(() => Promise.resolve(reopened(found)), null, operation);
   };
 
+  /** Forgets the folder handle and, with it, the choices made in that folder. */
+  const forgetRemembered = async (found: RememberedFolder): Promise<void> => {
+    await folderMemory?.forget();
+    writePreferences(props.storage, `local:${found.name}`, EMPTY_PREFERENCES);
+    writeViewState(props.storage, `local:${found.name}`, { view: "chat", topic: null });
+    setRemembered(null);
+    setLocalMessage(null);
+  };
+
+  /** Reopen and Forget for the remembered folder, on the welcome and the settings screens. */
+  const rememberedFolder = remembered !== null && (
+    <section className="remembered-folder" aria-labelledby="remembered-heading">
+      <h2 id="remembered-heading">{t("settings.rememberedHeading")}</h2>
+      <p className="note">{t("settings.forgetNote", { name: remembered.name })}</p>
+      <button
+        type="button"
+        onClick={() => {
+          void reopenRemembered(remembered);
+        }}
+      >
+        {t("welcome.reopenLocal", { name: remembered.name })}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void forgetRemembered(remembered);
+        }}
+      >
+        {t("welcome.forgetLocal")}
+      </button>
+      {localMessage !== null && (
+        <p className="error" role="alert">
+          {say(localMessage, t)}
+        </p>
+      )}
+    </section>
+  );
+
   const save = async (draft: SettingsDraft): Promise<DraftErrors | null> => {
     const operation = ++navigation.current;
     const result = await apply(props, draft);
@@ -692,29 +732,7 @@ export function Root(props: RootProps) {
                 {t("welcome.openLocal")}
               </button>
             )}
-            {remembered !== null && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void reopenRemembered(remembered);
-                  }}
-                >
-                  {t("welcome.reopenLocal", { name: remembered.name })}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void (async () => {
-                      await folderMemory?.forget();
-                      setRemembered(null);
-                    })();
-                  }}
-                >
-                  {t("welcome.forgetLocal")}
-                </button>
-              </>
-            )}
+            {rememberedFolder}
             {openLocalFolder === null && openLocalFileList !== undefined && (
               <button
                 type="button"
@@ -729,7 +747,7 @@ export function Root(props: RootProps) {
               <p className="local-unsupported note">{t("welcome.localUnsupported")}</p>
             )}
             {openLocalFileList !== undefined && <p className="note">{t("welcome.localDrop")}</p>}
-            {localMessage !== null && (
+            {localMessage !== null && remembered === null && (
               <p className="error" role="alert">
                 {say(localMessage, t)}
               </p>
@@ -760,6 +778,7 @@ export function Root(props: RootProps) {
               <ThemeToggle />
             </div>
           </header>
+          {rememberedFolder}
           <SettingsView
             initial={screen.draft}
             storedEndpoints={screen.storedEndpoints}

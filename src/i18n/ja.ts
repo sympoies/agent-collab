@@ -105,6 +105,9 @@ export const ja: Messages = {
   "local.unreadable": "このフォルダーを読み込めませんでした。",
   "welcome.reopenLocal": "{name} を開き直す",
   "welcome.forgetLocal": "このフォルダーを忘れる",
+  "settings.rememberedHeading": "記憶しているローカルフォルダー",
+  "settings.forgetNote":
+    "「忘れる」を押すと、このブラウザーが保持している {name} の権限と、そのフォルダーでの選択（閲覧者、色、名前、開いているトピック）が削除されます。",
   "local.reopenDenied": "{name} の読み取りが許可されませんでした。フォルダーを選び直してください。",
   "local.snapshotNotice":
     "選択したフォルダーのスナップショットを表示しています。git pull の後は、フォルダーを選び直すと更新を確認できます。このブラウザーではフォルダーを記憶できないため、再読み込みの後はフォルダーを選び直してください。",

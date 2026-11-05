@@ -112,6 +112,9 @@ export const en = {
   "local.unreadable": "This folder could not be read.",
   "welcome.reopenLocal": "Reopen {name}",
   "welcome.forgetLocal": "Forget this folder",
+  "settings.rememberedHeading": "Remembered local folder",
+  "settings.forgetNote":
+    "Forget removes the permission this browser keeps for {name} and the choices made in it: Viewing as, colors, names and the open topic.",
   "local.reopenDenied": "Permission to read {name} was not granted. Choose the folder again.",
   "local.snapshotNotice":
     "This is a snapshot of the selected folder. After a git pull, choose the folder again to see updates. This browser cannot remember it: after a reload, choose the folder again.",

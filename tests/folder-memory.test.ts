@@ -109,4 +109,19 @@ describe("folder memory", () => {
     await expect(memory.setActive(false)).resolves.toBeUndefined();
     await expect(memory.forget()).resolves.toBeUndefined();
   });
+
+  it("keeps the last of two overlapping setActive calls even when the store is slow", async () => {
+    const store = records();
+    const get = store.get.bind(store);
+    store.get = async (key) => {
+      const value = await get(key);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return value;
+    };
+    const memory = folderMemory(store);
+    await memory.save(handle("clone"));
+    await memory.setActive(false);
+    await Promise.all([memory.setActive(true), memory.setActive(false)]);
+    expect((await memory.load())?.active).toBe(false);
+  });
 });

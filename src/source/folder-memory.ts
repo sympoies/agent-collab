@@ -53,6 +53,14 @@ const asPermission = (state: PermissionState): FolderPermission =>
   state === "granted" || state === "denied" ? state : "prompt";
 
 export function folderMemory(records: RecordStore): FolderMemory {
+  // Operations run one after another: a read-modify-write of the active flag must not overlap
+  // another, or the older write could land last.
+  let queue: Promise<unknown> = Promise.resolve();
+  const serial = <T>(operation: () => Promise<T>): Promise<T> => {
+    const run = queue.then(operation);
+    queue = run.catch(() => undefined);
+    return run;
+  };
   const read = async (): Promise<Stored | null> => {
     try {
       const value = await records.get(RECORD);
@@ -68,42 +76,45 @@ export function folderMemory(records: RecordStore): FolderMemory {
       // Nothing is remembered; the folder still opens for this visit.
     }
   };
+  const load = async (): Promise<RememberedFolder | null> => {
+    const stored = await read();
+    if (stored === null) return null;
+    const { handle } = stored;
+    return {
+      name: stored.name,
+      active: stored.active,
+      permission: async () => {
+        try {
+          return asPermission((await handle.queryPermission?.({ mode: "read" })) ?? "prompt");
+        } catch {
+          return "denied";
+        }
+      },
+      request: async () => {
+        try {
+          return asPermission((await handle.requestPermission?.({ mode: "read" })) ?? "denied");
+        } catch {
+          return "denied";
+        }
+      },
+      open: () => ({ source: new LocalFolderSource(handle), name: stored.name }),
+    };
+  };
   return {
-    load: async () => {
-      const stored = await read();
-      if (stored === null) return null;
-      const { handle } = stored;
-      return {
-        name: stored.name,
-        active: stored.active,
-        permission: async () => {
-          try {
-            return asPermission((await handle.queryPermission?.({ mode: "read" })) ?? "prompt");
-          } catch {
-            return "denied";
-          }
-        },
-        request: async () => {
-          try {
-            return asPermission((await handle.requestPermission?.({ mode: "read" })) ?? "denied");
-          } catch {
-            return "denied";
-          }
-        },
-        open: () => ({ source: new LocalFolderSource(handle), name: stored.name }),
-      };
-    },
-    save: (handle) => write({ handle, name: handle.name, active: true }),
-    setActive: async (active) => {
-      const stored = await read();
-      if (stored !== null && stored.active !== active) await write({ ...stored, active });
-    },
-    forget: async () => {
-      try {
-        await records.delete(RECORD);
-      } catch {
-        // Already gone, or storage is blocked: either way nothing is remembered.
-      }
-    },
+    load: () => serial(load),
+    save: (handle) => serial(() => write({ handle, name: handle.name, active: true })),
+    setActive: (active) =>
+      serial(async () => {
+        const stored = await read();
+        if (stored !== null && stored.active !== active) await write({ ...stored, active });
+      }),
+    forget: () =>
+      serial(async () => {
+        try {
+          await records.delete(RECORD);
+        } catch {
+          // Already gone, or storage is blocked: either way nothing is remembered.
+        }
+      }),
   };
 }

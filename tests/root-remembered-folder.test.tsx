@@ -56,7 +56,11 @@ function memoryWith(
       return Promise.resolve();
     },
   };
-  return { memory, calls };
+  /** What a successful pick does to the store (the real `remember` closure saves the handle). */
+  const pick = (name: string) => {
+    kept = { name, active: true, permission: "granted" };
+  };
+  return { memory, calls, pick };
 }
 
 describe("Root with a remembered local folder", () => {
@@ -79,6 +83,10 @@ describe("Root with a remembered local folder", () => {
       getItem: () => null,
       setItem: () => undefined,
     },
+    extra: {
+      hosted?: () => FixtureSource;
+      openLocalFileList?: () => Promise<LocalFolderOpen>;
+    } = {},
   ): Promise<HTMLElement> {
     const host = document.createElement("div");
     document.body.append(host);
@@ -95,6 +103,10 @@ describe("Root with a remembered local folder", () => {
             createLiveDemoSource={() => new FixtureSource({})}
             openLocalFolder={openLocalFolder}
             folderMemory={memory}
+            {...(extra.hosted === undefined ? {} : { createHostedSource: extra.hosted })}
+            {...(extra.openLocalFileList === undefined
+              ? {}
+              : { openLocalFileList: extra.openLocalFileList })}
           />
         </ThemeProvider>,
       );
@@ -199,6 +211,125 @@ describe("Root with a remembered local folder", () => {
     expect(calls.active.at(-1)).toBe(true);
     await click(host.querySelector('button[aria-label="Settings"]') ?? undefined);
     await click(button(host, "Open offline demo"));
+    expect(calls.active.at(-1)).toBe(false);
+  });
+
+  describe("from the served snapshot", () => {
+    const snapshot = () => new FixtureSource(files);
+    const openSettings = (host: HTMLElement) =>
+      click(host.querySelector('button[aria-label="Settings"]') ?? undefined);
+
+    for (const state of [
+      { label: "needs a prompt", active: true, permission: "prompt" as const },
+      { label: "is not the last view", active: false, permission: "granted" as const },
+    ]) {
+      it(`offers Reopen and Forget in Settings when the remembered folder ${state.label}`, async () => {
+        const { memory, calls } = memoryWith({ name: "my-clone", ...state });
+        const host = await render(memory, null, undefined, { hosted: snapshot });
+        expect(host.querySelector("h1")?.textContent).toBe("Collaboration snapshot");
+        await openSettings(host);
+        expect(button(host, "Reopen my-clone")).toBeDefined();
+        expect(host.textContent).toContain("Forget removes");
+
+        await click(button(host, "Reopen my-clone"));
+        expect(host.querySelector("h1")?.textContent).toBe("Local folder: my-clone");
+        expect(calls.active.at(-1)).toBe(true);
+      });
+    }
+
+    it("says so in Settings when the permission is refused", async () => {
+      const { memory } = memoryWith({
+        name: "my-clone",
+        active: false,
+        permission: "prompt",
+        onRequest: "denied",
+      });
+      const host = await render(memory, null, undefined, { hosted: snapshot });
+      await openSettings(host);
+      await click(button(host, "Reopen my-clone"));
+      expect(host.querySelector('[role="alert"]')?.textContent).toBe(
+        "Permission to read my-clone was not granted. Choose the folder again.",
+      );
+    });
+
+    it("forgets the handle together with the choices made in that folder", async () => {
+      const values = new Map<string, string>([
+        [
+          "agent-collab-viewer.identity:local:my-clone",
+          '{"viewingAs":"bob-agent","colors":{},"names":{}}',
+        ],
+        ["agent-collab-viewer.view:local:my-clone", '{"view":"files","topic":null}'],
+        [
+          "agent-collab-viewer.identity:local:other",
+          '{"viewingAs":"bob-agent","colors":{},"names":{}}',
+        ],
+      ]);
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+      };
+      const { memory, calls } = memoryWith({
+        name: "my-clone",
+        active: false,
+        permission: "prompt",
+      });
+      const host = await render(memory, null, storage, { hosted: snapshot });
+      await openSettings(host);
+      await click(button(host, "Forget this folder"));
+      expect(calls.forget).toBe(1);
+      expect(button(host, "Reopen")).toBeUndefined();
+      expect(JSON.parse(values.get("agent-collab-viewer.identity:local:my-clone") ?? "{}")).toEqual(
+        {
+          viewingAs: undefined,
+          colors: {},
+          names: {},
+        },
+      );
+      expect(JSON.parse(values.get("agent-collab-viewer.view:local:my-clone") ?? "{}")).toEqual({
+        view: "chat",
+        topic: null,
+      });
+      expect(values.get("agent-collab-viewer.identity:local:other")).toContain("bob-agent");
+    });
+  });
+
+  it("offers Reopen for a folder that was just picked, without a reload", async () => {
+    const { memory, pick } = memoryWith(null);
+    const host = await render(memory, () =>
+      Promise.resolve({
+        ...clone("fresh"),
+        remember: () => {
+          pick("fresh");
+          return Promise.resolve();
+        },
+      }),
+    );
+    await click(button(host, "Open local folder"));
+    await click(host.querySelector('button[aria-label="Settings"]') ?? undefined);
+    expect(button(host, "Reopen fresh")).toBeDefined();
+  });
+
+  it("does not return to a remembered folder after a file-input folder was opened", async () => {
+    const { memory, calls } = memoryWith({
+      name: "my-clone",
+      active: false,
+      permission: "granted",
+    });
+    const host = await render(memory, null, undefined, {
+      openLocalFileList: () => Promise.resolve(clone("from-files")),
+    });
+    await click(button(host, "Choose local folder from files"));
+    const input = host.querySelector<HTMLInputElement>('input[type="file"][webkitdirectory]');
+    const file = new File(["x"], "x.md");
+    Object.defineProperty(file, "webkitRelativePath", { value: "from-files/x.md" });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+    await act(async () => {
+      input?.dispatchEvent(new Event("change", { bubbles: true }));
+      for (let round = 0; round < 4; round += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    });
+    expect(host.querySelector("h1")?.textContent).toBe("Local folder: from-files");
     expect(calls.active.at(-1)).toBe(false);
   });
 
