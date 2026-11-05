@@ -63,7 +63,9 @@ for (const width of [390, 1280]) {
       }
     });
 
-    test("chooses who the viewer is in the panel and closes with Escape @csp", async ({ page }) => {
+    test("chooses who the viewer is in the panel, marks You and addressed messages @csp", async ({
+      page,
+    }) => {
       await open(page, width);
       // No own names: the hint is shown and the viewer is Observer.
       await expect(identity(page)).toHaveAccessibleName(new RegExp(en["bar.observer"]));
@@ -77,6 +79,7 @@ for (const width of [390, 1280]) {
       await expect(identity(page)).toBeFocused();
       // Bob is addressed by the question: it is waiting for them.
       await expect(page.locator(".group[data-own='true']")).toHaveCount(1);
+      await expect(page.locator(".message[data-addressed='true']").first()).toBeVisible();
       if (width < 721) await page.getByRole("button", { name: en["nav.back"] }).click();
       await page.getByRole("button", { name: /^Questions/ }).click();
       await expect(page.getByText(en["questions.waiting"]).first()).toBeVisible();
@@ -129,4 +132,28 @@ for (const scheme of ["light", "dark"] as const) {
       });
     });
   }
+}
+
+// The same with a person chosen, so the coloured avatar shows. Runs only on the new version.
+for (const [scheme, width] of [
+  ["light", 390],
+  ["dark", 1280],
+] as const) {
+  test(`screenshots with a person ${scheme} ${String(width)}`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    await open(page, width);
+    await identity(page).click();
+    await page
+      .getByRole("region", { name: en["profile.title"] })
+      .getByLabel(en["bar.viewingAs"])
+      .selectOption("bob-agent");
+    await page.keyboard.press("Escape");
+    await expect(identity(page)).toHaveAccessibleName(/bob-agent/);
+    const directory = process.env.PLAYWRIGHT_SCREENSHOT_DIR ?? "";
+    mkdirSync(directory, { recursive: true });
+    await page.screenshot({
+      path: join(directory, `toolbar-person-${scheme}-${String(width)}.png`),
+      clip: { x: 0, y: 0, width, height: 260 },
+    });
+  });
 }

@@ -162,6 +162,17 @@ describe("the identity button", () => {
     expect(hint(host)).toBeNull();
   });
 
+  it("keeps the hint dismissed once the panel has been opened", async () => {
+    const storage = memoryStorage();
+    const host = await render(storage, []);
+    expect(hint(host)).not.toBeNull();
+    await click(identityButton(host));
+    await click(identityButton(host));
+    expect(host.querySelector("#profile-panel")).toBeNull();
+    expect(hint(host)).toBeNull();
+    expect(storage.values.get(HINT_KEY)).toBe("1");
+  });
+
   it("shows no hint when a choice or a matching own name exists, or the roster is unknown", async () => {
     let host = await render(memoryStorage(), ["alice-agent"]);
     expect(hint(host)).toBeNull();

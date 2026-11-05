@@ -88,6 +88,10 @@ describe("the demos keep the reader's choices in memory only", () => {
       await press("Files");
       expect(host.querySelector("#conversation-heading")?.textContent).toBe("Files");
       expect(storage.setItem).not.toHaveBeenCalled();
+      // Opening the panel dismissed the hint for this view only: no hint key anywhere.
+      expect(
+        Object.keys(window.localStorage).filter((key) => key.includes("identity-hint")),
+      ).toEqual([]);
       expect(storage.getItem.mock.calls.length).toBe(reads);
       act(() => {
         root.unmount();

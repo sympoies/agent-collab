@@ -256,6 +256,11 @@ describe("App identity controls", () => {
     await openProfile(stale);
     expect((stale.querySelector(".viewing-as select") as HTMLSelectElement).value).toBe("");
     expect(youGroups(stale)).toEqual([]);
+    // Ignored, not forgotten: the saved choice is still there after the roster loaded and the
+    // panel opened.
+    expect(JSON.parse(storage.values.get(`agent-collab-viewer.identity:${KEY}`) ?? "{}")).toEqual({
+      viewingAs: "ghost-agent",
+    });
 
     act(() => {
       mounted?.root.unmount();
