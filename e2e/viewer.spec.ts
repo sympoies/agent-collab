@@ -1722,6 +1722,16 @@ for (const theme of ["light", "dark"] as const) {
         theme === "dark" ? "night-owl" : "paper",
       );
       const stem = `issue74-${browserName}-${theme}-${String(width)}`;
+      const expectPhoneBackBeforeHeading = async () => {
+        const back = page.getByRole("button", { name: "Back to conversations" });
+        const backBounds = await back.boundingBox();
+        const headingBounds = await page.locator("#conversation-heading").boundingBox();
+        expect(backBounds).not.toBeNull();
+        expect(headingBounds).not.toBeNull();
+        if (backBounds !== null && headingBounds !== null) {
+          expect(backBounds.x).toBeLessThan(headingBounds.x);
+        }
+      };
       await saveScreenshot(page, `${stem}-topic-list.png`);
 
       await page.getByRole("button", { name: /^Questions/ }).click();
@@ -1734,16 +1744,17 @@ for (const theme of ["light", "dark"] as const) {
       const questionHeadingBounds = await page.locator("#conversation-heading").boundingBox();
       expect(questionBounds).not.toBeNull();
       expect(questionHeadingBounds).not.toBeNull();
-      if (questionBounds !== null && questionHeadingBounds !== null) {
+      if (width >= 768 && questionBounds !== null && questionHeadingBounds !== null) {
         expect(Math.abs(questionHeadingBounds.x - questionBounds.x)).toBeLessThanOrEqual(1);
       }
       await saveScreenshot(page, `${stem}-questions.png`);
 
       if (width === 390) {
+        await expectPhoneBackBeforeHeading();
         await page.locator("main.conversation").evaluate((pane) => {
           pane.scrollTop = pane.scrollHeight;
         });
-        await expect(page.locator(".topic-bar .back-to-topics")).toBeInViewport();
+        await expect(page.getByRole("button", { name: "Back to conversations" })).toBeInViewport();
         await page.getByRole("button", { name: "Back to conversations" }).click();
       }
       await page.getByRole("button", { name: "Files" }).click();
@@ -1771,7 +1782,7 @@ for (const theme of ["light", "dark"] as const) {
         expect(Math.abs(fileBounds.width - questionBounds.width)).toBeLessThanOrEqual(1);
         expect(Math.abs(scopeBounds.x - fileBounds.x)).toBeLessThanOrEqual(1);
       }
-      if (fileHeadingBounds !== null && fileBounds !== null) {
+      if (width >= 768 && fileHeadingBounds !== null && fileBounds !== null) {
         expect(Math.abs(fileHeadingBounds.x - fileBounds.x)).toBeLessThanOrEqual(1);
       }
       const fileFontSize = await page
@@ -1781,10 +1792,11 @@ for (const theme of ["light", "dark"] as const) {
       await saveScreenshot(page, `${stem}-files.png`);
 
       if (width === 390) {
+        await expectPhoneBackBeforeHeading();
         await page.locator("main.conversation").evaluate((pane) => {
           pane.scrollTop = pane.scrollHeight;
         });
-        await expect(page.locator(".topic-bar .back-to-topics")).toBeInViewport();
+        await expect(page.getByRole("button", { name: "Back to conversations" })).toBeInViewport();
         await page.getByRole("button", { name: "Back to conversations" }).click();
       }
       await page.getByRole("button", { name: /^#api/ }).click();
@@ -1794,7 +1806,14 @@ for (const theme of ["light", "dark"] as const) {
         .first()
         .evaluate((node) => getComputedStyle(node).fontSize);
       expect(fileFontSize).toBe(chatFontSize);
+      if (width === 390) await expectPhoneBackBeforeHeading();
       await saveScreenshot(page, `${stem}-chat.png`);
+      if (width === 390) {
+        await page.locator("main.conversation").evaluate((pane) => {
+          pane.scrollTop = pane.scrollHeight;
+        });
+        await expect(page.getByRole("button", { name: "Back to conversations" })).toBeInViewport();
+      }
       assertRequests();
     });
   }
