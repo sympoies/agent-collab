@@ -800,6 +800,17 @@ async function saveScreenshot(page: Page, filename: string) {
   await page.screenshot({ path: join(screenshotDir, filename), fullPage: true });
 }
 
+// A page of the same browser context reopens the GitHub repository the last one saved (so does a
+// reload). These tests start each tab from the welcome screen, so the marker is cleared once per
+// tab; the reload behaviour has its own spec (github-reload.spec.ts).
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => {
+    if (sessionStorage.getItem("e2e-welcome") !== null) return;
+    sessionStorage.setItem("e2e-welcome", "1");
+    localStorage.removeItem("agent-collab-viewer.last-source");
+  });
+});
+
 test("long chat adapts across themes and viewports", async ({ page, context }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   const assertRequests = await openViewer(page, "long");
