@@ -736,8 +736,7 @@ button:hover {
   color: var(--muted);
 }
 
-.badge,
-.to {
+.badge {
   display: inline-flex;
   align-items: center;
   min-height: 20px;
@@ -745,12 +744,6 @@ button:hover {
   border-radius: 10px;
   padding: 0 7px;
   background: var(--chip-bg);
-}
-
-.to {
-  border-color: transparent;
-  background: none;
-  color: var(--muted);
 }
 
 /* Each kind has its own glyph and border shape next to its name, so color is never the only cue. */
@@ -872,7 +865,7 @@ a.quote {
 }
 
 .quote-from {
-  color: var(--link);
+  color: var(--person, var(--link));
   font-weight: 650;
 }
 
@@ -963,10 +956,6 @@ a.quote {
 .recipients .note {
   margin-top: 4px;
   color: var(--muted);
-}
-
-.recipient-name {
-  font-weight: 650;
 }
 
 .question-replies {

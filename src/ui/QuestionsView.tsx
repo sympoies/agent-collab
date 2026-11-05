@@ -12,6 +12,7 @@ import {
   EmptyState,
   MetaLine,
   ParticipantIdentity,
+  RecipientChip,
   SectionHeader,
   SharedCard,
   StatusChip,
@@ -208,11 +209,9 @@ function Item({
               <MetaLine>
                 <span>{t("chat.to")}</span>
                 {broadcast || targets.length === 0 ? (
-                  <span>{t("chat.everyone")}</span>
+                  <RecipientChip name={null} people={people} />
                 ) : (
-                  targets.map((name) => (
-                    <ParticipantIdentity key={name} name={name} people={people} />
-                  ))
+                  targets.map((name) => <RecipientChip key={name} name={name} people={people} />)
                 )}
               </MetaLine>
             )}

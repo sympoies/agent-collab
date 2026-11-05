@@ -1,10 +1,6 @@
 import { useT } from "../i18n/LocaleProvider";
 import { personSlot, type People } from "./people";
 
-function initial(name: string): string {
-  return name.split("-").filter(Boolean)[0]?.[0]?.toUpperCase() ?? "";
-}
-
 interface IdentityButtonProps {
   /** The person the viewer is; null for Observer. */
   readonly viewer: string | null;
@@ -45,7 +41,7 @@ export function IdentityButton({ viewer, people, open, onToggle, hint }: Identit
         {...(viewer === null ? {} : personSlot(people.slot(viewer)))}
       >
         <span className="avatar" aria-hidden="true">
-          {viewer === null ? "?" : initial(viewer)}
+          {viewer === null ? "?" : people.initials(viewer)}
         </span>
         <span className="identity-name">{name}</span>
       </button>

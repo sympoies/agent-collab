@@ -810,7 +810,7 @@ test("long chat adapts across themes and viewports", async ({ page, context }) =
     "A synthetic question starts this long thread.",
   );
   await expect(page.locator('[data-body="locked"]')).toContainText("cannot decrypt it yet");
-  await expect(page.locator(".to").filter({ hasText: "everyone" }).first()).toBeVisible();
+  await expect(page.locator(".recipient").filter({ hasText: "everyone" }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "#release" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Jump to latest" })).toHaveAttribute(
     "href",
@@ -1397,9 +1397,12 @@ for (const identity of identityCases) {
     await page.getByRole("button", { name: /^Questions/ }).click();
 
     const question = page.locator(".question-item", { hasText: "Open ordering question 1." });
-    const identities = question.locator(".shared-participant");
-    await expect(identities.nth(0)).toHaveCSS("color", identity.alice);
-    await expect(identities.nth(1)).toHaveCSS("color", identity.bob);
+    await expect(question.locator(".shared-participant").first()).toHaveCSS(
+      "color",
+      identity.alice,
+    );
+    // The recipient is a chip in the person's color.
+    await expect(question.locator(".shared-recipient").first()).toHaveCSS("color", identity.bob);
 
     if (identity.viewport.width < 721) {
       await page.getByRole("button", { name: "Back to conversations" }).click();

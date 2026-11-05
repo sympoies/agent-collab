@@ -19,15 +19,6 @@ export const SLOT_NAMES = [
   "color.slate",
 ] as const;
 
-function initials(name: string): string {
-  return name
-    .split("-")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
 export interface ProfilePanelProps {
   /** Everyone who has a color, in default-assignment order. */
   readonly order: readonly string[];
@@ -110,7 +101,7 @@ export function ProfilePanel({
               <li key={`${person}-${String(resets)}`} className="profile-person">
                 <span className="profile-who" {...personSlot(slot)}>
                   <span className="avatar" aria-hidden="true">
-                    {initials(person)}
+                    {people.initials(person)}
                   </span>
                   <span className="sender">{people.label(person)}</span>
                 </span>

@@ -504,6 +504,16 @@ public blobs.
   (slots 1 to 3 are `#f78c6c`, `#addb67`, `#c792ea`); names are not rendered on
   the toolbar surface, where Night Owl `#ef5350` would be below 4.5:1; the
   toolbar uses text buttons, with Refresh leftmost.
+- **Recipients and topics.** Each recipient (`to`, the quoted sender, the Questions "to" line
+  and the receipts list) is a small chip in that person's colour, one per recipient; the viewer's
+  own chip is filled like the "You" badge. "everyone" and a recipient who is not on the roster are
+  neutral chips (dashed outline, italic, muted) with no person colour and never the viewer's
+  emphasis. The topic chip is one neutral outline for every topic (person colours are the only
+  per-entity colours; red, orange and green stay for state). It shows where messages of several
+  topics mix (All, Questions, Files, the topic list) and is left out inside a single topic. The
+  avatar letters come from the display name set in the profile panel (the first letters of its
+  first two words, or its first character), else from the participant name; the colour follows
+  the participant name.
 - **Header.** Sender, recipients (`to`), topic chip, time, and a type badge
   (`question`, `answer`, `info`, `decision-needed`, `ack`). `needs` shows as a
   highlighted line unless it is `none`. `due` shows as a date chip, marked
