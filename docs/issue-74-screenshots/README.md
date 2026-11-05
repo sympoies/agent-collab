@@ -8,7 +8,7 @@ The screenshots use the repository's synthetic design-review fixture. Reproduce 
 browser validation with:
 
 ```sh
-PLAYWRIGHT_PORT=51894 PLAYWRIGHT_SCREENSHOT_DIR=/tmp/issue74-final-screens pnpm test:browser
+PLAYWRIGHT_PORT=51902 PLAYWRIGHT_SCREENSHOT_DIR=/tmp/issue74-rebased-screens pnpm test:browser
 ```
 
 The browser suite uses Chromium for every test and WebKit for `@csp` cases, including all 12

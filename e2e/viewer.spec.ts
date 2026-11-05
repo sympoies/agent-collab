@@ -1527,10 +1527,7 @@ test("Questions cards prioritize overdue and waiting items, then stay oldest-fir
   await expect
     .poll(() => pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
     .toBeLessThanOrEqual(2);
-  await expect(page.getByRole("link", { name: "Jump to latest" })).toHaveAttribute(
-    "href",
-    "#latest-message",
-  );
+  await expect(page.getByRole("link", { name: "Jump to latest" })).toHaveCount(0);
 
   await answeredHeaders.nth(0).click();
   await expect(answeredHeaders.nth(0)).toHaveAttribute("aria-expanded", "true");

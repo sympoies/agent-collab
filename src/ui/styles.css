@@ -1443,7 +1443,7 @@ span.chip {
     flex: 1;
     min-width: 0;
     margin: 0;
-    font-size: 1.05rem;
+    font-size: var(--font-heading);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
