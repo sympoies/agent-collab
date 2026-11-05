@@ -387,15 +387,63 @@ button:hover {
   border-radius: 16px;
 }
 
-.topics-pane h2 {
-  margin: 0 0 10px;
-  font-size: var(--font-heading);
-}
-
 .topics {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Views first, then a sub-heading over the topic entries. */
+.topics .topics-heading {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: var(--font-small);
+  font-weight: 650;
+}
+
+/* The Questions node: a chevron shows whether its filters are listed below it. */
+.topics .tree-node::before {
+  flex: none;
+  color: var(--muted);
+  content: "\25b8";
+  content: "\25b8" / "";
+}
+
+.topics .tree-node[aria-expanded="true"]::before {
+  content: "\25be";
+  content: "\25be" / "";
+}
+
+.questions-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 14px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border-soft);
+}
+
+.questions-tree .tree-child {
+  margin-left: 12px;
+  width: calc(100% - 12px);
+}
+
+.topics .tree-name {
+  min-width: 0;
+  color: var(--person, inherit);
+  overflow-wrap: anywhere;
+}
+
+.question-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--secondary);
 }
 
 .topics button {
@@ -1370,10 +1418,6 @@ span.chip {
 
   .jump-to-latest[data-mobile-view="topics"] {
     display: none;
-  }
-
-  .topics-pane h2 {
-    margin-bottom: 6px;
   }
 
   .topics {

@@ -392,6 +392,9 @@ Slice V3, part 1 (design 6.3 and 6.4), without UI:
 lists its topics from a few requests and reads messages only for the view that needs them
 (`TopicList`, `src/ui/TopicList.tsx`):
 
+- The list has no header of its own: the views (All, Questions, Files) come first, then a "Topics"
+  sub-heading over the topic entries (in every layout). Questions is an expandable node (see the
+  Questions view in section 5).
 - The fixed entries come first, in this order: All, Questions, Files; then the open topics, most
   recently active first and by name for equal or unknown activity (`sortTopicSummaries`), then a
   collapsed "Closed (n)" group. A row shows the topic's title, or its name.
@@ -555,6 +558,20 @@ public blobs.
   text, needs/due, recipients and answers. The per-question disclosure choice
   stays in the browser when storage is available. Choosing a question opens its
   topic at that message.
+
+  The Questions row is a tree node. Pressing it opens the page with every question (open,
+  concluded and answered, as above) and expands its children; pressing it again while that page
+  is open collapses them (`aria-expanded`). The children are filters of the page: "Open" (the
+  count of open questions), under it one row per person who has not answered an open question
+  (a question addressed to several people is open for each recipient who has not answered; a
+  named recipient the roster does not know is listed by its raw name), and "Answered" (answered
+  and concluded questions). Choosing a child shows the page filtered to it, with a line that
+  names the filter and a "Show all questions" button; pressing the Questions row also shows every
+  question again. The expansion and the filter are kept with the other view state, per source
+  (`agent-collab-viewer.view:<source key>`, only where the view is remembered: a hosted snapshot
+  and a local folder, not the demos or GitHub); a saved person who no longer owes an answer shows
+  the unfiltered page without an error. On a phone the tree sits inside the topic-list screen and
+  choosing a node opens the page as any other entry does.
 - **Refs and attachments.** Each `refs` entry becomes a chip under the body.
   A safe `topics/` path (repository-relative segments only; no `.`, `..`,
   empty segments, backslashes, `%` escapes or control characters) is a file

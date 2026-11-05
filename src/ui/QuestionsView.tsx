@@ -321,7 +321,10 @@ export function QuestionsView({
   rosterKnown,
   expansionChoices,
   onExpansionChange,
+  filter = null,
 }: {
+  /** The filter the list applied, with its description and the way back to every question. */
+  filter?: { readonly label: string; readonly onClear: () => void } | null;
   groups: QuestionGroups;
   people: People;
   now: Date;
@@ -333,9 +336,19 @@ export function QuestionsView({
   const t = useT();
   const total =
     groups.open.length + groups.concluded.length + groups.answered.length + groups.unknown.length;
+  const banner =
+    filter === null ? null : (
+      <div className="question-filter" role="status">
+        <span>{t("questions.filterShowing", { filter: filter.label })}</span>
+        <button type="button" onClick={filter.onClear}>
+          {t("questions.filterClear")}
+        </button>
+      </div>
+    );
   if (total === 0) {
     return (
       <>
+        {banner}
         <EmptyState>{t("questions.empty")}</EmptyState>
         <div id="latest-message" className="latest-anchor" aria-hidden="true" />
       </>
@@ -359,6 +372,7 @@ export function QuestionsView({
   );
   return (
     <div className="questions">
+      {banner}
       {renderGroup(t("questions.open"), groups.open)}
       {renderGroup(t("questions.concluded"), groups.concluded)}
       {renderGroup(t("questions.answered"), groups.answered)}
