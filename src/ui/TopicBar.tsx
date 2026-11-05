@@ -3,6 +3,7 @@ import type { ReactNode, Ref } from "react";
 import { useT } from "../i18n/LocaleProvider";
 
 interface TopicBarProps {
+  readonly className: string | undefined;
   readonly heading: ReactNode;
   readonly headingClass: string | undefined;
   readonly headingRef: Ref<HTMLHeadingElement>;
@@ -12,10 +13,17 @@ interface TopicBarProps {
 }
 
 /** The back control, the name and the options of the open view; it stays on top on a phone. */
-export function TopicBar({ heading, headingClass, headingRef, onBack, menu }: TopicBarProps) {
+export function TopicBar({
+  className,
+  heading,
+  headingClass,
+  headingRef,
+  onBack,
+  menu,
+}: TopicBarProps) {
   const t = useT();
   return (
-    <div className="topic-bar">
+    <div className={`topic-bar${className === undefined ? "" : ` ${className}`}`}>
       <button
         type="button"
         className="back-to-topics"

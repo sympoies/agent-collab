@@ -993,7 +993,16 @@ export function App({
               ref={setMessagePane}
             >
               <TopicBar
-                headingClass={topicLayout && topic !== null ? "topic-heading" : undefined}
+                className={
+                  view === "questions" || view === "files" ? "content-column-bar" : undefined
+                }
+                headingClass={
+                  view === "questions" || view === "files"
+                    ? "content-column-heading"
+                    : topicLayout && topic !== null
+                      ? "topic-heading"
+                      : undefined
+                }
                 headingRef={conversationHeading}
                 onBack={() => {
                   setMobileConversation(false);

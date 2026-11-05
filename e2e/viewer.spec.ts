@@ -1606,7 +1606,7 @@ test("question cards expand and collapse with Enter and Space @csp", async ({ pa
   assertRequests();
 });
 
-test("Questions ordering prioritizes overdue items then oldest-first @csp", async ({ page }) => {
+test("Questions ordering is oldest-first within the overdue group @csp", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-12-15T12:00:00.000Z"));
   const assertRequests = await openViewer(page, "questions-order");
   await page.getByRole("button", { name: /^Questions/ }).click();
@@ -1712,7 +1712,7 @@ for (const theme of ["light", "dark"] as const) {
       page,
       browserName,
     }) => {
-      await page.clock.setFixedTime(new Date("2026-10-20T12:00:00"));
+      await page.clock.setFixedTime(new Date("2026-10-20T12:00:00.000Z"));
       await page.emulateMedia({ colorScheme: theme });
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       const assertRequests = await openViewer(page, "design-review");
@@ -1731,7 +1731,12 @@ for (const theme of ["light", "dark"] as const) {
         pane.scrollTo({ top: 0, behavior: "instant" });
       });
       const questionBounds = await page.locator(".question-item").first().boundingBox();
+      const questionHeadingBounds = await page.locator("#conversation-heading").boundingBox();
       expect(questionBounds).not.toBeNull();
+      expect(questionHeadingBounds).not.toBeNull();
+      if (questionBounds !== null && questionHeadingBounds !== null) {
+        expect(Math.abs(questionHeadingBounds.x - questionBounds.x)).toBeLessThanOrEqual(1);
+      }
       await saveScreenshot(page, `${stem}-questions.png`);
 
       if (width === 390) {
@@ -1756,13 +1761,18 @@ for (const theme of ["light", "dark"] as const) {
         pane.scrollTo({ top: 0, behavior: "instant" });
       });
       const fileBounds = await page.locator(".file-item").first().boundingBox();
+      const fileHeadingBounds = await page.locator("#conversation-heading").boundingBox();
       const scopeBounds = await page.locator(".file-scope").boundingBox();
       expect(fileBounds).not.toBeNull();
+      expect(fileHeadingBounds).not.toBeNull();
       expect(scopeBounds).not.toBeNull();
       if (questionBounds !== null && fileBounds !== null && scopeBounds !== null) {
         expect(Math.abs(fileBounds.x - questionBounds.x)).toBeLessThanOrEqual(1);
         expect(Math.abs(fileBounds.width - questionBounds.width)).toBeLessThanOrEqual(1);
         expect(Math.abs(scopeBounds.x - fileBounds.x)).toBeLessThanOrEqual(1);
+      }
+      if (fileHeadingBounds !== null && fileBounds !== null) {
+        expect(Math.abs(fileHeadingBounds.x - fileBounds.x)).toBeLessThanOrEqual(1);
       }
       const fileFontSize = await page
         .locator(".file-excerpt")
