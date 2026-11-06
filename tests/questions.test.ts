@@ -331,16 +331,24 @@ describe("deriveQuestionStates", () => {
     });
 
     it("is unknown when an unloaded message is newer than the question", () => {
-      expect(state({ api: idAt(7) })).toMatchObject({ state: "unknown", progress: null });
+      expect(state({ api: idAt(7) })).toMatchObject({
+        state: "unknown",
+        progress: null,
+        conclusion: null,
+      });
     });
 
     it("is unknown when an unloaded message is from the same minute as the question", () => {
-      expect(state({ api: idAt(5) })).toMatchObject({ state: "unknown", progress: null });
+      expect(state({ api: idAt(5) })).toMatchObject({
+        state: "unknown",
+        progress: null,
+        conclusion: null,
+      });
     });
 
     it("ignores unloaded messages of another topic and stays unknown when topics are unknown", () => {
       expect(state({ ops: idAt(9) })).toMatchObject({ state: "answered" });
-      expect(state(null)).toMatchObject({ state: "unknown", progress: null });
+      expect(state(null)).toMatchObject({ state: "unknown", progress: null, conclusion: null });
     });
   });
 

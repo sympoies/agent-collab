@@ -183,6 +183,73 @@ describe("Loader.open", () => {
     ).toMatchObject({ state: "unknown", progress: null });
   });
 
+  it("keeps the topics unknown when an unloaded file's topic cannot be determined", async () => {
+    const questionId = "2026-10-01T0902-alice-agent-api-01";
+    // A sender who is not in the roster: the topic of this older, still unloaded file is unknown.
+    const strangerId = "2026-10-01T0800-zed-agent-api-01";
+    const files = {
+      ...repo([], `${MARKER}participants: alice-agent,bob-agent\n`),
+      [`inbox/2026-10/${strangerId}.md`]: messageText(strangerId, "zed-agent", "api", {
+        to: "",
+        type: "info",
+      }),
+      [`inbox/2026-10/${questionId}.md`]: messageText(questionId, "alice-agent", "api", {
+        to: "",
+        type: "question",
+      }),
+    };
+    const loader = new Loader(new FixtureSource(files), { pageSize: 1 });
+    await loader.open();
+    const snapshot = loader.getSnapshot();
+    expect(snapshot.incompleteTopics).toBeNull();
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+        incompleteTopics: snapshot.incompleteTopics,
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null });
+  });
+
+  it("reports the newest of the unloaded and the failed files of a topic", async () => {
+    const olderA = "2026-10-01T0800-alice-agent-api-01";
+    const olderB = "2026-10-01T0801-alice-agent-api-01";
+    const questionId = "2026-10-01T0900-alice-agent-api-01";
+    const answerId = "2026-10-01T0905-bob-agent-api-01";
+    const answerPath = `inbox/2026-10/${answerId}.md`;
+    const source = new FixtureSource({
+      ...repo([], `${MARKER}participants: alice-agent,bob-agent\n`),
+      [`inbox/2026-10/${olderA}.md`]: messageText(olderA, "alice-agent", "api", { type: "info" }),
+      [`inbox/2026-10/${olderB}.md`]: messageText(olderB, "alice-agent", "api", { type: "info" }),
+      [`inbox/2026-10/${questionId}.md`]: messageText(questionId, "alice-agent", "api", {
+        to: "bob-agent",
+        type: "question",
+      }),
+      [answerPath]: messageText(answerId, "bob-agent", "api", {
+        to: "alice-agent",
+        type: "answer",
+        reply_to: questionId,
+      }),
+    });
+    source.failReads([answerPath]);
+    // The first page holds the newest two files: the failed answer and the question. The two
+    // older files stay unloaded, but the failed one is the newest in doubt.
+    const loader = await opened(source, 2);
+    const snapshot = loader.getSnapshot();
+    expect(snapshot.incompleteTopics).toEqual({ api: answerId });
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+        incompleteTopics: snapshot.incompleteTopics,
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null });
+  });
+
   it("orders the first page oldest to newest across flat and monthly files", async () => {
     const source = new FixtureSource(
       repo([monthly("2026-10", 2, 1), flat("2026-10", 1, 1), monthly("2026-09", 30, 1)]),

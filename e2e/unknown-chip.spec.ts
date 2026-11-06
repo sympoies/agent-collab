@@ -85,7 +85,10 @@ for (const width of [390, 1280]) {
   test.describe(`Questions with more history than the first load, ${String(width)} px @csp`, () => {
     const expectKnown = async (page: Page) => {
       await expect(page.locator(".question-item")).toHaveCount(2);
-      await expect(page.getByRole("region", { name: /Not yet known/ })).toHaveCount(0);
+      // The group of questions whose state cannot be derived yet must not appear.
+      await expect(
+        page.getByRole("region", { name: en["questions.unknown"], exact: true }),
+      ).toHaveCount(0);
       const open = page.getByRole("region", { name: en["questions.open"], exact: true });
       await expect(open.locator(".question-item")).toHaveCount(1);
       await expect(open).toContainText("The open question.");
@@ -103,6 +106,11 @@ for (const width of [390, 1280]) {
       // Load the older messages in the chat: nothing about the questions changes.
       await goTo(page, width, /^All/);
       await expect(page.locator(".message").first()).toBeVisible();
+      // The receipts of the open question (from the same state) are not "unknown" either: the
+      // question is open and its recipient has not answered.
+      const receipts = page.locator(`#msg-${OPEN_Q} .receipts`);
+      await expect(receipts.locator(".question-progress")).toHaveAttribute("data-state", "open");
+      await expect(receipts.locator("li[data-state='waiting']")).toHaveCount(1);
       await page.getByRole("button", { name: en["nav.loadOlder"] }).first().click();
       await expect(page.getByText("History 0.")).toBeVisible();
       await goTo(page, width, /^Questions/);
