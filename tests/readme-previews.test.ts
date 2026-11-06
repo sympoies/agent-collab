@@ -46,6 +46,11 @@ describe("README UI previews", () => {
     const caption = readme.match(/\*UI preview[^*]*\*/)?.[0] ?? "";
     expect(caption).toContain("Night Owl");
     expect(caption).toContain("Paper");
+    expect(caption).toContain("synthetic data");
+    expect(readme).toMatch(/fictional data; run `pnpm previews` to regenerate them\./);
+    expect(readme).toMatch(
+      /Run `pnpm previews` to build the production viewer and regenerate the two README\s+screenshots from the bundled offline demo\./,
+    );
     expect(widths.reduce((total, width) => total + width, 0)).toBeLessThanOrEqual(98);
     expect(Math.abs((heights[0] as number) - (heights[1] as number))).toBeLessThan(0.0001);
   });

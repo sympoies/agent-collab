@@ -64,6 +64,43 @@ async function scrollConversationToLatest(page: Page, checkButtonBehavior = fals
   await expect(jumpButton).toHaveCount(1);
 }
 
+async function positionDesktopCaptureAtFirstCompleteGroup(page: Page): Promise<void> {
+  const main = page.getByRole("main");
+  const target = await main.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const headers = [...element.querySelectorAll<HTMLElement>(".group-header")];
+    const header = headers.find((candidate) => {
+      const bounds = candidate.getBoundingClientRect();
+      return bounds.bottom > rect.top && bounds.top < rect.bottom;
+    });
+    if (header === undefined) {
+      throw new Error("The desktop capture needs a partially visible message group header.");
+    }
+    element.style.scrollBehavior = "auto";
+    const headerTop = header.getBoundingClientRect().top;
+    const mainTop = rect.top;
+    const paddingTop = Number.parseFloat(getComputedStyle(element).paddingTop);
+    const nextTop = Math.max(0, Math.round(element.scrollTop + headerTop - mainTop - paddingTop));
+    element.scrollTop = nextTop;
+    return nextTop;
+  });
+  await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBe(target);
+  await expect
+    .poll(() =>
+      main.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const header = [...element.querySelectorAll<HTMLElement>(".group-header")].find(
+          (candidate) => candidate.getBoundingClientRect().bottom > rect.top,
+        );
+        if (header === undefined) return false;
+        const bounds = header.getBoundingClientRect();
+        const paddingTop = Number.parseFloat(getComputedStyle(element).paddingTop);
+        return bounds.top >= rect.top + paddingTop - 1 && bounds.bottom <= rect.bottom;
+      }),
+    )
+    .toBe(true);
+}
+
 async function hideJumpButtonForCapture(page: Page): Promise<void> {
   const jumpButton = page.locator(".jump-to-latest");
   await expect(jumpButton).toHaveCount(1);
@@ -105,6 +142,7 @@ test("capture the fictional desktop and phone README previews", async ({ page })
   await expect(overdueQuestion.locator(".due.shared-overdue")).toBeVisible();
   await expect(overdueQuestion.locator(".shared-recipient").first()).toBeVisible();
   await scrollConversationToLatest(page, true);
+  await positionDesktopCaptureAtFirstCompleteGroup(page);
   await expect(overdueQuestion).toBeInViewport({ ratio: 1 });
   await expect(overdueQuestion.locator(".due.shared-overdue")).toBeInViewport({ ratio: 1 });
   await expect(overdueQuestion.locator(".shared-recipient").first()).toBeInViewport({ ratio: 1 });
