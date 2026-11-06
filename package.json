@@ -20,6 +20,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:browser": "node scripts/test-browser.mjs",
+    "previews": "node scripts/create-readme-previews.mjs",
     "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:base-build",
     "verify:base-build": "node scripts/verify-base-build.js"
   },
