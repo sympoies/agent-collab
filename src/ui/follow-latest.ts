@@ -156,6 +156,16 @@ export function useFollowLatest(
       if (content !== null) current.observer?.observe(content);
       current.observed = content;
     }
+    // Questions and Files are lists to scan: they open at the top and never follow the bottom.
+    if (!viewKey.startsWith("chat:")) {
+      if (!current.landed) {
+        current.landed = true;
+        current.following = false;
+        current.held = false;
+        scrollTo(element, 0);
+      }
+      return;
+    }
     const { first, last } = messageIds(rows);
     if (last === null) return;
     if (!current.landed) {
@@ -163,7 +173,13 @@ export function useFollowLatest(
       const linked =
         current.firstLanding && document.getElementById(window.location.hash.slice(1)) !== null;
       current.firstLanding = false;
-      if (pendingJump.current === null && !linked) scrollTo(element, element.scrollHeight);
+      if (pendingJump.current === null && !linked) {
+        scrollTo(element, element.scrollHeight);
+        // Landing at the bottom resumes following, also when nothing moved (a short chat, so no
+        // scroll event) after a list page that stopped it.
+        current.following = true;
+        current.held = false;
+      }
     } else if (first !== current.first || last !== current.last) {
       if (last !== current.last && current.following) {
         scrollTo(element, element.scrollHeight);

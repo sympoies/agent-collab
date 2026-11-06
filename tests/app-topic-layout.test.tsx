@@ -194,8 +194,8 @@ describe("topic list screen", () => {
       expect(questionSource.reads).not.toContain(`topics/ops/inbox/2026-10/${opsId}.md`);
       await click(entry("Questions"));
       expect([...host.querySelectorAll(".question-text")].map((node) => node.textContent)).toEqual([
-        "API question",
         "Ops question",
+        "API question",
       ]);
       expect(questionSource.reads).toContain(`topics/api/inbox/2026-10/${apiId}.md`);
       expect(questionSource.reads).toContain(`topics/ops/inbox/2026-10/${opsId}.md`);
@@ -266,8 +266,8 @@ describe("topic list screen", () => {
 
     await click(action("Load older"));
     expect([...host.querySelectorAll(".file-name")].map((node) => node.textContent)).toEqual([
-      "api-old.txt",
       "api-new.txt",
+      "api-old.txt",
     ]);
   });
 

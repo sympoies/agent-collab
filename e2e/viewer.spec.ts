@@ -1535,7 +1535,7 @@ test("the Questions view shows the replies, the acknowledgement line and the rem
   assertRequests();
 });
 
-test("Questions cards prioritize overdue and waiting items, then stay oldest-first @csp", async ({
+test("Questions cards prioritize overdue and waiting items, then run newest first @csp", async ({
   page,
 }) => {
   await page.clock.setFixedTime(new Date("2026-10-20T12:00:00"));
@@ -1549,8 +1549,8 @@ test("Questions cards prioritize overdue and waiting items, then stay oldest-fir
   await expect(openCards).toHaveCount(4);
   await expect(openHeaders).toHaveCount(4);
   await expect(openHeaders.nth(0)).toContainText("Waiting ordering question 4.");
-  await expect(openHeaders.nth(1)).toContainText("Open ordering question 1.");
-  await expect(openHeaders.nth(2)).toContainText("Open ordering question 2.");
+  await expect(openHeaders.nth(1)).toContainText("Open ordering question 2.");
+  await expect(openHeaders.nth(2)).toContainText("Open ordering question 1.");
   await expect(openHeaders.nth(3)).toContainText("Open ordering question 3.");
   await expect(openHeaders.nth(0)).toContainText("Overdue");
   await expect(openHeaders.nth(1)).toContainText("Overdue");
@@ -1572,16 +1572,17 @@ test("Questions cards prioritize overdue and waiting items, then stay oldest-fir
   const answeredCards = answered.locator(".question-item");
   const answeredHeaders = answered.locator(".question-toggle");
   await expect(answeredCards).toHaveCount(3);
-  await expect(answeredHeaders.nth(0)).toContainText("Answered ordering question 1.");
+  await expect(answeredHeaders.nth(0)).toContainText("Answered ordering question 3.");
   await expect(answeredHeaders.nth(1)).toContainText("Answered ordering question 2.");
-  await expect(answeredHeaders.nth(2)).toContainText("Answered ordering question 3.");
+  await expect(answeredHeaders.nth(2)).toContainText("Answered ordering question 1.");
   await expect(answeredHeaders.nth(0)).toHaveAttribute("aria-expanded", "false");
   await expect(answeredCards.nth(0).locator(".question-body")).toBeHidden();
 
   const pane = page.locator("main.conversation");
   await expect
-    .poll(() => pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
-    .toBeLessThanOrEqual(2);
+    // A list page opens at the top.
+    .poll(() => pane.evaluate((node) => node.scrollTop))
+    .toBe(0);
   await expect(page.getByRole("link", { name: "Jump to latest" })).toHaveCount(0);
 
   await answeredHeaders.nth(0).click();
@@ -1622,7 +1623,7 @@ test("question cards expand and collapse with Enter and Space @csp", async ({ pa
   assertRequests();
 });
 
-test("Questions ordering is oldest-first within the overdue group @csp", async ({ page }) => {
+test("Questions ordering is newest first within the overdue group @csp", async ({ page }) => {
   await page.clock.setFixedTime(new Date("2026-12-15T12:00:00.000Z"));
   const assertRequests = await openViewer(page, "questions-order");
   await page.getByRole("button", { name: /^Questions/ }).click();
@@ -1630,10 +1631,10 @@ test("Questions ordering is oldest-first within the overdue group @csp", async (
   const headers = open.locator(".question-toggle");
   await expect(headers).toHaveCount(4);
   await expect(headers.nth(0)).toContainText("Waiting ordering question 4.");
-  // Question 3's December 1 due date has passed; within the overdue group it is oldest.
-  await expect(headers.nth(1)).toContainText("Open ordering question 3.");
+  // Question 3's December 1 due date has passed; within the overdue group the newest leads.
+  await expect(headers.nth(1)).toContainText("Open ordering question 2.");
   await expect(headers.nth(2)).toContainText("Open ordering question 1.");
-  await expect(headers.nth(3)).toContainText("Open ordering question 2.");
+  await expect(headers.nth(3)).toContainText("Open ordering question 3.");
   await expect(headers.nth(1)).toContainText("Overdue");
   await expect(headers.nth(2)).toContainText("Overdue");
   await expect(headers.nth(3)).toContainText("Overdue");
@@ -1664,8 +1665,9 @@ for (const code of ["en", "ja", "zh-TW"] as const) {
     await expect(page.locator(".file-item")).toHaveCount(6);
     const pane = page.locator("main.conversation");
     await expect
-      .poll(() => pane.evaluate((node) => node.scrollHeight - node.clientHeight - node.scrollTop))
-      .toBeLessThanOrEqual(2);
+      // A list page opens at the top.
+      .poll(() => pane.evaluate((node) => node.scrollTop))
+      .toBe(0);
     const releaseRows = page.locator(".file-item", {
       hasText: "Release notes shared with the operations group.",
     });
@@ -1678,25 +1680,26 @@ for (const code of ["en", "ja", "zh-TW"] as const) {
     await expect(releaseLinkRow.locator(".file-excerpt")).toContainText(
       "Release notes shared with the operations group.",
     );
-    await expect(page.locator(".file-item").first().locator(".file-excerpt")).toContainText(
+    await expect(page.locator(".file-item").last().locator(".file-excerpt")).toContainText(
       "Older API reference shared for review.",
     );
-    await page.locator(".file-item").first().locator(".file-full-message summary").click();
-    await expect(page.locator(".file-item").first().locator(".file-full-message p")).toContainText(
+    await page.locator(".file-item").last().locator(".file-full-message summary").click();
+    await expect(page.locator(".file-item").last().locator(".file-full-message p")).toContainText(
       "It explains the original field names.",
     );
-    await expect(page.locator(".file-item").first().locator(".file-jump")).toHaveAttribute(
+    await expect(page.locator(".file-item").last().locator(".file-jump")).toHaveAttribute(
       "href",
       /#msg-2026-10-07T0900-alice-agent-api-01/,
     );
     const times = await page.locator(".file-item time").allTextContents();
+    // Newest first.
     expect(times).toEqual([
-      "2026-10-07 09:00",
-      "2026-10-07 09:00",
-      "2026-10-08 09:00",
-      "2026-10-08 09:00",
       "2026-10-09 09:00",
       "2026-10-09 09:00",
+      "2026-10-08 09:00",
+      "2026-10-08 09:00",
+      "2026-10-07 09:00",
+      "2026-10-07 09:00",
     ]);
     await page
       .getByRole("button", { name: messages["files.topicScope"].replace("{topic}", "api") })

@@ -285,7 +285,8 @@ function Group({
     if (left.waitingForViewer !== right.waitingForViewer) {
       return left.waitingForViewer ? -1 : 1;
     }
-    return left.state.question.id.localeCompare(right.state.question.id);
+    // Newest first: ids start with their timestamp.
+    return right.state.question.id.localeCompare(left.state.question.id);
   });
   return (
     <section className="question-group" aria-label={title}>

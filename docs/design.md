@@ -551,8 +551,9 @@ public blobs.
   the same on phone and desktop.
 - **Questions view.** The conversation list has a "Questions" entry that lists
   every question grouped as open, concluded and answered (plus unknown when the
-  roster or a topic is incomplete). Groups keep open questions first; overdue
-  questions lead that group and entries run oldest to newest. Cards expand by
+  roster or a topic is incomplete). Groups keep open questions first; inside a
+  group overdue questions lead, then those waiting for the viewer, and every tier
+  (and every filter of the tree) runs newest first. Cards expand by
   default except answered cards. Their headers show the question's first line,
   participant, topic, time, status and answer count; expanded cards show the full
   text, needs/due, recipients and answers. The per-question disclosure choice
@@ -572,6 +573,13 @@ public blobs.
   and a local folder, not the demos or GitHub); a saved person who no longer owes an answer shows
   the unfiltered page without an error. On a phone the tree sits inside the topic-list screen and
   choosing a node opens the page as any other entry does.
+- **List pages.** Questions and Files are lists to scan, not conversations: both show
+  the newest item first (Files: the newest reference of each file or link; "Load older"
+  adds older files below) and open scrolled to the top, and so does a new Questions
+  filter. The chat views keep their landing at the latest message and "Jump to latest".
+  Switching between a list page and a chat resets the pane, so no scroll position of one
+  carries over to the other (`useFollowLatest`: a `chat:` key lands at the bottom, any other
+  key at the top).
 - **Refs and attachments.** Each `refs` entry becomes a chip under the body.
   A safe `topics/` path (repository-relative segments only; no `.`, `..`,
   empty segments, backslashes, `%` escapes or control characters) is a file
