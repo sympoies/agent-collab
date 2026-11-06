@@ -131,3 +131,78 @@ for (const scheme of ["light", "dark"] as const) {
     });
   }
 }
+
+// A new Questions filter is a new list: it lands at the top, like opening the page does.
+for (const width of [390, 1280]) {
+  test(`a new Questions filter lands at the top, ${String(width)} px @csp`, async ({ page }) => {
+    await open(page, width, "light");
+    await goTo(page, width, /^Questions/);
+    await expect(page.locator(".question-text").first()).toBeVisible();
+    // Scroll down the page, then choose a node of the tree.
+    await page.locator(".conversation").evaluate((node) => {
+      node.scrollTo({ top: 400, behavior: "instant" });
+    });
+    expect((await scroll(page)).top).toBeGreaterThan(100);
+    if (width < 721) await page.getByRole("button", { name: en["nav.back"] }).click();
+    await page.locator(".questions-tree button", { hasText: /^Open/ }).click();
+    await expect.poll(async () => (await scroll(page)).top).toBe(0);
+  });
+}
+
+// Landing at the top of a list page must not stop the chat that follows from following the
+// newest messages: a short chat that later overflows stays at its bottom.
+const opsId = (n: number) => `2026-11-04T10${String(n).padStart(2, "0")}-alice-agent-ops-01`;
+const withOps = (count: number, revision: string) => {
+  const base = JSON.parse(snapshot) as {
+    files: { path: string; text: string }[];
+    revision: string;
+  };
+  return JSON.stringify({
+    ...base,
+    revision,
+    files: [
+      ...base.files,
+      ...Array.from({ length: count }, (_, n) => ({
+        path: `inbox/2026-11/${opsId(n)}.md`,
+        text: messageText(
+          opsId(n),
+          "alice-agent",
+          "ops",
+          { type: "info" },
+          `Ops note ${String(n).padStart(2, "0")}.\n\nA second paragraph so each message takes some height.`,
+        ),
+      })),
+    ],
+  });
+};
+
+for (const width of [390, 1280]) {
+  test(`a chat opened after a list page keeps following new messages, ${String(width)} px @csp`, async ({
+    page,
+  }) => {
+    let body = withOps(1, "r1");
+    await page.route("**/hosted-snapshot.json", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body }),
+    );
+    await page.clock.install();
+    await page.setViewportSize({ width, height: 700 });
+    await page.goto("/");
+    await expect(page.locator(".topics")).toBeVisible();
+    await goTo(page, width, /^Questions/);
+    await expect(page.locator(".question-text").first()).toBeVisible();
+    // A short chat: it fits the pane, so landing at its bottom moves nothing.
+    await goTo(page, width, /^#ops/);
+    await expect(page.locator(".message")).toHaveCount(1);
+    expect((await scroll(page)).max).toBeLessThanOrEqual(0);
+    // Messages arrive until the chat overflows the pane: its bottom stays in view.
+    body = withOps(30, "r2");
+    await page.clock.fastForward(60_000);
+    await expect(page.locator(".message")).toHaveCount(30);
+    await expect
+      .poll(async () => {
+        const state = await scroll(page);
+        return state.max > 200 && state.max - state.top <= 2;
+      })
+      .toBe(true);
+  });
+}

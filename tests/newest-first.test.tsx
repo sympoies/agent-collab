@@ -20,23 +20,21 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const id = (minute: number, from = "alice-agent") =>
   `2026-10-01T09${String(minute).padStart(2, "0")}-${from}-api-01`;
 const files: Record<string, string> = {
-  ".agent-collab": "collab-protocol: 1\nparticipants: alice-agent, bob-agent\n",
+  ".agent-collab": "collab-protocol: 1\nparticipants: alice-agent, bob-agent, carol-agent\n",
 };
 const question = (minute: number, fields: Record<string, string> = {}) => {
   files[`inbox/${id(minute)}.md`] = messageText(id(minute), "alice-agent", "api", {
     type: "question",
-    to: "bob-agent",
+    to: "carol-agent",
     needs: "answer",
     ...fields,
   });
 };
-// Open: 0, 1, 2 (2 is overdue), 3 (to the viewer, bob); answered: 10, 11.
-question(0);
-question(1);
-question(2, { due: "2020-01-01" });
-files[`inbox/${id(3, "carol-agent")}.md`] = messageText(
-  id(3, "carol-agent"),
-  "alice-agent",
+// The viewer is bob. Open: 00 is OLD and waits for bob; 01 and 02 are newer but not for bob;
+// 03 is the newest and overdue. Answered (bob replied): 10 and 11.
+files[`inbox/${id(0, "carol-agent")}.md`] = messageText(
+  id(0, "carol-agent"),
+  "carol-agent",
   "api",
   {
     type: "question",
@@ -44,8 +42,11 @@ files[`inbox/${id(3, "carol-agent")}.md`] = messageText(
     needs: "answer",
   },
 );
+question(1);
+question(2);
+question(3, { due: "2020-01-01" });
 for (const minute of [10, 11]) {
-  question(minute);
+  question(minute, { to: "bob-agent" });
   const reply = `2026-10-01T09${String(minute + 20)}-bob-agent-api-01`;
   files[`inbox/${reply}.md`] = messageText(reply, "bob-agent", "api", {
     type: "answer",
@@ -111,8 +112,9 @@ describe("Questions newest first", () => {
         button.textContent.startsWith("Questions"),
       ),
     );
-    // Overdue first, then waiting for the viewer (bob), then the rest newest first.
-    expect(order(host, "Open")).toEqual(["02", "03", "01", "00"]);
+    // Overdue first (03), then waiting for the viewer (00, though it is the oldest), then the
+    // rest newest first (02, 01).
+    expect(order(host, "Open")).toEqual(["03", "00", "02", "01"]);
     expect(order(host, "Answered")).toEqual(["11", "10"]);
   });
 
@@ -128,13 +130,14 @@ describe("Questions newest first", () => {
         button.textContent.startsWith("Open"),
       ),
     );
-    expect(order(host, "Open")).toEqual(["02", "03", "01", "00"]);
+    expect(order(host, "Open")).toEqual(["03", "00", "02", "01"]);
     await click(
       [...host.querySelectorAll<HTMLButtonElement>(".questions-tree button")].find((button) =>
-        button.textContent.startsWith("bob-agent"),
+        button.textContent.startsWith("carol-agent"),
       ),
     );
-    expect(order(host, "Open")).toEqual(["02", "03", "01", "00"]);
+    // Carol owes 01, 02 and 03: newest first, overdue 03 leading.
+    expect(order(host, "Open")).toEqual(["03", "02", "01"]);
   });
 });
 
