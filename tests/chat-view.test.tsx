@@ -22,7 +22,7 @@ async function render(): Promise<string> {
   const messages = items.flatMap((item) => (item.kind === "message" ? [item.message] : []));
   const states = deriveQuestionStates(messages, roster, left, {
     rosterKnown: true,
-    incompleteTopics: [],
+    incompleteTopics: {},
   });
   const rows = buildRows(items, {
     receipts: buildReceipts(messages, roster, left, states),

@@ -27,7 +27,11 @@ export interface QuestionDerivationContext {
   /** False while the loader has not read the marker for the current revision. */
   readonly rosterKnown?: boolean;
   /** Topics with pending/unavailable files, or null when their topics are unknown. */
-  readonly incompleteTopics?: readonly string[] | null;
+  /**
+   * The id of the newest unloaded or unavailable message of each topic, or null when that is not
+   * known. A question is unknown only when such a message is not older than the question.
+   */
+  readonly incompleteTopics?: Readonly<Record<string, string>> | null;
 }
 
 function targetFor(
@@ -39,6 +43,15 @@ function targetFor(
   if (requirement === "all") return eligibleCount;
   if (requirement === null) return broadcast ? 1 : eligibleCount;
   return requirement;
+}
+
+/** Ids start with their minute; a message from the same minute may be a reply, so it counts. */
+function mayHaveUnloadedReply(
+  incompleteTopics: Readonly<Record<string, string>> | undefined,
+  question: Message,
+): boolean {
+  const newest = incompleteTopics?.[question.topic];
+  return newest !== undefined && newest.slice(0, 15) >= question.id.slice(0, 15);
 }
 
 function bodyText(message: Message): string {
@@ -74,7 +87,7 @@ export function deriveQuestionStates(
 
   return questions.map((question) => {
     const broadcast = question.to.length === 0;
-    if (incompleteTopics === null || incompleteTopics?.includes(question.topic)) {
+    if (incompleteTopics === null || mayHaveUnloadedReply(incompleteTopics, question)) {
       return unknownState(question);
     }
     const candidates = question.replies === null && !broadcast ? question.to : participants;

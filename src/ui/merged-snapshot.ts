@@ -10,7 +10,7 @@ const EMPTY: LoaderSnapshot = {
   participants: [],
   formerParticipants: [],
   rosterKnown: false,
-  incompleteTopics: [],
+  incompleteTopics: {},
   lastChanged: null,
   lastChangedBy: null,
 };
@@ -70,10 +70,22 @@ export function mergeSnapshots(snapshots: readonly LoaderSnapshot[]): LoaderSnap
     rosterKnown: snapshots.some((s) => s.rosterKnown),
     incompleteTopics: snapshots.some((s) => s.incompleteTopics === null)
       ? null
-      : union((s) => s.incompleteTopics ?? []),
+      : mergeIncomplete(snapshots),
     lastChanged: newest?.lastChanged ?? null,
     lastChangedBy: newest?.lastChangedBy ?? null,
   };
+}
+
+/** The newest unloaded id of each topic across loaders. */
+function mergeIncomplete(snapshots: readonly LoaderSnapshot[]): Record<string, string> {
+  const merged: Record<string, string> = {};
+  for (const snapshot of snapshots) {
+    for (const [topic, id] of Object.entries(snapshot.incompleteTopics ?? {})) {
+      const known = merged[topic];
+      if (known === undefined || id > known) merged[topic] = id;
+    }
+  }
+  return merged;
 }
 
 /** Follows every loader and returns their merged snapshot, which changes only when one does. */

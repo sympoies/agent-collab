@@ -311,21 +311,37 @@ describe("deriveQuestionStates", () => {
     expect(deriveQuestionStates([question], [], [], { rosterKnown: true })).toEqual([]);
   });
 
-  it("marks only questions in incomplete topics as unknown", () => {
-    const question = parsed(1, "alice-agent", "question", { replies: "any" });
-    const answer = parsed(2, "bob-agent", "answer", { reply_to: question.id });
-    expect(
+  // An unloaded message can only change a question's state when it is not older than the
+  // question: replies, acknowledgements, reminders and conclusions come after it.
+  describe("unknown only when a newer message may be unloaded", () => {
+    const question = parsed(5, "alice-agent", "question", { replies: "any" });
+    const answer = parsed(6, "bob-agent", "answer", { reply_to: question.id });
+    const state = (incompleteTopics: Record<string, string> | null) =>
       deriveQuestionStates([question, answer], PARTICIPANTS, [], {
         rosterKnown: true,
-        incompleteTopics: ["api"],
-      })[0],
-    ).toMatchObject({ state: "unknown", progress: null, conclusion: null });
-    expect(
-      deriveQuestionStates([question, answer], PARTICIPANTS, [], {
-        rosterKnown: true,
-        incompleteTopics: ["ops"],
-      })[0],
-    ).toMatchObject({ state: "answered", progress: { answered: 1, target: 1 } });
+        incompleteTopics,
+      })[0];
+    const idAt = (n: number) => parsed(n, "bob-agent", "answer", {}).id;
+
+    it("gives the real state while only older messages are unloaded", () => {
+      expect(state({ api: idAt(4) })).toMatchObject({
+        state: "answered",
+        progress: { answered: 1, target: 1 },
+      });
+    });
+
+    it("is unknown when an unloaded message is newer than the question", () => {
+      expect(state({ api: idAt(7) })).toMatchObject({ state: "unknown", progress: null });
+    });
+
+    it("is unknown when an unloaded message is from the same minute as the question", () => {
+      expect(state({ api: idAt(5) })).toMatchObject({ state: "unknown", progress: null });
+    });
+
+    it("ignores unloaded messages of another topic and stays unknown when topics are unknown", () => {
+      expect(state({ ops: idAt(9) })).toMatchObject({ state: "answered" });
+      expect(state(null)).toMatchObject({ state: "unknown", progress: null });
+    });
   });
 
   it("does not conclude a question from a non-sender info reply", () => {
