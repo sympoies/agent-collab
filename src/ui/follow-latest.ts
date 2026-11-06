@@ -7,7 +7,7 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import type { Row } from "./timeline";
 
 /** How close to the bottom still counts as "at the bottom", in CSS pixels. */
-export const BOTTOM_THRESHOLD = 80;
+const BOTTOM_THRESHOLD = 80;
 
 /** A finished "Jump to date": the requested day, or null for "back to the newest page". */
 export interface DateLanding {

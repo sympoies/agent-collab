@@ -11,7 +11,13 @@ async function blockExternalRequests(page: Page): Promise<string[]> {
   const external: string[] = [];
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
-    if (url.hostname !== "127.0.0.1") {
+    if (url.pathname === "/__readme-preview-capture.css") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/css",
+        body: ".jump-to-latest { display: none !important; }",
+      });
+    } else if (url.hostname !== "127.0.0.1") {
       external.push(url.origin);
       await route.abort();
     } else {
@@ -55,7 +61,17 @@ async function scrollConversationToLatest(page: Page, checkButtonBehavior = fals
     return target;
   });
   await expect.poll(() => main.evaluate((element) => element.scrollTop)).toBe(bottom);
-  await expect(jumpButton).toHaveCount(0);
+  await expect(jumpButton).toHaveCount(1);
+}
+
+async function hideJumpButtonForCapture(page: Page): Promise<void> {
+  const jumpButton = page.locator(".jump-to-latest");
+  await expect(jumpButton).toHaveCount(1);
+  // This is a viewer affordance, not screenshot content; hide it only in the synthetic capture.
+  await page.addStyleTag({
+    url: new URL("/__readme-preview-capture.css", page.url()).toString(),
+  });
+  await expect(jumpButton).toBeHidden();
 }
 
 test("capture the fictional desktop and phone README previews", async ({ page }) => {
@@ -96,6 +112,7 @@ test("capture the fictional desktop and phone README previews", async ({ page })
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });
+  await hideJumpButtonForCapture(page);
 
   const previewDirectory = process.env.README_PREVIEW_DIR;
   if (previewDirectory !== undefined) {
@@ -118,6 +135,7 @@ test("capture the fictional desktop and phone README previews", async ({ page })
   await page.evaluate(() => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });
+  await hideJumpButtonForCapture(page);
 
   if (previewDirectory !== undefined) {
     await page.screenshot({ path: join(previewDirectory, "phone-paper-390.png") });
