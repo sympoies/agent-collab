@@ -39,7 +39,7 @@ function message(
 function receipts(messages: readonly Message[]) {
   const states = deriveQuestionStates(messages, ROSTER, FORMER, {
     rosterKnown: true,
-    incompleteTopics: [],
+    incompleteTopics: {},
   });
   return buildReceipts(messages, ROSTER, FORMER, states);
 }
@@ -142,7 +142,7 @@ describe("groupQuestions", () => {
   ];
   const states = deriveQuestionStates(messages, ROSTER, FORMER, {
     rosterKnown: true,
-    incompleteTopics: [],
+    incompleteTopics: {},
   });
 
   it("groups by open, concluded and answered, newest first", () => {
@@ -157,7 +157,7 @@ describe("groupQuestions", () => {
     const other = message(8, "alice-agent", "question", { replies: "all" });
     const withOther = deriveQuestionStates([...messages, other], ROSTER, FORMER, {
       rosterKnown: true,
-      incompleteTopics: [],
+      incompleteTopics: {},
     });
     const asBob = groupQuestions(withOther, "bob-agent").open;
     // Bob answered the first question already; only the newer one waits for him.
@@ -284,7 +284,7 @@ describe("recipient lists follow the derived question state", () => {
     ];
     const states = deriveQuestionStates(messages, wide, [], {
       rosterKnown: true,
-      incompleteTopics: [],
+      incompleteTopics: {},
     });
     const found = buildReceipts(messages, wide, [], states).get(question.id);
     expect(found?.question?.progress).toEqual({ answered: 2, target: 3 });
@@ -357,7 +357,7 @@ describe("groupQuestions flags", () => {
   ];
   const states = deriveQuestionStates(messages, ROSTER, FORMER, {
     rosterKnown: true,
-    incompleteTopics: [],
+    incompleteTopics: {},
   });
 
   it("flags only open questions the viewer still has to answer", () => {

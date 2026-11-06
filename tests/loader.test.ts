@@ -120,7 +120,7 @@ describe("Loader.open", () => {
     expect(source.reads.filter((path) => path === ".agent-collab")).toHaveLength(1);
   });
 
-  it("reports topics with listed but not yet loaded message files", async () => {
+  it("reports the newest unloaded message of a topic, and an older one leaves the question known", async () => {
     const questionId = "2026-10-01T0902-alice-agent-api-01";
     const answerId = "2026-10-01T0901-bob-agent-api-01";
     const files = {
@@ -138,7 +138,8 @@ describe("Loader.open", () => {
     const loader = new Loader(new FixtureSource(files), { pageSize: 1 });
     await loader.open();
     const snapshot = loader.getSnapshot();
-    expect(snapshot.incompleteTopics).toEqual(["api"]);
+    // The page holds the newest message (the question); the one still unloaded is older.
+    expect(snapshot.incompleteTopics).toEqual({ api: answerId });
     const messages = snapshot.items.flatMap((item) =>
       item.kind === "message" ? [item.message] : [],
     );
@@ -147,10 +148,10 @@ describe("Loader.open", () => {
         rosterKnown: snapshot.rosterKnown,
         incompleteTopics: snapshot.incompleteTopics,
       })[0],
-    ).toMatchObject({ state: "unknown", progress: null });
+    ).toMatchObject({ state: "open" });
   });
 
-  it("marks a question topic incomplete when one of its files is unavailable", async () => {
+  it("keeps a question unknown when a newer file of its topic is unavailable", async () => {
     const questionId = "2026-10-01T0901-alice-agent-api-01";
     const answerId = "2026-10-01T0902-bob-agent-api-01";
     const questionPath = `inbox/2026-10/${questionId}.md`;
@@ -170,7 +171,74 @@ describe("Loader.open", () => {
     source.failReads([answerPath]);
     const loader = await opened(source);
     const snapshot = loader.getSnapshot();
-    expect(snapshot.incompleteTopics).toEqual(["api"]);
+    expect(snapshot.incompleteTopics).toEqual({ api: answerId });
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+        incompleteTopics: snapshot.incompleteTopics,
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null });
+  });
+
+  it("keeps the topics unknown when an unloaded file's topic cannot be determined", async () => {
+    const questionId = "2026-10-01T0902-alice-agent-api-01";
+    // A sender who is not in the roster: the topic of this older, still unloaded file is unknown.
+    const strangerId = "2026-10-01T0800-zed-agent-api-01";
+    const files = {
+      ...repo([], `${MARKER}participants: alice-agent,bob-agent\n`),
+      [`inbox/2026-10/${strangerId}.md`]: messageText(strangerId, "zed-agent", "api", {
+        to: "",
+        type: "info",
+      }),
+      [`inbox/2026-10/${questionId}.md`]: messageText(questionId, "alice-agent", "api", {
+        to: "",
+        type: "question",
+      }),
+    };
+    const loader = new Loader(new FixtureSource(files), { pageSize: 1 });
+    await loader.open();
+    const snapshot = loader.getSnapshot();
+    expect(snapshot.incompleteTopics).toBeNull();
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    expect(
+      deriveQuestionStates(messages, snapshot.participants, snapshot.formerParticipants, {
+        rosterKnown: snapshot.rosterKnown,
+        incompleteTopics: snapshot.incompleteTopics,
+      })[0],
+    ).toMatchObject({ state: "unknown", progress: null });
+  });
+
+  it("reports the newest of the unloaded and the failed files of a topic", async () => {
+    const olderA = "2026-10-01T0800-alice-agent-api-01";
+    const olderB = "2026-10-01T0801-alice-agent-api-01";
+    const questionId = "2026-10-01T0900-alice-agent-api-01";
+    const answerId = "2026-10-01T0905-bob-agent-api-01";
+    const answerPath = `inbox/2026-10/${answerId}.md`;
+    const source = new FixtureSource({
+      ...repo([], `${MARKER}participants: alice-agent,bob-agent\n`),
+      [`inbox/2026-10/${olderA}.md`]: messageText(olderA, "alice-agent", "api", { type: "info" }),
+      [`inbox/2026-10/${olderB}.md`]: messageText(olderB, "alice-agent", "api", { type: "info" }),
+      [`inbox/2026-10/${questionId}.md`]: messageText(questionId, "alice-agent", "api", {
+        to: "bob-agent",
+        type: "question",
+      }),
+      [answerPath]: messageText(answerId, "bob-agent", "api", {
+        to: "alice-agent",
+        type: "answer",
+        reply_to: questionId,
+      }),
+    });
+    source.failReads([answerPath]);
+    // The first page holds the newest two files: the failed answer and the question. The two
+    // older files stay unloaded, but the failed one is the newest in doubt.
+    const loader = await opened(source, 2);
+    const snapshot = loader.getSnapshot();
+    expect(snapshot.incompleteTopics).toEqual({ api: answerId });
     const messages = snapshot.items.flatMap((item) =>
       item.kind === "message" ? [item.message] : [],
     );
@@ -349,7 +417,7 @@ describe("Loader.jumpTo", () => {
     // With the whole history loaded, question states stay known.
     const small = await opened(new FixtureSource(repo([monthly("2026-10", 2, 1)])));
     await small.jumpTo("2026-10-31");
-    expect(small.getSnapshot()).toMatchObject({ jumpedTo: null, incompleteTopics: [] });
+    expect(small.getSnapshot()).toMatchObject({ jumpedTo: null, incompleteTopics: {} });
   });
 
   it("continues in the next older month when the chosen month has nothing on or before the day", async () => {
@@ -408,7 +476,7 @@ describe("Loader.jumpTo", () => {
 
   it("reports question topics as unknown while newer messages are not loaded", async () => {
     const loader = await opened(new FixtureSource(files), 50);
-    expect(loader.getSnapshot().incompleteTopics).toEqual([]);
+    expect(loader.getSnapshot().incompleteTopics).toEqual({});
     await loader.jumpTo("2026-08-15");
     expect(loader.getSnapshot().incompleteTopics).toBeNull();
   });

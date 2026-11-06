@@ -551,7 +551,7 @@ public blobs.
   the same on phone and desktop.
 - **Questions view.** The conversation list has a "Questions" entry that lists
   every question grouped as open, concluded and answered (plus unknown when the
-  roster or a topic is incomplete). Groups keep open questions first; inside a
+  roster is unknown or a newer message may be unloaded). Groups keep open questions first; inside a
   group overdue questions lead, then those waiting for the viewer, and every tier
   (and every filter of the tree) runs newest first. Cards expand by
   default except answered cards. Their headers show the question's first line,
@@ -559,6 +559,17 @@ public blobs.
   text, needs/due, recipients and answers. The per-question disclosure choice
   stays in the browser when storage is available. Choosing a question opens its
   topic at that message.
+
+  *When a question is unknown.* Every reply, acknowledgement, reminder and conclusion of a
+  question is newer than the question (ids start with their timestamp), so a message that is
+  older than the question can never change its state. The loader therefore reports, for each
+  topic with pending or unavailable message files, the id of the newest such file
+  (`incompleteTopics`), and a question is `unknown` only when that id is not older than the
+  question, compared by the minute prefix of the id so a message of the same minute counts. A
+  question inside the loaded window with only older history unloaded shows its real state (open,
+  answered or concluded). It stays unknown, conservatively, when the roster is not known, when
+  Jump to date has cut the window short (newer messages are unloaded), when listed months are
+  not yet read, and when the topic of an unloaded or failed file cannot be determined.
 
   The Questions row is a tree node. Pressing it opens the page with every question (open,
   concluded and answered, as above) and expands its children; pressing it again while that page

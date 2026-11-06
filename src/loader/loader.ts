@@ -40,8 +40,13 @@ export interface LoaderSnapshot {
   readonly formerParticipants: readonly string[];
   /** True when the marker for the currently published revision was read successfully. */
   readonly rosterKnown: boolean;
-  /** Topics with pending/unavailable files, or null when their topics cannot be determined. */
-  readonly incompleteTopics: readonly string[] | null;
+  /**
+   * For each topic with pending or unavailable message files, the id of its newest such file; null
+   * when the topic of one cannot be determined, or the window is cut short (Jump to date).
+   * Everything that answers a question comes after it, so a question is only in doubt when an
+   * unloaded message is not older than the question.
+   */
+  readonly incompleteTopics: Readonly<Record<string, string>> | null;
   /** When the source's data last changed, as of the latest successful read, or null. */
   readonly lastChanged: Date | null;
   /** The sender of the loaded message in the newest changed file, or null when there is none. */
@@ -537,20 +542,24 @@ export class Loader {
     for (const listener of this.listeners) listener();
   }
 
-  private incompleteTopics(): readonly string[] | null {
+  private incompleteTopics(): Readonly<Record<string, string>> | null {
     if (!this.rosterKnown || this.unlistedMonths.length > 0 || this.cutoff !== null) return null;
     const senders = [...this.participants, ...this.formerParticipants];
     const incompletePaths = [
       ...this.pending.map((entry) => entry.path),
       ...[...this.unavailable.values()].map((retry) => retry.entry.path),
     ];
-    const topics = new Set<string>();
+    const newest: Record<string, string> = {};
     for (const path of incompletePaths) {
       const possibleTopics = topicsForMessagePath(path, senders);
       if (possibleTopics === null) return null;
-      for (const topic of possibleTopics) topics.add(topic);
+      const id = path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/, "");
+      for (const topic of possibleTopics) {
+        const known = newest[topic];
+        if (known === undefined || id > known) newest[topic] = id;
+      }
     }
-    return [...topics].sort();
+    return newest;
   }
 
   private serialize<T>(operation: () => Promise<T>): Promise<T> {
