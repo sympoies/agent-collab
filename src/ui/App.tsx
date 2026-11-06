@@ -671,7 +671,12 @@ export function App({
   // Before the effect below consumes a pending jump: a message opened by link keeps its place.
   useFollowLatest(
     messagePane,
-    view === "chat" ? `chat:${topic ?? "all"}` : view,
+    // A list page lands at its top, and so does a new filter of it.
+    view === "chat"
+      ? `chat:${topic ?? "all"}`
+      : view === "questions"
+        ? `questions:${JSON.stringify(activeFilter)}`
+        : view,
     mobileConversation,
     rows,
     pendingJump,

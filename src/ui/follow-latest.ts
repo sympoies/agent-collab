@@ -156,6 +156,16 @@ export function useFollowLatest(
       if (content !== null) current.observer?.observe(content);
       current.observed = content;
     }
+    // Questions and Files are lists to scan: they open at the top and never follow the bottom.
+    if (!viewKey.startsWith("chat:")) {
+      if (!current.landed) {
+        current.landed = true;
+        current.following = false;
+        current.held = false;
+        scrollTo(element, 0);
+      }
+      return;
+    }
     const { first, last } = messageIds(rows);
     if (last === null) return;
     if (!current.landed) {

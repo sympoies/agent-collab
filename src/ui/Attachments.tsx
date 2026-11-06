@@ -409,7 +409,8 @@ export function collectAttachments(
     }
   }
   return {
-    items: [...items.values()].sort((a, b) => a.message.id.localeCompare(b.message.id)),
+    // Newest first; the oldest were dropped above when there are more than `limit`.
+    items: [...items.values()].sort((a, b) => b.message.id.localeCompare(a.message.id)),
     hasMore,
   };
 }
