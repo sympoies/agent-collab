@@ -1,3 +1,4 @@
+import { hasDemoQuery } from "./demo-query";
 // Switches between the settings screen and the viewer. Secrets go straight from
 // the credential store into the message source; they are never kept in React state.
 
@@ -381,7 +382,7 @@ export function Root(props: RootProps) {
       { demo: true, signedIn },
     );
 
-  const showLiveDemo = async (): Promise<void> => {
+  const showLiveDemo = async (offline = false): Promise<void> => {
     const operation = ++navigation.current;
     if (liveLoader.current !== null) {
       setScreen(liveViewer(liveLoader.current, { key: "live.showingLive" }, liveSignedIn.current));
@@ -389,10 +390,18 @@ export function Root(props: RootProps) {
     }
     const token = demoToken();
     const generation = tokenGeneration.current;
-    const result = await openLiveDemo(() => createLiveDemoSource(token), demoFiles, liveGate, {
-      t,
-      formatDateTime,
-    });
+    const result = await openLiveDemo(
+      () => {
+        if (offline) throw new Error("Offline demo");
+        return createLiveDemoSource(token);
+      },
+      demoFiles,
+      liveGate,
+      {
+        t,
+        formatDateTime,
+      },
+    );
     // The token may have been removed or replaced while this ran; its result is then dropped, and
     // so is the block it recorded: that limit belonged to another identity's budget.
     if (generation !== tokenGeneration.current) {
@@ -415,7 +424,7 @@ export function Root(props: RootProps) {
             result.banner,
             LIVE_DEMO_POLL_INTERVAL_MS,
             result.view,
-            null,
+            { label: "bar.hostedSnapshot", experimental: false },
             { demo: true, limitHit: result.rateLimited },
           ),
     );
@@ -681,6 +690,14 @@ export function Root(props: RootProps) {
   // through its button when the snapshot cannot be read.
   useEffect(() => {
     void (async () => {
+      if (hasDemoQuery(window.location.search)) {
+        try {
+          await showLiveDemo(true);
+        } catch {
+          setLocalMessage({ key: "error.unexpected" });
+        }
+        return;
+      }
       const found = folderMemory === null ? null : await loadWithin(folderMemory, FOLDER_LOAD_MS);
       setRemembered(found);
       // The last visit ended on this folder: go back to it when no click is needed.
@@ -721,7 +738,7 @@ export function Root(props: RootProps) {
 
   // Mark whether the viewer on screen is the folder to return to after a reload.
   useEffect(() => {
-    if (folderMemory !== null && screen.kind === "viewer")
+    if (folderMemory !== null && screen.kind === "viewer" && !screen.demo)
       void folderMemory.setActive(screen.folder !== null, screen.folder);
   }, [folderMemory, screen]);
 

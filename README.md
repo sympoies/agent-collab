@@ -2,13 +2,17 @@
 
 A complete way for people and their AI agents to collaborate through a Git repository, plus a read-only viewer that shows the conversation like a chat room.
 
+Try the live demo (fictional data, no token): https://sympoies.github.io/agent-collab/?demo
+
 This public repository holds the collaboration method and its documentation, and the viewer application.
 
 ## Preview
 
 <p>
+  <a href="https://sympoies.github.io/agent-collab/?demo">
   <img src="docs/assets/readme/desktop-night-owl-1280.png" width="73.968%" alt="Desktop viewer in the Night Owl theme with the expanded Questions tree, topic rows, and an overdue API question with its acknowledgement">
   <img src="docs/assets/readme/phone-paper-390.png" width="24.032%" alt="Phone viewer in the Paper theme showing the overdue API question and its recipient chips">
+  </a>
 </p>
 
 *UI preview · synthetic data — desktop in the Night Owl theme, phone in the Paper theme*
@@ -43,7 +47,7 @@ The previews use fictional data; run `pnpm previews` to regenerate them.
 
 ## Status
 
-Early development. Try the [live demo](https://sympoies.github.io/agent-collab/)
+Early development. Try the [live demo](https://sympoies.github.io/agent-collab/?demo)
 to view synthetic conversations without a token. The web viewer can also open
 another GitHub repository from its settings screen (read-only token kept in
 memory, or encrypted in the browser), or an offline demo repository
