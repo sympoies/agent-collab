@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -59,6 +59,7 @@ describe("a conversation opens at its latest message", () => {
   };
   const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
   const saved = new Map<string, PropertyDescriptor | undefined>();
+  let matchMediaDescriptor: PropertyDescriptor | undefined;
 
   beforeEach(() => {
     scrollY = 0;
@@ -100,6 +101,10 @@ describe("a conversation opens at its latest message", () => {
       else Object.defineProperty(HTMLElement.prototype, name, descriptor);
     }
     saved.clear();
+    if (matchMediaDescriptor !== undefined) {
+      Object.defineProperty(window, "matchMedia", matchMediaDescriptor);
+      matchMediaDescriptor = undefined;
+    }
     if (mounted !== null) {
       const { root } = mounted;
       act(() => {
@@ -160,6 +165,63 @@ describe("a conversation opens at its latest message", () => {
     expect(host.contains(document.activeElement) && document.activeElement !== document.body).toBe(
       false,
     );
+  });
+
+  it("does not focus a restored phone conversation when StrictMode replays mount effects", async () => {
+    matchMediaDescriptor = Object.getOwnPropertyDescriptor(window, "matchMedia");
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: (media: string): MediaQueryList =>
+        ({
+          matches: media === "(max-width: 720px)",
+          media,
+          onchange: null,
+          addEventListener: () => undefined,
+          removeEventListener: () => undefined,
+          dispatchEvent: () => true,
+        }) as unknown as MediaQueryList,
+    });
+    const storage = {
+      getItem: (key: string) =>
+        key === "agent-collab-viewer.view:test"
+          ? JSON.stringify({ view: "chat", topic: null, conversation: true })
+          : null,
+      setItem: () => undefined,
+    };
+    const loader = new Loader(new FixtureSource(repository(BASE)));
+    await loader.open();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted = { host, root };
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <ThemeProvider storage={{ getItem: () => null, setItem: () => undefined }}>
+            <App
+              loader={loader}
+              title="Repo"
+              selfNames={new Set(["alice-agent"])}
+              identity={{ storage, key: "test" }}
+              notice={null}
+              rememberView
+              onOpenSettings={() => undefined}
+            />
+          </ThemeProvider>
+        </StrictMode>,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    });
+
+    expect(host.querySelector(".conversation")).not.toBeNull();
+    expect(document.activeElement).toBe(document.body);
+
+    await click(host.querySelector(".back-to-topics") ?? undefined);
+    await click(button(host, "#api"));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    });
+    expect(document.activeElement).toBe(host.querySelector(".topic-bar h2"));
   });
 
   it("lands at the latest message of another topic after switching", async () => {
