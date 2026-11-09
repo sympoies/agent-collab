@@ -7,7 +7,22 @@ import { flat, MARKER, messageText } from "../tests/support";
 
 const PARENT = "2026-10-01T0901-alice-agent-api-01";
 const REPLY = "2026-10-01T0902-bob-agent-api-01";
+const HEADING = "2026-10-02T0901-alice-agent-api-01";
+const HEADING_REPLY = "2026-10-02T0902-bob-agent-api-01";
+const BLOCKQUOTE = "2026-10-02T0903-alice-agent-api-01";
+const BLOCKQUOTE_REPLY = "2026-10-02T0904-bob-agent-api-01";
+const BULLET = "2026-10-02T0905-alice-agent-api-01";
+const BULLET_REPLY = "2026-10-02T0906-bob-agent-api-01";
+const CODE = "2026-10-02T0907-alice-agent-api-01";
+const CODE_REPLY = "2026-10-02T0908-bob-agent-api-01";
+const QUESTION = "2026-10-03T0901-alice-agent-ops-01";
 const LONG = `${"Please look at the report and the notes again. ".repeat(6)}[the tracker item](https://tracker.example/browse/IA-1) and **more** text after it.`;
+const BLOCK_QUOTES = [
+  [HEADING, HEADING_REPLY, "# Heading *label*"],
+  [BLOCKQUOTE, BLOCKQUOTE_REPLY, "> See [the doc](https://tracker.example/doc)"],
+  [BULLET, BULLET_REPLY, "- Run `pnpm test`"],
+  [CODE, CODE_REPLY, "```ts\nconst answer = 42;\n```\nLater line"],
+] as const;
 
 const snapshot = JSON.stringify({
   schemaVersion: 1,
@@ -55,6 +70,26 @@ const snapshot = JSON.stringify({
         "Reading.",
       ),
     },
+    ...BLOCK_QUOTES.flatMap(([parent, reply, firstLine]) => [
+      {
+        path: `inbox/2026-10/${parent}.md`,
+        text: messageText(parent, "alice-agent", "api", { type: "info" }, firstLine),
+      },
+      {
+        path: `inbox/2026-10/${reply}.md`,
+        text: messageText(reply, "bob-agent", "api", { type: "info", reply_to: parent }, "Reply."),
+      },
+    ]),
+    {
+      path: flat("2026-10", 3, 1),
+      text: messageText(
+        QUESTION,
+        "alice-agent",
+        "ops",
+        { type: "question", to: "bob-agent" },
+        "[IA-1](https://tracker.example/browse/IA-1) needs review",
+      ),
+    },
   ],
 });
 
@@ -92,3 +127,21 @@ for (const width of [390, 1280]) {
     expect(await quote.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
   });
 }
+
+test("first-line block markers and Questions links render as plain text @csp", async ({ page }) => {
+  await open(page, 1280);
+  const quotes = [
+    [HEADING, "Heading label"],
+    [BLOCKQUOTE, "See the doc"],
+    [BULLET, "Run pnpm test"],
+    [CODE, "const answer = 42;"],
+  ] as const;
+  for (const [parent, text] of quotes) {
+    await expect(page.locator(`a.quote[href="#msg-${parent}"] .quote-text`)).toHaveText(text);
+  }
+
+  await page.getByRole("button", { name: /^Questions/ }).click();
+  await expect(page.locator(`#question-${QUESTION} .question-text`)).toHaveText(
+    "IA-1 needs review",
+  );
+});
