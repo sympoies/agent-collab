@@ -74,16 +74,14 @@ for (const width of [360, 390, 1280]) {
     }
     const dir = process.env.TOOLBAR_SCREENSHOTS;
     if (dir !== undefined && browserName === "chromium" && width !== 1280) {
-      for (const theme of ["paper", "night-owl"]) {
-        await page.evaluate((value) => {
-          localStorage.setItem("agent-collab-viewer.theme", value);
-        }, theme);
-        await page.reload();
-        await expect(page.locator(".conversation")).toBeVisible();
-        await page
-          .locator(".bar")
-          .screenshot({ path: join(dir, `toolbar-${String(width)}-${theme}.png`) });
-      }
+      await page
+        .locator(".bar")
+        .screenshot({ path: join(dir, `toolbar-${String(width)}-paper.png`) });
+      await page.getByRole("button", { name: "More" }).click();
+      await page.getByRole("menuitem", { name: "Use Night Owl theme" }).click();
+      await page
+        .locator(".bar")
+        .screenshot({ path: join(dir, `toolbar-${String(width)}-night-owl.png`) });
     }
   });
 }
