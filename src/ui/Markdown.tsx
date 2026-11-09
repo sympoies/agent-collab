@@ -13,6 +13,30 @@ const INLINE_RE =
   /(`[^`]{1,500}`|\*\*[^*]{1,500}\*\*|\*[^*\s][^*]{0,500}\*|!?\[[^\]]{0,500}\]\((?:[^()\s]|\([^()\s]{0,500}\)){0,2000}\))/;
 const MAX_INLINE_LENGTH = 2000;
 
+const LINK_RE = /^(!?)\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))*)\)$/;
+
+/**
+ * The text of one line without its inline markers: a link shows its text (or its target when it has
+ * none), an image its alt text, emphasis and code only their content. For places that sit inside a
+ * link or a clamped block, where rendering the inline elements is not safe. Unbalanced markers and
+ * lines longer than the scan limit stay as written.
+ */
+export function plainInline(text: string): string {
+  if (text.length > MAX_INLINE_LENGTH) return text;
+  return text
+    .split(INLINE_RE)
+    .map((part) => {
+      if (part.startsWith("`") && part.endsWith("`") && part.length > 2) return part.slice(1, -1);
+      if (part.startsWith("**") && part.endsWith("**") && part.length > 4) return part.slice(2, -2);
+      if (part.startsWith("*") && part.endsWith("*") && part.length > 2) return part.slice(1, -1);
+      const link = LINK_RE.exec(part);
+      if (link === null) return part;
+      const [, , label = "", target = ""] = link;
+      return label === "" ? target : label;
+    })
+    .join("");
+}
+
 function inline(text: string, keyPrefix: string): ReactNode[] {
   if (text.length > MAX_INLINE_LENGTH) return [text];
   return text.split(INLINE_RE).flatMap((part, index): ReactNode[] => {
@@ -27,7 +51,7 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
     if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
       return [<em key={key}>{part.slice(1, -1)}</em>];
     }
-    const link = /^(!?)\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))*)\)$/.exec(part);
+    const link = LINK_RE.exec(part);
     if (link !== null) {
       const [, image, label = "", target = ""] = link;
       // An image is never fetched; its alt text is shown instead.
