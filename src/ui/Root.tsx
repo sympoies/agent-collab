@@ -391,16 +391,15 @@ export function Root(props: RootProps) {
     const token = demoToken();
     const generation = tokenGeneration.current;
     const result = await openLiveDemo(
-      () => {
-        if (offline) throw new Error("Offline demo");
-        return createLiveDemoSource(token);
-      },
+      () => createLiveDemoSource(token),
       demoFiles,
       liveGate,
       {
         t,
         formatDateTime,
       },
+      undefined,
+      !offline,
     );
     // The token may have been removed or replaced while this ran; its result is then dropped, and
     // so is the block it recorded: that limit belonged to another identity's budget.

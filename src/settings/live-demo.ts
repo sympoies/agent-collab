@@ -176,6 +176,7 @@ export async function openLiveDemo(
   gate: LiveCheckGate,
   text: Presenter,
   loadSnapshot: () => Promise<DemoSnapshot | null> = () => readDemoSnapshot(),
+  allowInitialLive = true,
 ): Promise<LiveDemoOpen> {
   const snapshot = await loadSnapshot();
   if (snapshot !== null) {
@@ -197,8 +198,10 @@ export async function openLiveDemo(
 
   const bundled: StaticDemoView = { kind: "bundled" };
   const blockedUntil = gate.nextCheckAt();
-  let banner = liveCheckNotice(bundled, null, blockedUntil, text);
-  if (blockedUntil === null) {
+  let banner = allowInitialLive
+    ? liveCheckNotice(bundled, null, blockedUntil, text)
+    : text.t("live.showingBundled");
+  if (allowInitialLive && blockedUntil === null) {
     const result = await openLive(createSource, gate);
     if ("loader" in result) {
       return {

@@ -117,6 +117,7 @@ export const zhTW: Messages = {
   "live.stillShowing": "{reason}。仍顯示{shown}。{next}",
   "live.nextCheck": "下次即時檢查：{date}。",
   "live.checked": "已檢查即時儲存庫。",
+  "live.showingBundled": "顯示內建範例。",
   "live.showingSnapshot": "顯示 {date} 產生的快照。",
   "live.snapshotMissing": "無法使用公開快照。顯示即時儲存庫。",
   "live.showingLive": "顯示即時儲存庫。",

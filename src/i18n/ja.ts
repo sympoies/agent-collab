@@ -126,6 +126,7 @@ export const ja: Messages = {
   "live.stillShowing": "{reason}。引き続き {shown} を表示しています。{next}",
   "live.nextCheck": "次回のライブ確認: {date}。",
   "live.checked": "ライブのリポジトリを確認しました。",
+  "live.showingBundled": "同梱のサンプルを表示しています。",
   "live.showingSnapshot": "{date} に生成されたスナップショットを表示しています。",
   "live.snapshotMissing":
     "公開スナップショットを利用できません。ライブのリポジトリを表示しています。",

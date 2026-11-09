@@ -60,3 +60,17 @@ test("a failed demo load returns to the welcome screen with an error @csp", asyn
   await expect(page.getByRole("button", { name: "Open live demo" })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText("Unexpected error while loading messages.");
 });
+
+test("the bundled query demo permits an immediate live check @csp", async ({ page }) => {
+  let requests = 0;
+  await page.route("**/demo-snapshot.json", (route) => route.fulfill({ status: 404 }));
+  await page.route("https://api.github.com/**", (route) => {
+    requests += 1;
+    return route.fulfill({ status: 500, body: "{}" });
+  });
+  await page.goto("/?demo");
+  await expect(page.locator(".bar h1")).toHaveText("Live demo");
+  expect(requests).toBe(0);
+  await page.getByRole("button", { name: "Check live now" }).click();
+  await expect.poll(() => requests).toBeGreaterThan(0);
+});
