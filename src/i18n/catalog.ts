@@ -133,6 +133,7 @@ export const en = {
   "live.stillShowing": "{reason}. Still showing {shown}.{next}",
   "live.nextCheck": " Next live check: {date}.",
   "live.checked": "Checked the live repository.",
+  "live.showingBundled": "Showing the bundled sample.",
   "live.showingSnapshot": "Showing the snapshot generated at {date}.",
   "live.snapshotMissing": "The public snapshot is unavailable. Showing the live repository.",
   "live.showingLive": "Showing the live repository.",

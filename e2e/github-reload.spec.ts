@@ -5,6 +5,7 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 import { messageText } from "../tests/support";
+import { topicSnapshot } from "../tests/topic-snapshot-fixture";
 
 const ID = "2026-10-08T0900-alice-agent-api-01";
 const MARKER = "collab-protocol: 1\nparticipants: alice-agent\n";
@@ -69,6 +70,21 @@ async function connect(page: Page) {
 }
 
 test.describe("a reload reopens the GitHub repository @csp", () => {
+  test("the demo query leaves the saved repository available @csp", async ({ page }) => {
+    const state = { reject: false, tokens: [] as string[] };
+    await serve(page, state);
+    await connect(page);
+    const snapshot = await topicSnapshot();
+    await page.route("**/demo-snapshot.json", (route) => route.fulfill({ json: snapshot }));
+    state.tokens.length = 0;
+    await page.goto("/?demo");
+    await expect(page.locator("h1")).toHaveText("Live demo");
+    expect(state.tokens).toEqual([]);
+    await page.goto("/");
+    await expect(page.getByText("Read from the stubbed repository.")).toBeVisible();
+    expect(state.tokens.length).toBeGreaterThan(0);
+  });
+
   test("it comes back with its messages and the saved token @csp", async ({ page }) => {
     const state = { reject: false, tokens: [] as string[] };
     await serve(page, state);

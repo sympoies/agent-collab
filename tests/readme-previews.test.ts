@@ -10,6 +10,13 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const readme = readFileSync(resolve(root, "README.md"), "utf8");
 
 describe("README UI previews", () => {
+  it("links the introduction and preview images to the demo", () => {
+    const url = "https://sympoies.github.io/agent-collab/?demo";
+    expect(readme.split("## Preview")[0]).toContain(url);
+    expect(readme).toMatch(
+      /<a href="https:\/\/sympoies\.github\.io\/agent-collab\/\?demo">[\s\S]*?<img[\s\S]*?<\/a>/,
+    );
+  });
   it("references the generated images with alt text and names both themes in the caption", () => {
     const renderedHeights = [
       {
