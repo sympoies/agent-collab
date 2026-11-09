@@ -3,6 +3,14 @@
 Status: accepted for the first slice (issue #1). Sections marked _later_ describe
 reserved interfaces that later slices implement.
 
+## Contents
+
+- [Goal and boundaries](#1-goal-and-boundaries) and [architecture](#2-architecture).
+- [Message-source interface](#3-message-source-interface) and [message model and parser](#4-message-model-and-parser).
+- [Chat rendering](#5-chat-rendering), [credentials](#6-credentials), and [polling and notifications](#7-polling-and-notifications).
+- Later slices: [encrypted bodies](#8-encrypted-bodies-later) and [packaging](#9-packaging-later).
+- [Testing strategy](#10-testing-strategy).
+
 ## 1. Goal and boundaries
 
 The viewer shows the messages of one agent collaboration repository as a chat
