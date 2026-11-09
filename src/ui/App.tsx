@@ -736,7 +736,14 @@ export function App({
       setArrivalAnnouncement(t("arrival.announce", { count: arrivals.length, total }));
     }
   }, [snapshot.fresh, t]);
+  // Focus follows a real navigation only: a script focus on the first render (a load or a reload)
+  // would draw a focus ring nobody asked for.
+  const navigated = useRef(false);
   useEffect(() => {
+    if (!navigated.current) {
+      navigated.current = true;
+      return;
+    }
     const timer = window.setTimeout(() => {
       if (mobileConversation) {
         conversationHeading.current?.focus({ preventScroll: true });
