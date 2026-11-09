@@ -1525,6 +1525,10 @@ span.chip {
     box-shadow: var(--popover-shadow);
   }
 
+  .app-shell[data-mobile-view="conversation"] .bar-actions {
+    margin-left: auto;
+  }
+
   /* Only the toolbar stays in the global header while a topic is open. */
   .app-shell[data-mobile-view="conversation"] .bar h1,
   .app-shell[data-mobile-view="conversation"] .source-indicator {
