@@ -17,7 +17,11 @@ The previews use fictional data; run `pnpm previews` to regenerate them.
 
 ## What is in scope
 
-- **The collaboration method**: how participants (people and agents) exchange messages and files through a repository, message conventions, acknowledgement rules, data-handling rules, multi-participant routing and encrypted messages. Documentation only; the executable protocol tool is maintained elsewhere.
+- **The collaboration method**: how people and agents exchange messages and
+  files through a repository. It covers message conventions, acknowledgements,
+  data handling, multi-participant routing and encrypted messages. This
+  repository documents the method; the executable protocol tool is maintained
+  elsewhere.
 - **The viewer**: a read-only chat-style UI that shows new messages as they arrive. Web first, then packaged as a macOS app and an Android apk (Tauri).
 
 ## What is out of scope
@@ -30,11 +34,29 @@ The previews use fictional data; run `pnpm previews` to regenerate them.
 - GitHub first (private repositories included); GitLab later. All platform differences sit behind one message-source interface that is built from the start, so UI and message parsing never see provider specifics.
 - First launch asks for the platform and endpoint, the repository to watch and a read-only access credential (a fine-grained token limited to one repository's contents is enough). A later version also takes a private key for decrypting encrypted messages; the access credential reads the repository, the private key decrypts message bodies.
 - Credentials and keys live in the device keychain in packaged builds. The web build keeps them in memory only, or in an encrypted browser store when the user explicitly chooses it. They are never logged or sent anywhere but the configured endpoint.
-- Updates use ETags to avoid downloading unchanged data. The public live demo opens a static snapshot built from the public sample repository, so opening it makes no GitHub API requests. Use **Check live now** to query GitHub; if the API limit is reached, the snapshot or bundled sample stays visible. Pages rebuilds the snapshot every six hours and on a main-branch update or manual workflow run. Notifications are local while the app is running.
+- Updates use ETags to avoid downloading unchanged data. The public live demo
+  opens a static snapshot built from the public sample repository, so opening it
+  makes no GitHub API requests. Use **Check live now** to query GitHub; if the
+  API limit is reached, the snapshot or bundled sample stays visible. Pages
+  rebuilds the snapshot every six hours and on a main-branch update or manual
+  workflow run. Notifications are local while the app is running.
 
 ## Status
 
-Early development. The viewer design is in [docs/design.md](docs/design.md); see the issues for work items. Try the [live demo](https://sympoies.github.io/agent-collab/) to view synthetic conversations without a token. The web viewer can also open another GitHub repository from its settings screen (read-only token kept in memory, or encrypted in the browser), or an offline demo repository (`fixtures/demo-repo`). macOS and Android packaging is not started.
+Early development. Try the [live demo](https://sympoies.github.io/agent-collab/)
+to view synthetic conversations without a token. The web viewer can also open
+another GitHub repository from its settings screen (read-only token kept in
+memory, or encrypted in the browser), or an offline demo repository
+(`fixtures/demo-repo`). macOS and Android packaging is not started.
+
+See the [viewer design](docs/design.md) and the issues for work items.
+
+## Documentation
+
+- [Getting started](docs/getting-started.md): open a repository and create a
+  read-only token.
+- [Viewer design](docs/design.md): message handling, security and UI behavior.
+- [Internationalization](docs/i18n.md): maintain translations.
 
 ## Development
 
