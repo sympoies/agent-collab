@@ -7,6 +7,7 @@ import type { MessageReceipts } from "../message/receipts";
 import type { Message } from "../message/types";
 import { useT, type Translate } from "../i18n/LocaleProvider";
 import { RefList, type AttachmentContext } from "./Attachments";
+import { plainInline } from "./Markdown";
 import { personSlot, type People } from "./people";
 import { ParticipantIdentity, RecipientChip, Recipients, TopicChip } from "./shared/components";
 import type { MessageView, Row } from "./timeline";
@@ -30,7 +31,7 @@ function typeLabel(type: Message["type"], t: Translate): string {
 
 function firstLine(message: Message, t: Translate): string {
   if (message.body.state === "locked") return t("chat.encrypted");
-  return message.body.lines.find((line) => line.trim() !== "") ?? "";
+  return plainInline(message.body.lines.find((line) => line.trim() !== "") ?? "");
 }
 
 /** What a reply needs to offer loading its original when that is older than the loaded range. */
