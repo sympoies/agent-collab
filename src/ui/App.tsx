@@ -736,7 +736,14 @@ export function App({
       setArrivalAnnouncement(t("arrival.announce", { count: arrivals.length, total }));
     }
   }, [snapshot.fresh, t]);
+  // The first render is a load or a reload, not a navigation: nothing moves focus then, since a
+  // script focus with no earlier touch or key would draw a focus ring on the heading.
+  const navigated = useRef(false);
   useEffect(() => {
+    if (!navigated.current) {
+      navigated.current = true;
+      return;
+    }
     const timer = window.setTimeout(() => {
       if (mobileConversation) {
         conversationHeading.current?.focus({ preventScroll: true });
