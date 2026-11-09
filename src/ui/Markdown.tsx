@@ -37,6 +37,32 @@ export function plainInline(text: string): string {
     .join("");
 }
 
+/** The first visible line after Markdown block syntax, with code kept literal. */
+export function firstBlockLine(lines: readonly string[]): {
+  readonly text: string;
+  readonly code: boolean;
+} {
+  const first = lines.findIndex((line) => line.trim() !== "");
+  if (first === -1) return { text: "", code: false };
+  const line = lines[first] ?? "";
+  if (line.startsWith("```")) {
+    for (const codeLine of lines.slice(first + 1)) {
+      if (codeLine.startsWith("```")) return { text: "", code: true };
+      if (codeLine.trim() !== "") return { text: codeLine, code: true };
+    }
+    return { text: "", code: true };
+  }
+  const heading = /^(#{1,6})\s+(.*)$/.exec(line);
+  if (heading !== null) return { text: heading[2] ?? "", code: false };
+  const quote = /^>\s?(.*)$/.exec(line);
+  if (quote !== null) return { text: quote[1] ?? "", code: false };
+  const bullet = /^\s*[-*]\s+(.*)$/.exec(line);
+  if (bullet !== null) return { text: bullet[1] ?? "", code: false };
+  const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line);
+  if (numbered !== null) return { text: numbered[1] ?? "", code: false };
+  return { text: line, code: false };
+}
+
 function inline(text: string, keyPrefix: string): ReactNode[] {
   if (text.length > MAX_INLINE_LENGTH) return [text];
   return text.split(INLINE_RE).flatMap((part, index): ReactNode[] => {

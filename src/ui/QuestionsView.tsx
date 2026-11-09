@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useT, type Translate } from "../i18n/LocaleProvider";
 import { ackEta, isPlainAck, type QuestionGroups, type QuestionItem } from "../message/receipts";
 import type { Message } from "../message/types";
+import { firstBlockLine, plainInline } from "./Markdown";
 import type { People } from "./people";
 import { localDate, waitingDays } from "./relativeTime";
 import type { QuestionExpansionChoices } from "./question-expansion";
@@ -114,7 +115,8 @@ function Replies({
 
 function firstLine(message: Message, t: Translate): string {
   if (message.body.state === "locked") return t("chat.encrypted");
-  return message.body.lines.find((line) => line.trim() !== "") ?? "";
+  const first = firstBlockLine(message.body.lines);
+  return first.code ? first.text : plainInline(first.text);
 }
 
 function fullText(message: Message, t: Translate): string {
