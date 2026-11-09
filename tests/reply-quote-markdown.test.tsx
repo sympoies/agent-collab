@@ -88,6 +88,8 @@ describe("plainInline", () => {
     expect(plainInline("a [half link](https://x.example and a * star")).toBe(
       "a [half link](https://x.example and a * star",
     );
+    expect(plainInline("*draft")).toBe("*draft");
+    expect(plainInline("`cmd")).toBe("`cmd");
     const long = `[a](https://x.example/${"b".repeat(2100)})`;
     expect(plainInline(long)).toBe(long);
   });
@@ -99,6 +101,13 @@ describe("the quote of a reply", () => {
       "已開 [IA-3261](https://tracker.example/browse/IA-3261)，請協助研究 **now**",
     );
     expect(quote).toBe("已開 IA-3261，請協助研究 now");
+  });
+
+  it("omits block markers from a heading, quote, list item, and fenced code first line", async () => {
+    expect(await quoteOf("# Heading *label*")).toBe("Heading label");
+    expect(await quoteOf("> See [the doc](https://tracker.example/doc)")).toBe("See the doc");
+    expect(await quoteOf("- Run `pnpm test`")).toBe("Run pnpm test");
+    expect(await quoteOf("```ts\nconst answer = 42;\n```\nLater line")).toBe("const answer = 42;");
   });
 
   it("holds no link of its own: the whole quote is already a link", async () => {

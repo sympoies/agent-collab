@@ -178,6 +178,25 @@ describe("receipts and the Questions view", () => {
     expect(host.querySelector("#conversation-heading")?.textContent).toBe("Questions");
   });
 
+  it("renders inline Markdown in Questions text as plain text", async () => {
+    const linked = id(20, "alice-agent");
+    const repository = {
+      ...files,
+      [`inbox/${linked}.md`]: messageText(
+        linked,
+        "alice-agent",
+        "api",
+        { type: "question", to: "bob-agent" },
+        "[IA-1](https://tracker.example/browse/IA-1) needs review",
+      ),
+    };
+    const host = await render(["bob-agent"], repository);
+    await click(button(host, "Questions"));
+    expect(host.querySelector(`#question-${linked} .question-text`)?.textContent).toBe(
+      "IA-1 needs review",
+    );
+  });
+
   it("omits the Needs line when needs is none but keeps an actual request", async () => {
     const needsId = id(20, "alice-agent", "ops");
     const repository = {
