@@ -226,13 +226,24 @@ export function App({
   // The topics the All view has read so far. Only a topic that was read is registered with the
   // session, so a refresh never opens (and reads a first page of) a topic nobody asked for.
   const [allRead, setAllRead] = useState<ReadonlySet<string>>(() => new Set());
+  // Search scope includes only topics whose first page read has completed successfully.
+  const [searchRead, setSearchRead] = useState<ReadonlySet<string>>(() => new Set());
+  const searchLoadedNow = useRef(new Set<string>());
+  const rememberSearchLoaded = useCallback((name: string) => {
+    searchLoadedNow.current.add(name);
+    setSearchRead((current) => {
+      if (current.has(name)) return current;
+      return new Set(current).add(name);
+    });
+  }, []);
+  const [searchLoadRequest, setSearchLoadRequest] = useState(0);
   const allNames = useMemo(
     () => topicList.filter((summary) => summary.status !== "closed").map((summary) => summary.name),
     [topicList],
   );
   const loadedTopics = useMemo(
-    () => [...new Set([...openedTopics, ...allRead])],
-    [allRead, openedTopics],
+    () => [...new Set([...openedTopics, ...allRead, ...searchRead])],
+    [allRead, openedTopics, searchRead],
   );
   const openedLoaders = useMemo(
     () =>
@@ -336,14 +347,18 @@ export function App({
   const [error, setError] = useState<unknown>(null);
   // A restored topic still has to read its first page.
   useEffect(() => {
-    if (saved.topic === null || topicSession === null) return;
+    const restoredTopic = saved.topic;
+    if (restoredTopic === null || topicSession === null) return;
     topicSession
-      .loader(saved.topic)
+      .loader(restoredTopic)
       .openWithHead(topicSession.currentHead)
+      .then(() => {
+        rememberSearchLoaded(restoredTopic);
+      })
       .catch((reason: unknown) => {
         setError(reason);
       });
-  }, [saved.topic, topicSession]);
+  }, [rememberSearchLoaded, saved.topic, topicSession]);
   const [readyRetryAt, setReadyRetryAt] = useState<Date | null>(null);
   const [preferences, setPreferences] = useState<IdentityPreferences>(() =>
     identity.storage === null ? EMPTY_PREFERENCES : readPreferences(identity.storage, identity.key),
@@ -550,6 +565,7 @@ export function App({
         try {
           await allSession.loader(name).openWithHead(allSession.currentHead);
           allReadNow.current = new Set(allReadNow.current).add(name);
+          rememberSearchLoaded(name);
           setAllRead(allReadNow.current);
         } catch (reason) {
           // Left unread: the count keeps saying so, and the next sync of the topic list tries again.
@@ -560,10 +576,30 @@ export function App({
     return () => {
       stopped.abort();
     };
-  }, [allKey, allSession, topicSyncs]);
+  }, [allKey, allSession, rememberSearchLoaded, topicSyncs]);
   const allTotal = allNames.length;
   const allDone = allNames.filter((name) => allRead.has(name)).length;
   const allLoading = showingAll && allDone < allTotal;
+  const searchInFlight = useRef(new Set<string>());
+  const searchAllKey = allNames.join("\n");
+  useEffect(() => {
+    if (topicSession === null || searchLoadRequest === 0) return;
+    const names = searchAllKey === "" ? [] : searchAllKey.split("\n");
+    const pending = names.filter(
+      (name) => !searchLoadedNow.current.has(name) && !searchInFlight.current.has(name),
+    );
+    for (const name of pending) searchInFlight.current.add(name);
+    void mapLimit(pending, ALL_CONCURRENCY, async (name) => {
+      try {
+        await topicSession.loader(name).openWithHead(topicSession.currentHead);
+        rememberSearchLoaded(name);
+      } catch (reason) {
+        setError(reason);
+      } finally {
+        searchInFlight.current.delete(name);
+      }
+    });
+  }, [rememberSearchLoaded, searchAllKey, searchLoadRequest, topicSession]);
   const closedHidden = topicList.some(
     (summary) => summary.status === "closed" && !loadedTopics.includes(summary.name),
   );
@@ -576,6 +612,9 @@ export function App({
     topicSession
       .loader(summary.name)
       .openWithHead(topicSession.currentHead)
+      .then(() => {
+        rememberSearchLoaded(summary.name);
+      })
       .catch(showError)
       .finally(() => {
         setBusy(false);
@@ -1088,6 +1127,10 @@ export function App({
                 {topicLayout ? (
                   <TopicList
                     topics={listedTopics}
+                    loadedTopics={searchRead}
+                    onLoadAll={() => {
+                      setSearchLoadRequest((request) => request + 1);
+                    }}
                     selected={topic}
                     pressed={view === "chat" ? topic : null}
                     closedOpen={closedOpen}

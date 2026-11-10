@@ -67,6 +67,8 @@ async function saveScreenshot(page: Page, filename: string) {
 /** What the stubbed repository serves; `bumped` adds a newer message to one topic and a new head. */
 interface RepositoryState {
   bumped: boolean;
+  failureTopic?: string;
+  failuresRemaining?: number;
 }
 
 const BUMPED_TOPIC = "topic-05";
@@ -79,6 +81,15 @@ async function serveRepository(page: Page, requests: string[], state: Repository
     requests.push(path);
     if (request.headers()["authorization"] !== "Bearer fake-token") {
       await route.fulfill({ status: 401, body: "{}" });
+      return;
+    }
+    if (
+      state.failureTopic !== undefined &&
+      path === `/git/trees/topic:${state.failureTopic}` &&
+      (state.failuresRemaining ?? 0) > 0
+    ) {
+      state.failuresRemaining = (state.failuresRemaining ?? 0) - 1;
+      await route.fulfill({ status: 503, body: "{}" });
       return;
     }
     if (path === "/git/ref/heads/main") {
@@ -325,6 +336,108 @@ test.describe("topic list navigation", () => {
       }
     }
   }
+});
+
+test.describe("topic search @csp", () => {
+  for (const theme of ["paper", "night-owl"] as const) {
+    for (const width of [1280, 390] as const) {
+      test(`searches loaded topics and loads the rest at ${String(width)}px (${theme})`, async ({
+        page,
+      }) => {
+        await page.addInitScript((selectedTheme) => {
+          localStorage.setItem("agent-collab-viewer.theme", selectedTheme);
+        }, theme);
+        await page.setViewportSize({ width, height: width === 1280 ? 600 : 850 });
+        await serveRepository(page, [], { bumped: false });
+        await openRepository(page);
+
+        const list = page.locator(".topics-pane");
+        const api = list.getByRole("button", { name: "#api", exact: true });
+        await api.click();
+        await expect(page.getByText("Topic list message body.")).toBeVisible();
+        if (width === 390) {
+          await page.getByRole("button", { name: "Back to conversations" }).click();
+        }
+
+        const search = list.getByRole("searchbox", { name: "Search topics" });
+        await expect(search).toBeVisible();
+        const alreadyLoaded = width === 390 ? 1 : 14;
+        const remaining = 14 - alreadyLoaded;
+        await expect(
+          list.getByText(`Search scope: ${alreadyLoaded}/14 topics loaded.`),
+        ).toBeVisible();
+        await search.fill("API");
+        await expect(list.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+        await expect(list.getByRole("button", { name: "#topic-02", exact: true })).toHaveCount(0);
+
+        await search.fill("topic-02");
+        // The selected topic remains available even when its name and title do not match.
+        await expect(list.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+        await expect(list.getByRole("button", { name: "#topic-02", exact: true })).toHaveCount(
+          width === 390 ? 0 : 1,
+        );
+        if (width === 390) {
+          await expect(list.getByText(`${remaining} topics are not loaded yet`)).toBeVisible();
+          await list
+            .getByRole("button", { name: `Load all ${remaining} remaining topics` })
+            .click();
+        }
+        await expect(list.getByRole("button", { name: "#topic-02", exact: true })).toBeVisible();
+        await expect(list.getByText("Search scope: 14/14 topics loaded.")).toBeVisible();
+
+        if (test.info().project.name === "chromium") {
+          await saveScreenshot(
+            page,
+            `topic-search-${String(width)}-${theme === "paper" ? "light" : "dark"}.png`,
+          );
+        }
+
+        await search.focus();
+        await page.keyboard.press("Escape");
+        await expect(search).toHaveValue("");
+      });
+    }
+  }
+
+  test("load all retries a topic whose first page failed at 390px", async ({ page }) => {
+    const requests: string[] = [];
+    const state: RepositoryState = {
+      bumped: false,
+      failureTopic: "topic-02",
+      failuresRemaining: 100,
+    };
+    await page.addInitScript(() => {
+      localStorage.setItem("agent-collab-viewer.theme", "paper");
+    });
+    await page.setViewportSize({ width: 390, height: 850 });
+    await serveRepository(page, requests, state);
+    await openRepository(page);
+
+    const list = page.locator(".topics-pane");
+    await expect(list.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+    await list.getByRole("button", { name: "Show all 14 topics" }).click();
+    const scope = list.locator(".topic-search-scope");
+    const scopeBeforeFailure = await scope.textContent();
+    await list.getByRole("button", { name: "#topic-02", exact: true }).click();
+    await expect
+      .poll(() => requests.filter((path) => path === "/git/trees/topic:topic-02").length)
+      .toBeGreaterThan(0);
+    await page.getByRole("button", { name: "Back to conversations" }).click();
+
+    const search = list.getByRole("searchbox", { name: "Search topics" });
+    await expect(search).toBeVisible();
+    await expect.soft(scope).toHaveText(scopeBeforeFailure ?? "");
+
+    state.failuresRemaining = 0;
+    const readsBeforeLoadAll = requests.filter(
+      (path) => path === "/git/trees/topic:topic-02",
+    ).length;
+    await list.locator(".topic-search-unloaded button").click();
+    await expect(scope).toHaveText("Search scope: 14/14 topics loaded.");
+    expect(requests.filter((path) => path === "/git/trees/topic:topic-02").length).toBeGreaterThan(
+      readsBeforeLoadAll,
+    );
+  });
 });
 
 // A list that re-sorts after a refresh must not move the reader. Chromium only: it drives the
