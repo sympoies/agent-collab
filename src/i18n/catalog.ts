@@ -49,6 +49,12 @@ export const en = {
   "topic.closedCount": "Closed ({count})",
   "topic.showAll": "Show all {count} topics",
   "topic.showFewer": "Show fewer",
+  "topic.searchLabel": "Search topics",
+  "topic.searchScope": "Search scope: {loaded}/{total} topics loaded.",
+  "topic.notLoaded":
+    "{count, plural, one {# topic is not loaded yet} other {# topics are not loaded yet}}",
+  "topic.loadAll": "Load all {count, plural, one {# remaining topic} other {# remaining topics}}",
+  "topic.searchEmpty": "No loaded topics match.",
   "topic.selectPrompt": "Choose a topic to view its messages.",
   "topic.menu": "Topic options",
   "opening.loading": "Reading the repository…",

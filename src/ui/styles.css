@@ -402,6 +402,48 @@ button:hover {
   font-weight: 650;
 }
 
+.topic-search {
+  display: grid;
+  gap: 5px;
+  margin: 3px 0 5px;
+}
+
+.topic-search input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.topic-search-scope,
+.topic-search-unloaded {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-small);
+}
+
+.topic-search-unloaded {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.topics .topic-search-unloaded button {
+  min-height: 36px;
+  padding: 6px 9px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 /* The Questions node: a chevron shows whether its filters are listed below it. */
 .topics .tree-node::before {
   flex: none;

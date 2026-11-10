@@ -327,6 +327,68 @@ test.describe("topic list navigation", () => {
   }
 });
 
+test.describe("topic search @csp", () => {
+  for (const theme of ["paper", "night-owl"] as const) {
+    for (const width of [1280, 390] as const) {
+      test(`searches loaded topics and loads the rest at ${String(width)}px (${theme})`, async ({
+        page,
+      }) => {
+        await page.addInitScript((selectedTheme) => {
+          localStorage.setItem("agent-collab-viewer.theme", selectedTheme);
+        }, theme);
+        await page.setViewportSize({ width, height: width === 1280 ? 600 : 850 });
+        await serveRepository(page, [], { bumped: false });
+        await openRepository(page);
+
+        const list = page.locator(".topics-pane");
+        const api = list.getByRole("button", { name: "#api", exact: true });
+        await api.click();
+        await expect(page.getByText("Topic list message body.")).toBeVisible();
+        if (width === 390) {
+          await page.getByRole("button", { name: "Back to conversations" }).click();
+        }
+
+        const search = list.getByRole("searchbox", { name: "Search topics" });
+        await expect(search).toBeVisible();
+        const alreadyLoaded = width === 390 ? 1 : 14;
+        const remaining = 14 - alreadyLoaded;
+        await expect(
+          list.getByText(`Search scope: ${alreadyLoaded}/14 topics loaded.`),
+        ).toBeVisible();
+        await search.fill("API");
+        await expect(list.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+        await expect(list.getByRole("button", { name: "#topic-02", exact: true })).toHaveCount(0);
+
+        await search.fill("topic-02");
+        // The selected topic remains available even when its name and title do not match.
+        await expect(list.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+        await expect(list.getByRole("button", { name: "#topic-02", exact: true })).toHaveCount(
+          width === 390 ? 0 : 1,
+        );
+        if (width === 390) {
+          await expect(list.getByText(`${remaining} topics are not loaded yet`)).toBeVisible();
+          await list
+            .getByRole("button", { name: `Load all ${remaining} remaining topics` })
+            .click();
+        }
+        await expect(list.getByRole("button", { name: "#topic-02", exact: true })).toBeVisible();
+        await expect(list.getByText("Search scope: 14/14 topics loaded.")).toBeVisible();
+
+        if (test.info().project.name === "chromium") {
+          await saveScreenshot(
+            page,
+            `topic-search-${String(width)}-${theme === "paper" ? "light" : "dark"}.png`,
+          );
+        }
+
+        await search.focus();
+        await page.keyboard.press("Escape");
+        await expect(search).toHaveValue("");
+      });
+    }
+  }
+});
+
 // A list that re-sorts after a refresh must not move the reader. Chromium only: it drives the
 // real pointer.
 test.describe("the topic list holds still for the reader", () => {

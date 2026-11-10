@@ -226,13 +226,15 @@ export function App({
   // The topics the All view has read so far. Only a topic that was read is registered with the
   // session, so a refresh never opens (and reads a first page of) a topic nobody asked for.
   const [allRead, setAllRead] = useState<ReadonlySet<string>>(() => new Set());
+  const [searchRead, setSearchRead] = useState<ReadonlySet<string>>(() => new Set());
+  const [searchLoadRequest, setSearchLoadRequest] = useState(0);
   const allNames = useMemo(
     () => topicList.filter((summary) => summary.status !== "closed").map((summary) => summary.name),
     [topicList],
   );
   const loadedTopics = useMemo(
-    () => [...new Set([...openedTopics, ...allRead])],
-    [allRead, openedTopics],
+    () => [...new Set([...openedTopics, ...allRead, ...searchRead])],
+    [allRead, openedTopics, searchRead],
   );
   const openedLoaders = useMemo(
     () =>
@@ -564,6 +566,31 @@ export function App({
   const allTotal = allNames.length;
   const allDone = allNames.filter((name) => allRead.has(name)).length;
   const allLoading = showingAll && allDone < allTotal;
+  const searchLoadedNow = useRef(new Set(loadedTopics));
+  const searchInFlight = useRef(new Set<string>());
+  const searchAllKey = allNames.join("\n");
+  useEffect(() => {
+    for (const name of loadedTopics) searchLoadedNow.current.add(name);
+  }, [loadedTopics]);
+  useEffect(() => {
+    if (topicSession === null || searchLoadRequest === 0) return;
+    const names = searchAllKey === "" ? [] : searchAllKey.split("\n");
+    const pending = names.filter(
+      (name) => !searchLoadedNow.current.has(name) && !searchInFlight.current.has(name),
+    );
+    for (const name of pending) searchInFlight.current.add(name);
+    void mapLimit(pending, ALL_CONCURRENCY, async (name) => {
+      try {
+        await topicSession.loader(name).openWithHead(topicSession.currentHead);
+        searchLoadedNow.current.add(name);
+        setSearchRead(new Set(searchLoadedNow.current));
+      } catch (reason) {
+        setError(reason);
+      } finally {
+        searchInFlight.current.delete(name);
+      }
+    });
+  }, [searchAllKey, searchLoadRequest, topicSession]);
   const closedHidden = topicList.some(
     (summary) => summary.status === "closed" && !loadedTopics.includes(summary.name),
   );
@@ -1088,6 +1115,10 @@ export function App({
                 {topicLayout ? (
                   <TopicList
                     topics={listedTopics}
+                    loadedTopics={new Set(loadedTopics)}
+                    onLoadAll={() => {
+                      setSearchLoadRequest((request) => request + 1);
+                    }}
                     selected={topic}
                     pressed={view === "chat" ? topic : null}
                     closedOpen={closedOpen}
