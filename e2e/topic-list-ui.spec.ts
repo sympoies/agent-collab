@@ -67,6 +67,8 @@ async function saveScreenshot(page: Page, filename: string) {
 /** What the stubbed repository serves; `bumped` adds a newer message to one topic and a new head. */
 interface RepositoryState {
   bumped: boolean;
+  failureTopic?: string;
+  failuresRemaining?: number;
 }
 
 const BUMPED_TOPIC = "topic-05";
@@ -79,6 +81,15 @@ async function serveRepository(page: Page, requests: string[], state: Repository
     requests.push(path);
     if (request.headers()["authorization"] !== "Bearer fake-token") {
       await route.fulfill({ status: 401, body: "{}" });
+      return;
+    }
+    if (
+      state.failureTopic !== undefined &&
+      path === `/git/trees/topic:${state.failureTopic}` &&
+      (state.failuresRemaining ?? 0) > 0
+    ) {
+      state.failuresRemaining = (state.failuresRemaining ?? 0) - 1;
+      await route.fulfill({ status: 503, body: "{}" });
       return;
     }
     if (path === "/git/ref/heads/main") {
@@ -387,6 +398,46 @@ test.describe("topic search @csp", () => {
       });
     }
   }
+
+  test("load all retries a topic whose first page failed at 390px", async ({ page }) => {
+    const requests: string[] = [];
+    const state: RepositoryState = {
+      bumped: false,
+      failureTopic: "topic-02",
+      failuresRemaining: 100,
+    };
+    await page.addInitScript(() => {
+      localStorage.setItem("agent-collab-viewer.theme", "paper");
+    });
+    await page.setViewportSize({ width: 390, height: 850 });
+    await serveRepository(page, requests, state);
+    await openRepository(page);
+
+    const list = page.locator(".topics-pane");
+    await expect(list.getByRole("button", { name: "#api", exact: true })).toBeVisible();
+    await list.getByRole("button", { name: "Show all 14 topics" }).click();
+    const scope = list.locator(".topic-search-scope");
+    const scopeBeforeFailure = await scope.textContent();
+    await list.getByRole("button", { name: "#topic-02", exact: true }).click();
+    await expect
+      .poll(() => requests.filter((path) => path === "/git/trees/topic:topic-02").length)
+      .toBeGreaterThan(0);
+    await page.getByRole("button", { name: "Back to conversations" }).click();
+
+    const search = list.getByRole("searchbox", { name: "Search topics" });
+    await expect(search).toBeVisible();
+    await expect.soft(scope).toHaveText(scopeBeforeFailure ?? "");
+
+    state.failuresRemaining = 0;
+    const readsBeforeLoadAll = requests.filter(
+      (path) => path === "/git/trees/topic:topic-02",
+    ).length;
+    await list.locator(".topic-search-unloaded button").click();
+    await expect(scope).toHaveText("Search scope: 14/14 topics loaded.");
+    expect(requests.filter((path) => path === "/git/trees/topic:topic-02").length).toBeGreaterThan(
+      readsBeforeLoadAll,
+    );
+  });
 });
 
 // A list that re-sorts after a refresh must not move the reader. Chromium only: it drives the
