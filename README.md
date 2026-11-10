@@ -59,6 +59,8 @@ See the [viewer design](docs/design.md) and the issues for work items.
 
 - [Getting started](docs/getting-started.md): open a repository and create a
   read-only token.
+- [Self-hosting](docs/self-hosting.md): build and run the static viewer image,
+  including subpath deployments.
 - [Viewer design](docs/design.md): message handling, security and UI behavior.
 - [Internationalization](docs/i18n.md): maintain translations.
 
