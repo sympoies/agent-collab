@@ -91,6 +91,14 @@ button:hover {
   font-size: var(--font-heading);
 }
 
+@media (min-width: 721px) {
+  /* Title and snapshot badge share a baseline. */
+  .bar h1:has(+ .source-indicator),
+  .bar .source-indicator {
+    align-self: baseline;
+  }
+}
+
 .bar-actions {
   display: flex;
   flex-wrap: wrap;
@@ -163,7 +171,8 @@ button:hover {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
-  margin: 0;
+  /* Right after the title; the free space of the header goes between it and the toolbar. */
+  margin: 0 auto 0 0;
   color: var(--secondary);
   font-size: var(--font-small);
 }
