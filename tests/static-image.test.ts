@@ -22,10 +22,32 @@ describe("static image delivery", () => {
     expect(() => renderNginxConfig("/viewer; include /etc/passwd/")).toThrow(/VITE_BASE_PATH/);
   });
 
-  it("keeps credentials and local state out of the Docker build context", () => {
+  it("serves an optional read-only snapshot mount without caching and 404s when it is absent", () => {
+    const cases: [basePath: string, route: string][] = [
+      ["/", "/hosted-snapshot.json"],
+      ["/viewer/", "/viewer/hosted-snapshot.json"],
+    ];
+    for (const [basePath, route] of cases) {
+      const serverConfig = renderNginxConfig(basePath);
+      const block = serverConfig.match(
+        new RegExp(`location\\s*=\\s*${route.replace(/\//g, "\\/")}\\s*\\{([^}]*)\\}`),
+      );
+
+      expect(block, `snapshot location for ${basePath}`).not.toBeNull();
+      expect(block?.[1]).toMatch(/alias\s+\/srv\/snapshot\/hosted-snapshot\.json;/);
+      expect(block?.[1]).toMatch(/add_header\s+Cache-Control\s+"no-store"\s+always;/);
+      // No fallback: an unmounted file is a plain 404, never the SPA shell.
+      expect(block?.[1]).not.toMatch(/try_files/);
+    }
+  });
+
+  it("keeps credentials, snapshots and local state out of the Docker build context", () => {
     const dockerIgnore = readRepositoryFile(".dockerignore");
 
     for (const pattern of [".git", "node_modules", ".env", ".env.*", ".npmrc", "*.pem", "*.key"]) {
+      expect(dockerIgnore.split(/\r?\n/)).toContain(pattern);
+    }
+    for (const pattern of ["hosted-snapshot.json", "**/hosted-snapshot.json"]) {
       expect(dockerIgnore.split(/\r?\n/)).toContain(pattern);
     }
     expect(dockerIgnore.split(/\r?\n/)).not.toContain("public/demo-snapshot.json");
@@ -40,6 +62,11 @@ describe("static image delivery", () => {
       /^FROM nginxinc\/nginx-unprivileged:1\.29-alpine@sha256:[a-f0-9]{64}$/m,
     );
     expect(dockerfile).toMatch(/^COPY \. \.$/m);
+    // The source revision is a build argument, so a local build never inherits the base image's label.
+    expect(dockerfile).toMatch(/^ARG SOURCE_REVISION=$/m);
+    expect(dockerfile).toMatch(
+      /^LABEL org\.opencontainers\.image\.revision="\$\{SOURCE_REVISION\}"$/m,
+    );
   });
 
   it("keeps the Compose service opt-in and independent of the agent runtime", () => {
