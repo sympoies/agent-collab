@@ -15,4 +15,8 @@ FROM nginxinc/nginx-unprivileged:1.29-alpine@sha256:0c79d56aee561a1d81c63f00eee5
 COPY --from=build /tmp/default.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 
+# Set by the release workflow; empty for a local build (the base image's own label is replaced).
+ARG SOURCE_REVISION=
+LABEL org.opencontainers.image.revision="${SOURCE_REVISION}"
+
 EXPOSE 8080

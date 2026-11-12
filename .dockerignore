@@ -8,3 +8,5 @@ dist
 *.key
 **/*.pem
 **/*.key
+hosted-snapshot.json
+**/hosted-snapshot.json

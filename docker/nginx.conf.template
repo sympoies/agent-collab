@@ -10,6 +10,14 @@ server {
         return 200 "ok\n";
     }
 
+    # Optional snapshot mount: a deployment may bind-mount a directory holding
+    # hosted-snapshot.json read-only at /srv/snapshot. Without the mount this is a plain 404.
+    location = __SNAPSHOT_PATH__ {
+        alias /srv/snapshot/hosted-snapshot.json;
+        default_type application/json;
+        add_header Cache-Control "no-store" always;
+    }
+
     __BASE_PATH_LOCATION__
 
     location / {

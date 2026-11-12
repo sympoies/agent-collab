@@ -15,7 +15,9 @@ export function renderNginxConfig(basePath) {
       ? ""
       : `location ^~ ${basePath} {\n        rewrite ^${basePath}(.*)$ /$1 break;\n        try_files $uri $uri/ /index.html;\n    }`;
 
-  return readFileSync(templatePath, "utf8").replace("__BASE_PATH_LOCATION__", basePathLocation);
+  return readFileSync(templatePath, "utf8")
+    .replace("__SNAPSHOT_PATH__", `${basePath}hosted-snapshot.json`)
+    .replace("__BASE_PATH_LOCATION__", basePathLocation);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
