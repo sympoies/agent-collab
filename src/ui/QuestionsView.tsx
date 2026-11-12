@@ -116,7 +116,7 @@ function Replies({
 function firstLine(message: Message, t: Translate): string {
   if (message.body.state === "locked") return t("chat.encrypted");
   const first = firstBlockLine(message.body.lines);
-  return first.code ? first.text : plainInline(first.text);
+  return first.code ? first.text : plainInline(first.text, t);
 }
 
 function fullText(message: Message, t: Translate): string {

@@ -13,7 +13,7 @@ export type Ref =
       readonly directory: string;
       readonly fileKind: FileKind;
     }
-  | { readonly kind: "url"; readonly href: string; readonly host: string }
+  | { readonly kind: "url"; readonly href: string }
   | { readonly kind: "text"; readonly text: string };
 
 const MESSAGE_ID_RE = /^\d{4}-\d{2}-\d{2}T\d{4}-[a-z0-9][a-z0-9-]*-\d{2}$/;
@@ -78,7 +78,7 @@ export function classifyRef(ref: string): Ref {
       url.password === "" &&
       url.hostname !== ""
     ) {
-      return { kind: "url", href: url.href, host: url.hostname };
+      return { kind: "url", href: url.href };
     }
   } catch {
     // Not a URL: shown as text.

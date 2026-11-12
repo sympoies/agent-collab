@@ -31,6 +31,7 @@ const refs = [
   "topics/api/huge.txt",
   "topics/api/gone.md",
   "https://docs.example.com/guide?x=1",
+  "https://jira.example.test/browse/PROJ-123?focusedCommentId=456",
   SECOND,
   "2026-09-09T0900-carol-agent-api-01",
   hostile,
@@ -122,7 +123,13 @@ describe("attachments", () => {
       "MD",
     ]);
     const link = list?.querySelector<HTMLAnchorElement>('a[href^="https://docs.example.com"]');
-    expect(link?.textContent).toBe("docs.example.com");
+    expect(link?.textContent).toBe("docs.example.com · …/guide");
+    expect(link?.getAttribute("title")).toBe("https://docs.example.com/guide?x=1");
+    const jira = list?.querySelector<HTMLAnchorElement>('a[href^="https://jira.example.test"]');
+    expect(jira?.textContent).toBe("PROJ-123 · comment 456");
+    expect(jira?.getAttribute("title")).toBe(
+      "https://jira.example.test/browse/PROJ-123?focusedCommentId=456",
+    );
     expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
     expect(link?.getAttribute("target")).toBe("_blank");
     // A hostile ref is text, never a link; an unloaded message id is not a link either.
@@ -216,7 +223,30 @@ describe("attachments", () => {
       "huge.txt",
       "notes.txt",
     ]);
-    expect(host.querySelectorAll(".files a.chip")).toHaveLength(1);
+    const rows = [...host.querySelectorAll<HTMLAnchorElement>(".files a.file-link-name")];
+    expect(rows).toHaveLength(2);
+    const parts = (row: HTMLAnchorElement) => ({
+      badge: row.querySelector(".file-badge")?.textContent,
+      label: row.querySelector(":scope > span:not(.file-badge):not(.file-link-host)")?.textContent,
+      host: row.querySelector(".file-link-host")?.textContent ?? null,
+      title: row.getAttribute("title"),
+    });
+    expect(rows.map(parts)).toEqual(
+      expect.arrayContaining([
+        {
+          badge: "URL",
+          label: "PROJ-123 · comment 456",
+          host: "jira.example.test",
+          title: "https://jira.example.test/browse/PROJ-123?focusedCommentId=456",
+        },
+        {
+          badge: "URL",
+          label: "docs.example.com · …/guide",
+          host: null,
+          title: "https://docs.example.com/guide?x=1",
+        },
+      ]),
+    );
     expect(host.querySelector(".files .file-from")?.textContent).toContain("alice-agent · #api");
   });
 

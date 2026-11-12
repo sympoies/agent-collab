@@ -1786,3 +1786,8 @@ span.chip {
     overflow: visible;
   }
 }
+
+.file-link-host {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}

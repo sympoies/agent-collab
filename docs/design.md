@@ -610,8 +610,12 @@ public blobs.
   file, an SVG or any other type shows its size and an "Open in GitHub" link
   from the source (`MessageSource.webLink`) to the file at the revision being
   viewed, which keeps provider details out of the UI. A message id jumps to and
-  highlights that message (`:target`), a URL shows its host and opens in a new
-  tab with `rel="noopener noreferrer"`, and anything else stays plain text.
+  highlights that message (`:target`), a URL shows a short label from `src/message/urlLabel.ts`
+  (`PROJ-123`, `app!12`, `repo#7`, `repo@1a2b3c4`, a file name, or the host plus
+  the last path segment for any other shape; derived from the URL text only,
+  with the full URL as the link title; Markdown links without a label, in message
+  bodies and in plain-text quotes and excerpts, use the same label) and opens in a new tab with
+  `rel="noopener noreferrer"`, and anything else stays plain text.
   Previews are text or the small Markdown subset in `src/ui/Markdown.tsx`,
   rendered as React elements: raw HTML stays text, Markdown images are shown as
   their alt text, only http(s) links are links. The Markdown scan has bounded
@@ -630,8 +634,9 @@ public blobs.
   starts with an explicit All topics scope; a selected topic can be chosen as a
   filter, and that choice stays while switching pages. Rows show the reference,
   the original message excerpt, colored sender, topic, time and a jump-to-message
-  link. Each excerpt expands to the full message, and hosts appear as links with
-  the same context. Rows run oldest to newest and the page opens at the bottom.
+  link. Each excerpt expands to the full message, and links appear as rows with
+  the same context: a "URL" badge and the readable label, followed by the host as muted
+  text when the label does not already contain it, with the full URL as the title. Rows run oldest to newest and the page opens at the bottom.
   It lists only loaded messages: it shows the same "Load older messages"
   control as the chat and a note while older pages are not loaded, so
   attachments of older messages are not silently missing. Sources that cannot

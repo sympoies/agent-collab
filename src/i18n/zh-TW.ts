@@ -221,6 +221,7 @@ export const zhTW: Messages = {
   "file.messageRef": "訊息 {date} {time}",
   "file.messageRefMissing": "訊息 {date}（未載入）",
   "file.messageRefMissingTitle": "此訊息尚未載入",
+  "url.comment": "留言 {id}",
   "files.loadedOnly": "僅列出已載入訊息中的檔案與連結。載入較舊的訊息可看到更多。",
   "files.loadMore": "載入更多檔案",
   "files.empty": "已載入的訊息中沒有檔案或連結。",

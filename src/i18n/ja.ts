@@ -234,6 +234,7 @@ export const ja: Messages = {
   "file.messageRef": "メッセージ {date} {time}",
   "file.messageRefMissing": "メッセージ {date}（未読み込み）",
   "file.messageRefMissingTitle": "このメッセージは読み込まれていません",
+  "url.comment": "コメント {id}",
   "files.loadedOnly":
     "読み込み済みのメッセージのファイルとリンクだけを表示しています。古いメッセージを読み込むと増えます。",
   "files.loadMore": "さらにファイルを読み込む",

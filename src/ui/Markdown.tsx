@@ -3,7 +3,9 @@
 
 import type { ReactNode } from "react";
 
+import { useT, type Translate } from "../i18n/LocaleProvider";
 import { classifyRef } from "../message/refs";
+import { describeUrl } from "../message/urlLabel";
 
 // A link target may contain one level of balanced parentheses (`[a](https://x.example/a_(b))`),
 // so a target such as `javascript:alert(1)` is consumed whole instead of leaving a stray `)`.
@@ -16,12 +18,12 @@ const MAX_INLINE_LENGTH = 2000;
 const LINK_RE = /^(!?)\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))*)\)$/;
 
 /**
- * The text of one line without its inline markers: a link shows its text (or its target when it has
- * none), an image its alt text, emphasis and code only their content. For places that sit inside a
+ * The text of one line without its inline markers: a link shows its text (or a readable URL label when it
+ * has none), an image its alt text, emphasis and code only their content. For places that sit inside a
  * link or a clamped block, where rendering the inline elements is not safe. Unbalanced markers and
  * lines longer than the scan limit stay as written.
  */
-export function plainInline(text: string): string {
+export function plainInline(text: string, t: Translate): string {
   if (text.length > MAX_INLINE_LENGTH) return text;
   return text
     .split(INLINE_RE)
@@ -32,7 +34,9 @@ export function plainInline(text: string): string {
       const link = LINK_RE.exec(part);
       if (link === null) return part;
       const [, , label = "", target = ""] = link;
-      return label === "" ? target : label;
+      if (label !== "") return label;
+      const ref = classifyRef(target);
+      return ref.kind === "url" ? describeUrl(ref.href, t).label : target;
     })
     .join("");
 }
@@ -63,7 +67,7 @@ export function firstBlockLine(lines: readonly string[]): {
   return { text: line, code: false };
 }
 
-function inline(text: string, keyPrefix: string): ReactNode[] {
+function inline(text: string, keyPrefix: string, t: Translate): ReactNode[] {
   if (text.length > MAX_INLINE_LENGTH) return [text];
   return text.split(INLINE_RE).flatMap((part, index): ReactNode[] => {
     const key = `${keyPrefix}-${String(index)}`;
@@ -84,9 +88,16 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
       if (image === "!") return [label === "" ? target : label];
       const ref = classifyRef(target);
       if (ref.kind === "url") {
+        const described = label === "" ? describeUrl(ref.href, t) : null;
         return [
-          <a key={key} href={ref.href} target="_blank" rel="noopener noreferrer">
-            {label === "" ? ref.href : label}
+          <a
+            key={key}
+            href={ref.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={described?.title}
+          >
+            {described?.label ?? label}
           </a>,
         ];
       }
@@ -149,6 +160,7 @@ function blocks(text: string): Block[] {
 }
 
 export function Markdown({ text }: { readonly text: string }) {
+  const t = useT();
   return (
     <div className="markdown">
       {blocks(text).map((block, index) => {
@@ -156,7 +168,7 @@ export function Markdown({ text }: { readonly text: string }) {
         switch (block.kind) {
           case "heading": {
             const Tag = `h${String(block.level)}` as "h1";
-            return <Tag key={key}>{inline(block.text, key)}</Tag>;
+            return <Tag key={key}>{inline(block.text, key, t)}</Tag>;
           }
           case "code":
             return (
@@ -169,15 +181,15 @@ export function Markdown({ text }: { readonly text: string }) {
             return (
               <Tag key={key}>
                 {block.items.map((item, itemIndex) => (
-                  <li key={itemIndex}>{inline(item, `${key}-${String(itemIndex)}`)}</li>
+                  <li key={itemIndex}>{inline(item, `${key}-${String(itemIndex)}`, t)}</li>
                 ))}
               </Tag>
             );
           }
           case "quote":
-            return <blockquote key={key}>{inline(block.text, key)}</blockquote>;
+            return <blockquote key={key}>{inline(block.text, key, t)}</blockquote>;
           case "paragraph":
-            return <p key={key}>{inline(block.text, key)}</p>;
+            return <p key={key}>{inline(block.text, key, t)}</p>;
         }
       })}
     </div>
