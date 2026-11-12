@@ -10,6 +10,7 @@ import { parseCsv } from "../message/csv";
 import { IMAGE_MAX_PIXELS, imageDimensions } from "../message/image";
 import { classifyRef, imageMime, type FileKind, type Ref } from "../message/refs";
 import type { Message } from "../message/types";
+import { describeUrl } from "../message/urlLabel";
 import { SourceError } from "../source/types";
 import { Markdown } from "./Markdown";
 import type { People } from "./people";
@@ -313,6 +314,29 @@ function jumpHandler(id: string, context: AttachmentContext) {
   };
 }
 
+function UrlChip({ href }: { href: string }) {
+  const t = useT();
+  const { label, title } = describeUrl(href, t);
+  return (
+    <a className="chip" href={href} title={title} target="_blank" rel="noopener noreferrer">
+      {label}
+    </a>
+  );
+}
+
+/** A link row in the Files view: the label, then the host as muted text unless the label has it. */
+function FilesLinkText({ href }: { href: string }) {
+  const t = useT();
+  const { label } = describeUrl(href, t);
+  const host = new URL(href).hostname;
+  return (
+    <>
+      <span>{label}</span>
+      {!label.includes(host) && <span className="file-link-host">{host}</span>}
+    </>
+  );
+}
+
 export function RefList({
   refs,
   context,
@@ -337,9 +361,7 @@ export function RefList({
           case "url":
             return (
               <li key={key}>
-                <a className="chip" href={ref.href} target="_blank" rel="noopener noreferrer">
-                  {ref.host}
-                </a>
+                <UrlChip href={ref.href} />
               </li>
             );
           case "message":
@@ -534,13 +556,14 @@ function FilesList({
                   <a
                     className="chip file-link-name"
                     href={item.ref.href}
+                    title={item.ref.href}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
                     <span className="file-badge" aria-hidden="true">
                       {t("files.badgeLink")}
                     </span>
-                    <span>{item.ref.host}</span>
+                    <FilesLinkText href={item.ref.href} />
                   </a>
                 )}
                 <MetaLine className="file-from">

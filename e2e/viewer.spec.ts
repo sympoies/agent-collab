@@ -433,7 +433,7 @@ function attachmentThread(): MessageFixture[] {
     "The review files are attached.",
     "bob-agent",
     "",
-    "topics/api/fields-v1.md, topics/api/results.csv, topics/api/wide.csv, topics/api/diagram.png, topics/api/archive.bin, https://docs.example.com/guide, topics/api/other.md, topics/api/an-extraordinarily-long-file-name-that-keeps-going-and-going-for-the-phone-viewport-check-0123456789.md, https://a-very-long-host-name-for-the-wrapping-check-at-phone-width.example.invalid/path, 2026-10-08T0910-alice-agent-ops-01",
+    "topics/api/fields-v1.md, topics/api/results.csv, topics/api/wide.csv, topics/api/diagram.png, topics/api/archive.bin, https://docs.example.com/guide, https://jira.example.test/browse/PROJ-123?focusedCommentId=456, https://gitlab.example.test/group/app/-/merge_requests/12, topics/api/other.md, topics/api/an-extraordinarily-long-file-name-that-keeps-going-and-going-for-the-phone-viewport-check-0123456789.md, https://a-very-long-host-name-for-the-wrapping-check-at-phone-width.example.invalid/path, 2026-10-08T0910-alice-agent-ops-01",
   );
   return [
     first,
@@ -2121,6 +2121,35 @@ for (const identity of identityCases) {
 }
 
 for (const identity of identityCases) {
+  test(`URL refs show readable labels with the full URL as title on ${identity.label} in ${identity.theme}`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: identity.scheme });
+    await page.setViewportSize(identity.viewport);
+    const assertRequests = await openViewer(page, "attachments");
+    await page.getByRole("button", { name: /^#api/ }).click();
+    const first = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
+    const chip = (name: string | RegExp) => first.getByRole("link", { name });
+    await expect(chip("PROJ-123 · comment 456")).toHaveAttribute(
+      "title",
+      "https://jira.example.test/browse/PROJ-123?focusedCommentId=456",
+    );
+    await expect(chip("app!12")).toHaveAttribute(
+      "title",
+      "https://gitlab.example.test/group/app/-/merge_requests/12",
+    );
+    await expect(chip("docs.example.com · …/guide")).toBeVisible();
+    await expect(
+      chip(/^a-very-long-host-name-for-the-wrapping-check-at-phone-width\.example\.invalid/),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+    assertRequests();
+  });
+}
+
+for (const identity of identityCases) {
   test(`attachments, previews and the Files view work on ${identity.label} in ${identity.theme}`, async ({
     page,
   }) => {
@@ -2142,7 +2171,7 @@ for (const identity of identityCases) {
       "MD",
       "MD",
     ]);
-    const guide = first.getByRole("link", { name: "docs.example.com" });
+    const guide = first.getByRole("link", { name: "docs.example.com · …/guide" });
     await expect(guide).toHaveAttribute("rel", "noopener noreferrer");
     await expect(guide).toHaveAttribute("target", "_blank");
     // No file was requested before a card was opened.
@@ -2250,7 +2279,7 @@ for (const identity of identityCases) {
     await expect(page.locator("#conversation-heading")).toHaveText("Files");
     await expect(page.locator(".files .file-name")).toHaveCount(7);
     await expect(page.locator(".files .file-from").first()).toContainText("alice-agent · #api");
-    await expect(page.locator(".files a.chip")).toHaveCount(2);
+    await expect(page.locator(".files a.chip")).toHaveCount(4);
     const filesOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );

@@ -39,7 +39,6 @@ describe("classifyRef", () => {
     expect(classifyRef("https://docs.example.com/a/b?x=1")).toEqual({
       kind: "url",
       href: "https://docs.example.com/a/b?x=1",
-      host: "docs.example.com",
     });
     expect(classifyRef("http://example.com").kind).toBe("url");
     for (const ref of [

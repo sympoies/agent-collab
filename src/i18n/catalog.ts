@@ -241,6 +241,7 @@ export const en = {
   "file.messageRef": "Message {date} {time}",
   "file.messageRefMissing": "Message {date} (not loaded)",
   "file.messageRefMissingTitle": "This message is not loaded",
+  "url.comment": "comment {id}",
   "files.loadedOnly":
     "Only files and links from the loaded messages are listed. Load older messages to see more.",
   "files.loadMore": "Load more files",

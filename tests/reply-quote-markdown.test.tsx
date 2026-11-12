@@ -7,7 +7,8 @@ import { deriveQuestionStates } from "../src/message/questions";
 import { buildReceipts } from "../src/message/receipts";
 import { FixtureSource } from "../src/source/fixture";
 import { ChatView } from "../src/ui/ChatView";
-import { plainInline } from "../src/ui/Markdown";
+import { translate } from "../src/i18n/translate";
+import { plainInline as plainInlineWith } from "../src/ui/Markdown";
 import { buildPeople } from "../src/ui/people";
 import { buildRows } from "../src/ui/timeline";
 import { flat, MARKER, messageText } from "./support";
@@ -63,6 +64,9 @@ async function quoteOf(first: string): Promise<string> {
   return /<span class="quote-text">(.*?)<\/span>/.exec(quote)?.[1] ?? "";
 }
 
+const plainInline = (text: string) =>
+  plainInlineWith(text, (key, params) => translate("en", key, params));
+
 describe("plainInline", () => {
   it("shows a link by its text and drops the target", () => {
     expect(plainInline("已開 [IA-3261](https://tracker.example/browse/IA-3261)，請協助研究")).toBe(
@@ -70,10 +74,11 @@ describe("plainInline", () => {
     );
   });
 
-  it("shows the target when a link has no text, and the alt text of an image", () => {
+  it("shows a readable URL label when a link has no text, and the alt text of an image", () => {
     expect(plainInline("[](https://x.example/a) and ![diagram](https://x.example/i.png)")).toBe(
-      "https://x.example/a and diagram",
+      "x.example · …/a and diagram",
     );
+    expect(plainInline("see [](https://jira.example.test/browse/PROJ-123)")).toBe("see PROJ-123");
   });
 
   it("drops emphasis and code markers", () => {

@@ -36,6 +36,13 @@ describe("Markdown", () => {
     expect(out).toContain("<pre><code>a &lt; b</code></pre>");
   });
 
+  it("shows a readable label, with the full URL as title, for a link without a label", () => {
+    const out = html("See [](https://jira.example.test/browse/PROJ-123) now");
+    expect(out).toContain(
+      '<a href="https://jira.example.test/browse/PROJ-123" target="_blank" rel="noopener noreferrer" title="https://jira.example.test/browse/PROJ-123">PROJ-123</a>',
+    );
+  });
+
   it("shows raw HTML as text and never creates elements from it", () => {
     const out = html(
       '<script>alert(1)</script> <img src="https://evil.example/x.png" onerror="x">',

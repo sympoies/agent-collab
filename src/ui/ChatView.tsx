@@ -32,7 +32,7 @@ function typeLabel(type: Message["type"], t: Translate): string {
 function firstLine(message: Message, t: Translate): string {
   if (message.body.state === "locked") return t("chat.encrypted");
   const first = firstBlockLine(message.body.lines);
-  return first.code ? first.text : plainInline(first.text);
+  return first.code ? first.text : plainInline(first.text, t);
 }
 
 /** What a reply needs to offer loading its original when that is older than the loaded range. */
