@@ -14,18 +14,42 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: release-image-${{ github.ref }}
-  cancel-in-progress: false
-
 env:
   IMAGE: ghcr.io/sympoies/agent-collab-viewer
 
 jobs:
+  # Resolves and validates the version first, so a bad version fails before anything is built.
+  version:
+    permissions: {}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      value: ${{ steps.resolve.outputs.value }}
+    steps:
+      - name: Resolve the version
+        id: resolve
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
+          else
+            version="${REF_NAME#v}"
+          fi
+          # Match the whole string: a multi-line value must not pass on one valid line.
+          if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "The version is not a semantic version such as 1.2.3." >&2
+            exit 1
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
   # Builds each platform on a matching runner, loads it into the local Docker engine and runs the
   # acceptance script against it. No registry login, no push, no write permission.
   smoke:
     name: smoke (${{ matrix.platform }})
+    needs: version
     permissions:
       contents: read
     strategy:
@@ -57,30 +81,17 @@ jobs:
         run: scripts/verify-static-image.sh agent-collab-viewer:smoke /
 
   publish:
-    needs: smoke
+    needs: [version, smoke]
+    # One publish per version at a time, so the overwrite check cannot race another run.
+    concurrency:
+      group: release-image-${{ needs.version.outputs.value }}
+      cancel-in-progress: false
     permissions:
       contents: read
       packages: write
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Resolve the version
-        id: version
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_VERSION: ${{ inputs.version }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            version="$INPUT_VERSION"
-          else
-            version="${REF_NAME#v}"
-          fi
-          if ! printf '%s' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-            echo "Version '$version' is not a semantic version such as 1.2.3." >&2
-            exit 1
-          fi
-          echo "value=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -94,7 +105,7 @@ jobs:
       # A version tag is published once; a published version is never overwritten.
       - name: Refuse to overwrite a published version
         env:
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ needs.version.outputs.value }}
         run: |
           if docker buildx imagetools inspect "$IMAGE:$VERSION" > /dev/null 2>&1; then
             echo "$IMAGE:$VERSION already exists; publish a new version instead." >&2
@@ -108,17 +119,17 @@ jobs:
           push: true
           provenance: false
           sbom: false
-          tags: ghcr.io/sympoies/agent-collab-viewer:${{ steps.version.outputs.value }}
+          tags: ghcr.io/sympoies/agent-collab-viewer:${{ needs.version.outputs.value }}
           build-args: |
             SOURCE_REVISION=${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+            org.opencontainers.image.version=${{ needs.version.outputs.value }}
             org.opencontainers.image.licenses=MIT
       - name: Record the digest
         env:
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ needs.version.outputs.value }}
           DIGEST: ${{ steps.build.outputs.digest }}
           SOURCE_SHA: ${{ github.sha }}
         run: |

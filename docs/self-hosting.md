@@ -143,7 +143,7 @@ the deep-link fallback, that no snapshot is served, that the container runs as a
 non-root user, and that the image history, configuration and layers hold no
 credential-like strings, credential files or snapshot data. It then runs the image
 again with a temporary snapshot mounted read-only and checks that the snapshot is
-served with `no-store` and that the mount is read-only. Output lists one `PASS` or
+served with `no-store` and that the mount is configured read-only. Output lists one `PASS` or
 `FAIL` line per check; it never prints a matched value, only which check matched.
 
 It also prints the image digest (a local image has no registry digest yet, so the

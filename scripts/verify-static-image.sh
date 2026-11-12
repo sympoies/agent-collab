@@ -93,7 +93,11 @@ is_status() { [[ $(status_of "$1") == "$2" ]]; }
 is_nonroot() { [[ -n $1 && $1 != 0 && $1 != root ]]; }
 serves_text() { [[ $(curl -s "$1") == *"$2"* ]]; }
 has_no_store() { curl -sI "$1" | tr -d '\r' | grep -qiE '^cache-control:[[:space:]]*no-store$'; }
-is_read_only() { ! docker exec "$1" sh -c 'touch /srv/snapshot/probe' 2>/dev/null; }
+# The mount's own read-write flag, not a write attempt: an unprivileged user could not write to the
+# host directory anyway, so a failed write would not prove the mount is read-only.
+is_read_only() {
+  [[ $(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/srv/snapshot"}}{{.RW}}{{end}}{{end}}' "$1") == false ]]
+}
 lacks_pattern() { ! grep -qE "$1" "$2"; } # lacks_pattern <regex> <file>
 no_credential_env() {
   ! docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$image" |
@@ -222,7 +226,7 @@ if mounted_url=$(start_container "$run_id-mounted" -v "$snapshot_dir:/srv/snapsh
   snapshot_url="$mounted_url${base}hosted-snapshot.json"
   check "mounted snapshot is served under the base path" serves_text "$snapshot_url" "$marker"
   check "mounted snapshot is served with Cache-Control: no-store" has_no_store "$snapshot_url"
-  check "snapshot mount is read-only inside the container" is_read_only "$run_id-mounted"
+  check "snapshot mount is configured read-only" is_read_only "$run_id-mounted"
   check "the rest of the app is unaffected by the mount" is_status "$mounted_url$deep" 200
 else
   fail "container starts with the snapshot directory mounted read-only"
