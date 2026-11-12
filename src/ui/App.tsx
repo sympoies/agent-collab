@@ -690,6 +690,8 @@ export function App({
     questionsNode.filter !== null && filterIsCurrent(questionsNode.filter, tree)
       ? questionsNode.filter
       : null;
+  // The filter rows read as selected only while the Questions page is the one shown.
+  const pressedFilter = view === "questions" ? activeFilter : null;
   // Only questions with a known state have filters; until then the node has nothing to expand.
   const hasQuestionFilters = tree.open + tree.answered > 0;
   const shownGroups = useMemo(
@@ -1066,7 +1068,7 @@ export function App({
                   >
                     <button
                       type="button"
-                      aria-pressed={activeFilter?.kind === "open"}
+                      aria-pressed={pressedFilter?.kind === "open"}
                       onClick={(event) => {
                         openQuestions({ kind: "open" }, event.currentTarget);
                       }}
@@ -1080,7 +1082,7 @@ export function App({
                         type="button"
                         className="tree-child"
                         aria-pressed={
-                          activeFilter?.kind === "person" && activeFilter.person === entry.name
+                          pressedFilter?.kind === "person" && pressedFilter.person === entry.name
                         }
                         onClick={(event) => {
                           openQuestions(
@@ -1101,7 +1103,7 @@ export function App({
                     ))}
                     <button
                       type="button"
-                      aria-pressed={activeFilter?.kind === "answered"}
+                      aria-pressed={pressedFilter?.kind === "answered"}
                       onClick={(event) => {
                         openQuestions({ kind: "answered" }, event.currentTarget);
                       }}

@@ -137,6 +137,33 @@ for (const scheme of ["light", "dark"] as const) {
         await expect(filterBar).toHaveCount(0);
       });
 
+      test("a filter row is pressed only while the Questions page is shown @csp", async ({
+        page,
+      }) => {
+        await open(page, width, scheme);
+        await openQuestions(page);
+        const toList = async () => {
+          // On a phone the list is a screen of its own: back to it before each look.
+          if (width < 721 && !(await page.locator(".questions-tree").isVisible())) {
+            await page.getByRole("button", { name: en["nav.back"] }).click();
+          }
+        };
+        const pressed = page.locator(".questions-tree button[aria-pressed='true']");
+        await toList();
+        await child(page, /^bob-agent/).click();
+        await toList();
+        await expect(pressed).toHaveCount(1);
+        await page.locator(".topics > button", { hasText: /^All/ }).click();
+        await toList();
+        await expect(pressed).toHaveCount(0);
+        await page.locator(".topics > button", { hasText: /^Files/ }).click();
+        await toList();
+        await expect(pressed).toHaveCount(0);
+        await child(page, /^bob-agent/).click();
+        await toList();
+        await expect(pressed).toHaveCount(1);
+      });
+
       test("the filter and the expansion survive a reload @csp", async ({ page }) => {
         await open(page, width, scheme);
         await openQuestions(page);
