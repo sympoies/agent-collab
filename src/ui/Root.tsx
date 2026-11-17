@@ -993,6 +993,11 @@ export function Root(props: RootProps) {
               <ThemeToggle />
             </div>
           </header>
+          {openingHosted && (
+            <p className="hosted-opening" role="status" aria-busy="true">
+              {t("opening.loading")}
+            </p>
+          )}
           <h2 className="settings-title">{t("settings.title")}</h2>
           {screen.message !== null && (
             <p className="error" role="alert">

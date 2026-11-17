@@ -212,6 +212,58 @@ test.describe("a reload reopens the GitHub repository @csp", () => {
     });
   }
 
+  for (const width of [1280, 390]) {
+    test(`Back announces while a served snapshot opens after reload at ${String(width)}px @csp`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      let snapshotAvailable = false;
+      let snapshotRequests = 0;
+      let releaseSnapshot: (() => void) | undefined;
+      let announcePending: (() => void) | undefined;
+      const pending = new Promise<void>((resolve) => {
+        announcePending = resolve;
+      });
+      const wait = new Promise<void>((resolve) => {
+        releaseSnapshot = resolve;
+      });
+      await page.route("**/hosted-snapshot.json", async (route) => {
+        snapshotRequests += 1;
+        if (!snapshotAvailable) {
+          await route.fulfill({ status: 404, body: "" });
+        } else if (snapshotRequests === 2) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: HOSTED_SNAPSHOT,
+          });
+        } else {
+          announcePending?.();
+          await wait;
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: HOSTED_SNAPSHOT,
+          });
+        }
+      });
+      const state = { reject: false, tokens: [] as string[] };
+      await serve(page, state);
+      await connect(page);
+
+      state.reject = true;
+      snapshotAvailable = true;
+      await page.reload();
+      await expect(page.locator("#github-form")).toBeVisible();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await pending;
+      await expect(page.getByText("Reading the repository…")).toBeVisible();
+      releaseSnapshot?.();
+      await page.getByRole("button", { name: "All", exact: true }).click();
+      await expect(page.getByText("From the served snapshot fallback.")).toBeVisible();
+    });
+  }
+
   test("after Forget a reload starts on the welcome screen @csp", async ({ page }) => {
     const state = { reject: false, tokens: [] as string[] };
     await serve(page, state);

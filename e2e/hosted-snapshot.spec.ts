@@ -152,15 +152,36 @@ for (const code of LOCALES) {
     await page.addInitScript((locale) => {
       localStorage.setItem("agent-collab-viewer.locale", locale);
     }, code);
-    // The page's probe finds the file; every later fetch (the one that opens it) does not.
-    let served = 0;
-    await deploy(page, () => {
-      served += 1;
-      return served === 1 ? snapshot("r1", ["Hosted message."], "2026-11-04T09:00:00.000Z") : null;
+    let requests = 0;
+    let release: (() => void) | undefined;
+    let announcePending: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      announcePending = resolve;
+    });
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/hosted-snapshot.json", async (route) => {
+      requests += 1;
+      if (requests === 1) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: snapshot("r1", ["Hosted message."], "2026-11-04T09:00:00.000Z"),
+        });
+        return;
+      }
+      announcePending?.();
+      await wait;
+      await route.fulfill({ status: 404, body: "" });
     });
     await page.goto("/");
+    await pending;
+    await expect(page.getByText(messages["opening.loading"])).toBeVisible();
+    release?.();
     await expect(page.getByRole("button", { name: messages["welcome.openHosted"] })).toBeVisible();
     await expect(page.getByRole("alert")).toContainText(messages["hosted.unreadable"]);
+    await expect(page.getByText(messages["opening.loading"])).toHaveCount(0);
     await expect(page.locator("h1")).toHaveCount(1);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
