@@ -232,6 +232,7 @@ export const zhTW: Messages = {
   "files.showMessage": "顯示完整原訊息",
   "files.jumpToMessage": "跳至訊息",
   "settings.title": "設定",
+  "settings.back": "返回",
   "settings.platform": "平台",
   "settings.github": "GitHub",
   "settings.gitlab": "GitLab（日後支援）",

@@ -253,6 +253,7 @@ export const en = {
   "files.showMessage": "Show full message",
   "files.jumpToMessage": "Jump to message",
   "settings.title": "Settings",
+  "settings.back": "Back",
   "settings.platform": "Platform",
   "settings.github": "GitHub",
   "settings.gitlab": "GitLab (later)",

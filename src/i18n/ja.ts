@@ -246,6 +246,7 @@ export const ja: Messages = {
   "files.showMessage": "元のメッセージ全体を表示",
   "files.jumpToMessage": "メッセージを開く",
   "settings.title": "設定",
+  "settings.back": "戻る",
   "settings.platform": "プラットフォーム",
   "settings.github": "GitHub",
   "settings.gitlab": "GitLab（今後対応）",

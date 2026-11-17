@@ -32,6 +32,7 @@ import {
   type StaticDemoView,
 } from "../settings/live-demo";
 import { DEMO_REPOSITORY } from "../settings/live-demo";
+import { repositoryWebUrl } from "../settings/repository-web-url";
 import { demoFiles } from "../demo/fixtures";
 import type { MessageRef } from "../i18n/translate";
 import { SourceError, type MessageSource } from "../source/types";
@@ -101,6 +102,8 @@ interface ViewerScreen {
   readonly rememberView: boolean;
   /** A GitHub repository from the reader's settings, which a reload reopens. */
   readonly github: boolean;
+  /** The browser page for a GitHub repository; null for every other source. */
+  readonly repositoryUrl: string | null;
   /** The name of the local folder this browser can reopen after a reload; null for any other. */
   readonly folder: string | null;
   /** The source to check for the topic layout first; null for the demos, which are flat. */
@@ -192,6 +195,8 @@ export function Root(props: RootProps) {
   /** Remounts the GitHub form, so what was forgotten does not stay in its fields. */
   const [formKey, setFormKey] = useState(0);
   const [screen, setScreen] = useState<Screen>({ kind: "welcome" });
+  const [openingHosted, setOpeningHosted] = useState(false);
+  const hostedOpeningCount = useRef(0);
   const viewers = useRef(0);
   const navigation = useRef(0);
   // Page-session state of the public demo: API requests are spaced across every
@@ -227,6 +232,7 @@ export function Root(props: RootProps) {
         | "signedIn"
         | "rememberView"
         | "github"
+        | "repositoryUrl"
         | "folder"
         | "topicSource"
         | "initialTopicSession"
@@ -250,6 +256,7 @@ export function Root(props: RootProps) {
       signedIn: extras.signedIn ?? false,
       rememberView: extras.rememberView ?? false,
       github: extras.github ?? false,
+      repositoryUrl: extras.repositoryUrl ?? null,
       folder: extras.folder ?? null,
       topicSource: extras.topicSource ?? null,
       initialTopicSession: extras.initialTopicSession ?? null,
@@ -281,6 +288,7 @@ export function Root(props: RootProps) {
       {
         signedIn: true,
         github: true,
+        repositoryUrl: repositoryWebUrl(settings.platform, settings.endpoint, settings.repository),
         topicSource: source,
         ...(prepared === undefined ? {} : { initialTopicSession: prepared.session }),
       },
@@ -626,37 +634,39 @@ export function Root(props: RootProps) {
   const showHosted = async (): Promise<void> => {
     if (createHostedSource === null) return;
     const operation = ++navigation.current;
+    hostedOpeningCount.current += 1;
+    setOpeningHosted(true);
     const source = createHostedSource();
-    let loader: Loader;
-    let session: TopicSession;
     try {
-      ({ loader, session } = await openRepository(source));
+      const { loader, session } = await openRepository(source);
+      if (operation !== navigation.current) return;
+      setLocalMessage(null);
+      setScreen(
+        viewer(
+          loader,
+          { key: "app.hostedTitle" },
+          [],
+          { storage: props.storage, key: hostedIdentityKey() },
+          null,
+          undefined,
+          null,
+          {
+            label: "bar.hostedSnapshot",
+            experimental: false,
+            pointInTime: {
+              generatedAt: () => source.snapshotTime?.() ?? null,
+              checkedAt: () => source.checkedAt?.() ?? null,
+            },
+          },
+          { topicSource: source, initialTopicSession: session, rememberView: true },
+        ),
+      );
     } catch {
       if (operation === navigation.current) setLocalMessage({ key: "hosted.unreadable" });
-      return;
+    } finally {
+      hostedOpeningCount.current = Math.max(0, hostedOpeningCount.current - 1);
+      setOpeningHosted(hostedOpeningCount.current > 0);
     }
-    if (operation !== navigation.current) return;
-    setLocalMessage(null);
-    setScreen(
-      viewer(
-        loader,
-        { key: "app.hostedTitle" },
-        [],
-        { storage: props.storage, key: hostedIdentityKey() },
-        null,
-        undefined,
-        null,
-        {
-          label: "bar.hostedSnapshot",
-          experimental: false,
-          pointInTime: {
-            generatedAt: () => source.snapshotTime?.() ?? null,
-            checkedAt: () => source.checkedAt?.() ?? null,
-          },
-        },
-        { topicSource: source, initialTopicSession: session, rememberView: true },
-      ),
-    );
   };
 
   /**
@@ -850,6 +860,22 @@ export function Root(props: RootProps) {
     return null;
   };
 
+  const returnFromSettings = (back: ViewerScreen | null): void => {
+    navigation.current += 1;
+    if (back !== null) {
+      setScreen(
+        back.liveDemo !== null && liveLoader.current !== null
+          ? liveViewer(liveLoader.current, { key: "live.showingLive" }, liveSignedIn.current)
+          : back,
+      );
+    } else if (createHostedSource !== null) {
+      void showHosted();
+    } else {
+      setLocalMessage(null);
+      setScreen({ kind: "welcome" });
+    }
+  };
+
   switch (screen.kind) {
     case "welcome":
       return (
@@ -885,6 +911,11 @@ export function Root(props: RootProps) {
                   {t("welcome.openHosted")}
                 </button>
               </>
+            )}
+            {openingHosted && (
+              <p className="hosted-opening" role="status" aria-busy="true">
+                {t("opening.loading")}
+              </p>
             )}
             <h2>{t("welcome.demoHeading")}</h2>
             <button
@@ -946,7 +977,17 @@ export function Root(props: RootProps) {
       return (
         <div className="app">
           <header className="bar settings-bar">
-            <h1>{t("app.settingsTitle")}</h1>
+            <div className="settings-bar-title">
+              <button
+                type="button"
+                onClick={() => {
+                  returnFromSettings(back);
+                }}
+              >
+                {t("settings.back")}
+              </button>
+              <h1>{t("app.settingsTitle")}</h1>
+            </div>
             <div className="bar-actions">
               <LanguageSwitcher />
               <ThemeToggle />
@@ -998,16 +1039,7 @@ export function Root(props: RootProps) {
               back === null
                 ? null
                 : () => {
-                    navigation.current += 1;
-                    setScreen(
-                      back.liveDemo !== null && liveLoader.current !== null
-                        ? liveViewer(
-                            liveLoader.current,
-                            { key: "live.showingLive" },
-                            liveSignedIn.current,
-                          )
-                        : back,
-                    );
+                    returnFromSettings(back);
                   }
             }
             focusToken={screen.focusToken}
@@ -1028,6 +1060,7 @@ export function Root(props: RootProps) {
               ? {}
               : { initialTopicSession: screen.initialTopicSession })}
             title={screen.title}
+            {...(screen.repositoryUrl === null ? {} : { titleLink: screen.repositoryUrl })}
             selfNames={screen.selfNames}
             identity={screen.identity}
             rememberView={screen.rememberView}

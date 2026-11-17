@@ -153,6 +153,8 @@ export interface AppProps {
   readonly initialTopicSession?: TopicSession;
   /** A repository name, or a catalog message for a fixed title. */
   readonly title: string | { readonly key: MessageKey; readonly params?: Params };
+  /** The repository page to link from the title; absent for snapshots, folders, and demos. */
+  readonly titleLink?: string;
   /** Configured own names; the first participant among them is the default "Viewing as". */
   readonly selfNames: ReadonlySet<string>;
   /** Where identity preferences live; null keeps them in memory for this view only. */
@@ -184,6 +186,7 @@ export function App({
   topicSource,
   initialTopicSession,
   title,
+  titleLink,
   selfNames,
   identity,
   notice,
@@ -851,7 +854,17 @@ export function App({
       data-mobile-view={mobileConversation ? "conversation" : "topics"}
     >
       <header className="bar">
-        <h1>{typeof title === "string" ? title : t(title.key, title.params)}</h1>
+        <h1>
+          {titleLink === undefined ? (
+            typeof title === "string" ? (
+              title
+            ) : (
+              t(title.key, title.params)
+            )
+          ) : (
+            <a href={titleLink}>{typeof title === "string" ? title : t(title.key, title.params)}</a>
+          )}
+        </h1>
         {source !== undefined && (
           <p className="source-indicator">
             <span className="source-label">

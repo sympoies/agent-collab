@@ -91,6 +91,21 @@ button:hover {
   font-size: var(--font-heading);
 }
 
+.bar h1 a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+
+.settings-bar-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hosted-opening {
+  color: var(--secondary);
+}
+
 @media (min-width: 721px) {
   /* Title and snapshot badge share a baseline. */
   .bar h1:has(+ .source-indicator),

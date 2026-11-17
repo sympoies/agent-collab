@@ -991,6 +991,9 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   await expect(page.locator(".message").first()).toBeVisible();
 
   await page.keyboard.press("Tab");
+  const repositoryLink = page.locator(".bar h1 a");
+  await expect(repositoryLink).toBeFocused();
+  await page.keyboard.press("Tab");
   const focused = await page.evaluate(() => ({
     label: document.activeElement?.getAttribute("aria-label"),
     outlineStyle: getComputedStyle(document.activeElement as Element).outlineStyle,
