@@ -10,6 +10,19 @@ import { topicSnapshot } from "../tests/topic-snapshot-fixture";
 const ID = "2026-10-08T0900-alice-agent-api-01";
 const MARKER = "collab-protocol: 1\nparticipants: alice-agent\n";
 const MESSAGE = messageText(ID, "alice-agent", "api", {}, "Read from the stubbed repository.");
+const HOSTED_ID = "2026-10-08T0910-alice-agent-api-01";
+const HOSTED_SNAPSHOT = JSON.stringify({
+  schemaVersion: 1,
+  generatedAt: "2026-10-08T09:00:00.000Z",
+  revision: "snapshot-revision",
+  files: [
+    { path: ".agent-collab", text: MARKER },
+    {
+      path: `inbox/2026-10/${HOSTED_ID}.md`,
+      text: messageText(HOSTED_ID, "alice-agent", "api", {}, "From the served snapshot fallback."),
+    },
+  ],
+});
 
 const entry = (path: string, sha: string, type: "blob" | "tree") => ({
   path,
@@ -28,10 +41,17 @@ async function json(route: Route, value: unknown) {
 }
 
 /** A one-message monthly repository; `reject` makes the API refuse the token. */
-async function serve(page: Page, state: { reject: boolean; tokens: string[] }) {
-  await page.route("https://api.github.com/**", async (route) => {
+async function serve(
+  page: Page,
+  state: { reject: boolean; tokens: string[] },
+  endpoint = "https://api.github.com",
+) {
+  await page.route(`${endpoint}/**`, async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname.replace("/repos/alice-org/collab", "");
+    const basePath = new URL(endpoint).pathname.replace(/\/$/, "");
+    const path = new URL(request.url()).pathname
+      .replace(basePath, "")
+      .replace("/repos/alice-org/collab", "");
     state.tokens.push(request.headers()["authorization"] ?? "");
     if (state.reject) {
       await route.fulfill({ status: 401, body: "{}" });
@@ -58,18 +78,67 @@ async function serve(page: Page, state: { reject: boolean; tokens: string[] }) {
   });
 }
 
-async function connect(page: Page) {
+async function connect(page: Page, endpoint?: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Open another repository" }).click();
   await page.getByRole("textbox", { name: "Repository", exact: true }).fill("alice-org/collab");
+  if (endpoint !== undefined) await page.getByLabel("API endpoint").fill(endpoint);
   await page.getByLabel("Branch").fill("main");
   await page.getByLabel("Access token").fill("fake-token");
   await page.getByRole("radio", { name: /Encrypted in this browser/ }).check();
   await page.getByRole("button", { name: "Save and open" }).click();
+  if ((page.viewportSize()?.width ?? 1280) <= 720) {
+    await page.getByRole("button", { name: "All", exact: true }).click();
+  }
   await expect(page.getByText("Read from the stubbed repository.")).toBeVisible();
 }
 
 test.describe("a reload reopens the GitHub repository @csp", () => {
+  for (const width of [1280, 390]) {
+    test(`the title links to the repository at ${String(width)}px @csp`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await serve(page, { reject: false, tokens: [] });
+      await connect(page);
+      await expect(page.locator(".bar h1 a")).toHaveAttribute(
+        "href",
+        "https://github.com/alice-org/collab",
+      );
+    });
+  }
+
+  test("the title link uses the configured GitHub Enterprise host @csp", async ({ page }) => {
+    const endpoint = "https://github.example.test/groups/agent-collab/api/v3";
+    await serve(page, { reject: false, tokens: [] }, endpoint);
+    await connect(page, endpoint);
+    await expect(page.locator(".bar h1 a")).toHaveAttribute(
+      "href",
+      "https://github.example.test/groups/agent-collab/alice-org/collab",
+    );
+  });
+
+  for (const width of [1280, 390]) {
+    test(`Settings has a Back control that returns to the viewer at ${String(width)}px @csp`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await serve(page, { reject: false, tokens: [] });
+      await connect(page);
+      if (width <= 720) {
+        await page.getByRole("button", { name: "More" }).click();
+        await page.getByRole("menuitem", { name: "Settings" }).click();
+      } else {
+        await page.getByRole("button", { name: "Settings" }).click();
+      }
+      await expect(page.getByRole("button", { name: "Back", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await expect(page.locator(".bar h1 a")).toHaveAttribute(
+        "href",
+        "https://github.com/alice-org/collab",
+      );
+    });
+  }
+
   test("the demo query leaves the saved repository available @csp", async ({ page }) => {
     const state = { reject: false, tokens: [] as string[] };
     await serve(page, state);
@@ -99,18 +168,101 @@ test.describe("a reload reopens the GitHub repository @csp", () => {
     expect(new Set(state.tokens)).toEqual(new Set(["Bearer fake-token"]));
   });
 
-  test("a token the API now refuses lands on Settings with the usual error @csp", async ({
-    page,
-  }) => {
-    const state = { reject: false, tokens: [] as string[] };
-    await serve(page, state);
-    await connect(page);
+  for (const width of [1280, 390]) {
+    test(`a token refused after reload gives Settings an exit at ${String(width)}px @csp`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      const state = { reject: false, tokens: [] as string[] };
+      await serve(page, state);
+      await connect(page);
 
-    state.reject = true;
-    await page.reload();
-    await expect(page.locator("#github-form")).toBeVisible();
-    await expect(page.getByRole("alert").first()).toContainText("token was rejected");
-  });
+      state.reject = true;
+      await page.reload();
+      await expect(page.locator("#github-form")).toBeVisible();
+      await expect(page.getByRole("alert").first()).toContainText("token was rejected");
+      await expect(page.getByRole("button", { name: "Back", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Open live demo" })).toBeVisible();
+    });
+  }
+
+  for (const width of [1280, 390]) {
+    test(`a failed repository reload can return to the served snapshot at ${String(width)}px @csp`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      let hasSnapshot = false;
+      await page.route("**/hosted-snapshot.json", (route) =>
+        hasSnapshot
+          ? route.fulfill({ status: 200, contentType: "application/json", body: HOSTED_SNAPSHOT })
+          : route.fulfill({ status: 404, body: "" }),
+      );
+      const state = { reject: false, tokens: [] as string[] };
+      await serve(page, state);
+      await connect(page);
+
+      state.reject = true;
+      hasSnapshot = true;
+      await page.reload();
+      await expect(page.locator("#github-form")).toBeVisible();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      if (width <= 720) await page.getByRole("button", { name: "All", exact: true }).click();
+      await expect(page.getByText("From the served snapshot fallback.")).toBeVisible();
+    });
+  }
+
+  for (const width of [1280, 390]) {
+    test(`Back announces while a served snapshot opens after reload at ${String(width)}px @csp`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 844 });
+      let snapshotAvailable = false;
+      let snapshotRequests = 0;
+      let releaseSnapshot: (() => void) | undefined;
+      let announcePending: (() => void) | undefined;
+      const pending = new Promise<void>((resolve) => {
+        announcePending = resolve;
+      });
+      const wait = new Promise<void>((resolve) => {
+        releaseSnapshot = resolve;
+      });
+      await page.route("**/hosted-snapshot.json", async (route) => {
+        snapshotRequests += 1;
+        if (!snapshotAvailable) {
+          await route.fulfill({ status: 404, body: "" });
+        } else if (snapshotRequests === 2) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: HOSTED_SNAPSHOT,
+          });
+        } else {
+          announcePending?.();
+          await wait;
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: HOSTED_SNAPSHOT,
+          });
+        }
+      });
+      const state = { reject: false, tokens: [] as string[] };
+      await serve(page, state);
+      await connect(page);
+
+      state.reject = true;
+      snapshotAvailable = true;
+      await page.reload();
+      await expect(page.locator("#github-form")).toBeVisible();
+      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await pending;
+      await expect(page.getByText("Reading the repository…")).toBeVisible();
+      releaseSnapshot?.();
+      await page.getByRole("button", { name: "All", exact: true }).click();
+      await expect(page.getByText("From the served snapshot fallback.")).toBeVisible();
+    });
+  }
 
   test("after Forget a reload starts on the welcome screen @csp", async ({ page }) => {
     const state = { reject: false, tokens: [] as string[] };

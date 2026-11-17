@@ -69,8 +69,9 @@ for (const width of [1280, 390] as const) {
           right: box.right - Math.max(...shown.map((r) => r.right)),
         };
       });
-      expect(m.left).toBeGreaterThanOrEqual(m.inset);
-      expect(m.right).toBeGreaterThanOrEqual(m.inset);
+      // CSS geometry can differ by a fraction of a pixel across browser engines.
+      expect(m.left).toBeGreaterThanOrEqual(m.inset - 0.1);
+      expect(m.right).toBeGreaterThanOrEqual(m.inset - 0.1);
     });
 
     test("the scrollbar sits inside the border of the chat frame @csp", async ({ page }) => {

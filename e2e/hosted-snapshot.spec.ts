@@ -55,6 +55,7 @@ test("a hosted snapshot opens by itself and follows the file @csp", async ({ pag
   await page.clock.install();
   await page.goto("/");
   await expect(page.getByText("First hosted message.")).toBeVisible();
+  await expect(page.locator(".bar h1 a")).toHaveCount(0);
   await expect(page.getByText(en["bar.hostedSnapshot"])).toBeVisible();
   await expect(page.locator(".last-changed")).toContainText("Snapshot updated");
   await expect(page.locator("h1")).toHaveCount(1);
@@ -71,13 +72,57 @@ test("a hosted snapshot opens by itself and follows the file @csp", async ({ pag
   expect(foreign).toEqual([]);
 });
 
-test("a deployment without the file shows the normal welcome screen @csp", async ({ page }) => {
-  await deploy(page, () => null);
-  await page.goto("/");
-  await expect(page.getByRole("button", { name: en["welcome.openLiveDemo"] })).toBeVisible();
-  await expect(page.getByRole("button", { name: en["welcome.openHosted"] })).toHaveCount(0);
-  await expect(page.locator("h1")).toHaveCount(1);
-});
+for (const width of [1280, 390]) {
+  test(`automatic snapshot opening shows its loading state at ${String(width)}px @csp`, async ({
+    page,
+  }) => {
+    const body = snapshot("r1", ["Opened after the delay."], "2026-11-04T09:00:00.000Z");
+    let requests = 0;
+    let release: (() => void) | undefined;
+    let announcePending: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      announcePending = resolve;
+    });
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/hosted-snapshot.json", async (route) => {
+      requests += 1;
+      if (requests === 1) {
+        await route.fulfill({ status: 200, contentType: "application/json", body });
+        return;
+      }
+      announcePending?.();
+      await wait;
+      await route.fulfill({ status: 200, contentType: "application/json", body });
+    });
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    await pending;
+    await expect(page.getByText(en["opening.loading"])).toBeVisible();
+    release?.();
+    if (width <= 720) await page.getByRole("button", { name: "All", exact: true }).click();
+    await expect(page.getByText("Opened after the delay.")).toBeVisible();
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`a deployment without the file shows the normal welcome screen at ${String(width)}px @csp`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await deploy(page, () => null);
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: en["welcome.openLiveDemo"] })).toBeVisible();
+    await expect(page.getByRole("button", { name: en["welcome.openHosted"] })).toHaveCount(0);
+    await expect(page.locator("h1")).toHaveCount(1);
+    await page.getByRole("button", { name: en["welcome.openAnother"] }).click();
+    await expect(page.getByRole("button", { name: "Back", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(page.getByRole("button", { name: en["welcome.openLiveDemo"] })).toBeVisible();
+    await expect(page.locator("#github-form")).toHaveCount(0);
+  });
+}
 
 for (const code of LOCALES) {
   test(`the hosted snapshot fits a 390px screen in ${LOCALE_NAMES[code]} @csp`, async ({
@@ -107,15 +152,36 @@ for (const code of LOCALES) {
     await page.addInitScript((locale) => {
       localStorage.setItem("agent-collab-viewer.locale", locale);
     }, code);
-    // The page's probe finds the file; every later fetch (the one that opens it) does not.
-    let served = 0;
-    await deploy(page, () => {
-      served += 1;
-      return served === 1 ? snapshot("r1", ["Hosted message."], "2026-11-04T09:00:00.000Z") : null;
+    let requests = 0;
+    let release: (() => void) | undefined;
+    let announcePending: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      announcePending = resolve;
+    });
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/hosted-snapshot.json", async (route) => {
+      requests += 1;
+      if (requests === 1) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: snapshot("r1", ["Hosted message."], "2026-11-04T09:00:00.000Z"),
+        });
+        return;
+      }
+      announcePending?.();
+      await wait;
+      await route.fulfill({ status: 404, body: "" });
     });
     await page.goto("/");
+    await pending;
+    await expect(page.getByText(messages["opening.loading"])).toBeVisible();
+    release?.();
     await expect(page.getByRole("button", { name: messages["welcome.openHosted"] })).toBeVisible();
     await expect(page.getByRole("alert")).toContainText(messages["hosted.unreadable"]);
+    await expect(page.getByText(messages["opening.loading"])).toHaveCount(0);
     await expect(page.locator("h1")).toHaveCount(1);
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),

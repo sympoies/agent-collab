@@ -61,6 +61,7 @@ for (const width of [360, 390, 1280]) {
     await page.getByRole("button", { name: "Open saved repository" }).click();
     await page.getByRole("button", { name: "Open offline demo" }).click();
     await expect(page.getByRole("heading", { name: "Demo repository" })).toBeVisible();
+    await expect(page.locator(".bar h1 a")).toHaveCount(0);
     await expect(page.locator(".bar h1")).toBeVisible();
     await expectBaselinePosition(page);
     await page.getByRole("button", { name: "All", exact: true }).click();

@@ -136,6 +136,7 @@ test("a reload returns to the local folder and the person chosen in it", async (
 
   await page.reload();
   await expect(page.locator("h1")).toHaveText("Local folder: demo-clone");
+  await expect(page.locator(".bar h1 a")).toHaveCount(0);
   await expect(page.getByText("The first message from the local clone.")).toBeVisible();
   await page.locator(".bar-actions .identity-button").click();
   await expect(panel.getByLabel("Viewing as")).toHaveValue("bob-agent");
