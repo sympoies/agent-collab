@@ -309,9 +309,12 @@ export class TopicSession {
       const key = `${topic}\0${entry.objectId}`;
       let rows = this.monthIndexCache.get(key);
       if (rows === undefined) {
-        rows = parseTopicIndex(await this.source.readFile(entry), topic).rows.filter(
-          (row) => parseId(row.id)?.month === month,
-        );
+        const parsed = parseTopicIndex(await this.source.readFile(entry), topic);
+        // A file cut short by the row cap is skipped like an oversized one, never served as a
+        // complete month.
+        rows = parsed.truncated
+          ? []
+          : parsed.rows.filter((row) => parseId(row.id)?.month === month);
         this.monthIndexCache.set(key, rows);
       }
       const older = rows.filter((row) => row.id < before);

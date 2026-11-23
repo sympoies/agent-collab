@@ -234,6 +234,25 @@ describe("the month-split topic index", () => {
     expect(source.reads).not.toContain("topics/api/index/notes.md");
     expect(await session.olderIndexRows("api", "../../x")).toBeNull();
   });
+
+  it("skips a month file cut short by the row cap instead of serving it as complete", async () => {
+    // 5001 valid October rows: one more than a generated file may hold.
+    const rows = Array.from({ length: 5001 }, (_, n) => {
+      const day = String(1 + Math.floor(n / 1440)).padStart(2, "0");
+      const hour = String(Math.floor((n % 1440) / 60)).padStart(2, "0");
+      const minute = String(n % 60).padStart(2, "0");
+      return `| 2026-10-${day}T${hour}${minute}-alice-agent-api-01 | alice-agent | bob-agent | info | api |  | none | s |`;
+    });
+    const source = new FixtureSource(
+      v2Repository({ "topics/api/index/2026-10.md": [HEADER, ...rows].join("\n") }),
+    );
+    const session = new TopicSession(source);
+    await session.open();
+    // October is skipped whole; paging moves on to September.
+    const page = await session.olderIndexRows("api", id("2026-11", 1));
+    expect(page?.month).toBe("2026-09");
+    expect(page?.rows.map((r) => r.id)).toEqual([id("2026-09", 1), id("2026-09", 2)]);
+  });
 });
 
 describe("a v1 repository", () => {

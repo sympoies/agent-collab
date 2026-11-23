@@ -53,7 +53,8 @@ table of its month.
   from the newest `index/YYYY-MM.md` that has any. Month files are found by listing `index/`, never
   by following a link from `index.md`, and are read only when asked for, once per object id.
 - **Untrusted.** Each month file gets the same rules as any generated file (design 6.5): the 2 MiB
-  size cap (a larger file is skipped, not read), the row cap, plain-text cells, id grammar checks,
+  size cap (a larger file is skipped, not read), the row cap (a file with more rows than the cap
+  is skipped whole, never served as a complete month), plain-text cells, id grammar checks,
   and a row whose id is not in the file's month is dropped. The links in `index.md` only decide
   whether its rows are complete; no request is built from them.
 - In a v1 repository `index.md` is read exactly as before, links in it are ignored, and
