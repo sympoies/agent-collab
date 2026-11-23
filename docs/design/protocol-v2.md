@@ -7,9 +7,13 @@ side defines how the files are written.
 
 ## Marker
 
-`.agent-collab` starts with `collab-protocol: 2` and must say `inbox-layout: topic`. The viewer
-accepts protocol 1 (every layout) and protocol 2 with the topic layout. Protocol 2 with any other
-layout, and any other version, is the usual "unsupported collaboration protocol" setup error.
+v2 is signalled by the layout, not the protocol line: `.agent-collab` keeps
+`collab-protocol: 1` and says `inbox-layout: topic-v2`. (An older tool rewrites the protocol line
+to 1 when it upgrades a marker but keeps the layout line, and stops on a layout it does not know,
+which is the safe failure.) The viewer reads `topic-v2` as the topic layout with the v2 rules below;
+`inbox-layout: topic` keeps the v1 rules. Any protocol line other than `collab-protocol: 1`,
+including `collab-protocol: 2`, is the usual "unsupported collaboration protocol" setup error.
+"v1 repository" below means any repository whose layout is not `topic-v2`.
 
 ## Topic folder
 

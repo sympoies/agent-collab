@@ -11,7 +11,7 @@ import { FixtureSource } from "../src/source/fixture";
 import { messageText } from "./support";
 
 const V1 = "collab-protocol: 1\ninbox-layout: topic\nparticipants: alice-agent, bob-agent\n";
-const V2 = "collab-protocol: 2\ninbox-layout: topic\nparticipants: alice-agent, bob-agent\n";
+const V2 = "collab-protocol: 1\ninbox-layout: topic-v2\nparticipants: alice-agent, bob-agent\n";
 
 const id = (month: string, day: number) =>
   `${month}-${String(day).padStart(2, "0")}T0900-alice-agent-api-01`;
@@ -61,8 +61,8 @@ function v2Repository(extra: Record<string, string> = {}): Record<string, string
   };
 }
 
-describe("the protocol v2 marker", () => {
-  it("is accepted with the topic layout by the topic list, the session and the loader", async () => {
+describe("the protocol v2 marker (inbox-layout: topic-v2)", () => {
+  it("is read as the topic layout by the topic list, the session and the loader", async () => {
     const source = new FixtureSource(v2Repository());
     expect((await readTopicList(source)).topics.map((t) => t.name)).toEqual(["api"]);
     const session = new TopicSession(source);
@@ -73,12 +73,13 @@ describe("the protocol v2 marker", () => {
     expect(loader.getSnapshot().items.length).toBeGreaterThan(0);
   });
 
-  it("is refused without the topic layout, and a later version stays unsupported", async () => {
+  it("refuses any protocol line but 1, whatever the layout", async () => {
     for (const marker of [
       "collab-protocol: 2\n",
+      "collab-protocol: 2\ninbox-layout: topic\n",
+      "collab-protocol: 2\ninbox-layout: topic-v2\n",
       "collab-protocol: 2\ninbox-layout: monthly\n",
-      "collab-protocol: 2\ninbox-layout: flat\n",
-      "collab-protocol: 3\ninbox-layout: topic\n",
+      "collab-protocol: 3\ninbox-layout: topic-v2\n",
     ]) {
       const source = new FixtureSource({ ".agent-collab": marker });
       const detail = marker.split("\n", 1)[0];

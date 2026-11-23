@@ -22,8 +22,21 @@ export function isTopicFolderName(name: string): boolean {
   return TOPIC_FOLDER_RE.test(name) && !RESERVED_TOPIC_NAMES.has(name);
 }
 
-/** The value of `inbox-layout` in the marker, `flat` when the line is absent. */
+/** The protocol v2 layout value: the topic layout read with the v2 rules (`files/`, `index/`). */
+const TOPIC_V2_LAYOUT = "topic-v2";
+
+/**
+ * The layout the marker names, `flat` when the line is absent. `topic-v2` is the topic layout
+ * (the v2 rules are told apart by `markerProtocol`), so everything that reads topics treats both
+ * the same.
+ */
 export function markerLayout(markerText: string): string {
+  const layout = rawMarkerLayout(markerText);
+  return layout === TOPIC_V2_LAYOUT ? "topic" : layout;
+}
+
+/** The value of `inbox-layout` in the marker as written, `flat` when the line is absent. */
+function rawMarkerLayout(markerText: string): string {
   for (const line of markerText
     .replace(/^\uFEFF/, "")
     .replace(/\r\n/g, "\n")
@@ -70,26 +83,21 @@ export function markerParticipants(markerText: string): MarkerParticipants {
   };
 }
 
-/** The protocol versions this viewer reads, as the marker's first line spells them. */
-const PROTOCOL_LINES: ReadonlyMap<string, 1 | 2> = new Map([
-  ["collab-protocol: 1", 1],
-  ["collab-protocol: 2", 2],
-]);
+/** The only protocol line this viewer reads. */
+const SUPPORTED_PROTOCOL = "collab-protocol: 1";
 
 /**
- * The marker's first line, trimmed (the detail of an "unsupported protocol" error), and the version
- * this viewer reads it as: 1, or 2 only together with `inbox-layout: topic`; null otherwise.
+ * The marker's first line, trimmed (the detail of an "unsupported protocol" error), and the rules
+ * this viewer reads the repository with: 2 for `inbox-layout: topic-v2` (docs/design/protocol-v2.md),
+ * 1 for any other layout, null when the protocol line is not `collab-protocol: 1`.
  */
 export function markerProtocol(markerText: string): {
   readonly line: string;
   readonly version: 1 | 2 | null;
 } {
   const line = markerText.split(/\r?\n/, 1)[0]?.trim() ?? "";
-  const version = PROTOCOL_LINES.get(line) ?? null;
-  return {
-    line,
-    version: version === 2 && markerLayout(markerText) !== "topic" ? null : version,
-  };
+  if (line !== SUPPORTED_PROTOCOL) return { line, version: null };
+  return { line, version: rawMarkerLayout(markerText) === TOPIC_V2_LAYOUT ? 2 : 1 };
 }
 
 /** Layouts this viewer reads. */

@@ -41,7 +41,6 @@ const ALLOWED = new Set<string>([
   "src/loader/loader.ts: SetupError",
   // The protocol tokens the marker file may start with, read by every loader.
   "src/message/topic-layout.ts: collab-protocol: 1",
-  "src/message/topic-layout.ts: collab-protocol: 2",
 ]);
 
 const TEXT_ATTRIBUTES = new Set([

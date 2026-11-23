@@ -27,7 +27,7 @@ export interface TopicList {
 
 export interface RepositoryMetadata {
   readonly layout: string;
-  /** The collaboration protocol version: 2 only with the topic layout (docs/design/protocol-v2.md). */
+  /** The rules the repository is read with: 2 for `inbox-layout: topic-v2` (protocol-v2.md). */
   readonly protocol: 1 | 2;
   readonly participants: readonly string[];
   readonly formerParticipants: readonly string[];
