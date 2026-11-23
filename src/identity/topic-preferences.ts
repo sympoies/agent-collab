@@ -177,13 +177,25 @@ export interface Unread {
 export function unreadOf(
   preferences: TopicPreferences,
   topic: string,
-  digest: { readonly newestId: string | null; readonly ids?: readonly string[] | null },
+  digest: {
+    readonly newestId: string | null;
+    readonly ids?: readonly string[] | null;
+    readonly idsComplete?: boolean;
+  },
 ): Unread {
   const seen = seenOf(preferences, topic);
   if (digest.newestId === null || (seen !== undefined && digest.newestId <= seen)) {
     return { unread: false, count: 0 };
   }
   if (digest.ids === undefined || digest.ids === null) return { unread: true, count: null };
+  // Recent ids only (a v2 month-split index): exact when they reach back to the marker.
+  const oldest = digest.ids[0];
+  if (
+    digest.idsComplete === false &&
+    (seen === undefined || oldest === undefined || seen < oldest)
+  ) {
+    return { unread: true, count: null };
+  }
   return {
     unread: true,
     count: seen === undefined ? digest.ids.length : digest.ids.filter((id) => id > seen).length,

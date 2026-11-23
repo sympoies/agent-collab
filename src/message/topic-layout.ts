@@ -70,6 +70,28 @@ export function markerParticipants(markerText: string): MarkerParticipants {
   };
 }
 
+/** The protocol versions this viewer reads, as the marker's first line spells them. */
+const PROTOCOL_LINES: ReadonlyMap<string, 1 | 2> = new Map([
+  ["collab-protocol: 1", 1],
+  ["collab-protocol: 2", 2],
+]);
+
+/**
+ * The marker's first line, trimmed (the detail of an "unsupported protocol" error), and the version
+ * this viewer reads it as: 1, or 2 only together with `inbox-layout: topic`; null otherwise.
+ */
+export function markerProtocol(markerText: string): {
+  readonly line: string;
+  readonly version: 1 | 2 | null;
+} {
+  const line = markerText.split(/\r?\n/, 1)[0]?.trim() ?? "";
+  const version = PROTOCOL_LINES.get(line) ?? null;
+  return {
+    line,
+    version: version === 2 && markerLayout(markerText) !== "topic" ? null : version,
+  };
+}
+
 /** Layouts this viewer reads. */
 export function isKnownLayout(layout: string): boolean {
   return layout === "flat" || layout === "monthly" || layout === "topic";
