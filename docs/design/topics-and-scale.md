@@ -96,7 +96,8 @@ inbox/                                 legacy messages, still valid (4.6)
 ```
 
 Attachments stay at `topics/<topic>/<file>` with their sidecars, so every existing `refs` path
-stays valid. The message id format does not change and stays globally unique.
+stays valid. (Protocol v2 moves new attachments to `topics/<topic>/files/YYYY-MM/` and splits the
+per-topic index by month; see [protocol-v2.md](protocol-v2.md) for what the viewer reads there.) The message id format does not change and stays globally unique.
 
 Grammar:
 

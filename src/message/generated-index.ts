@@ -221,6 +221,28 @@ export function parseTopicIndex(text: string, topic: string): TopicIndex {
   };
 }
 
+/** Month links read from one v2 `index.md`; more are ignored. */
+const MAX_MONTH_LINKS = 1200;
+const MONTH_LINK_RE = /\]\((?:\.\/)?index\/(\d{4}-\d{2})\.md\)/g;
+
+/**
+ * The months a protocol v2 topic `index.md` links to as `index/YYYY-MM.md`, newest first. Only
+ * used to tell whether the file holds every row or just the recent ones; the month files
+ * themselves are found by listing `index/`, never by following a link.
+ */
+export function parseIndexMonthLinks(text: string): readonly string[] {
+  if (text.length > MAX_GENERATED_BYTES) return [];
+  const months = new Set<string>();
+  for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
+    if (line.length > MAX_LINE) continue;
+    for (const match of line.matchAll(MONTH_LINK_RE)) {
+      if (months.size >= MAX_MONTH_LINKS) break;
+      months.add(match[1] as string);
+    }
+  }
+  return [...months].sort().reverse();
+}
+
 export interface OpenItem extends IndexRow {
   /** The section of the file the row is in (plain text), for example "Unanswered questions". */
   readonly section: string;

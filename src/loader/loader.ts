@@ -6,6 +6,7 @@ import {
   isKnownLayout,
   markerLayout,
   markerParticipants,
+  markerProtocol,
   type MarkerParticipants,
 } from "../message/topic-layout";
 import { mapLimit } from "../source/map-limit";
@@ -78,7 +79,6 @@ export class SetupError extends Error {
 }
 
 const MARKER_FILE = ".agent-collab";
-const SUPPORTED_PROTOCOL = "collab-protocol: 1";
 const MONTH_RE = /^\d{4}-\d{2}$/;
 /** Most refreshes between two downloads of a file that keeps failing (about 15 minutes). */
 const MAX_RETRY_SPACING = 15;
@@ -216,12 +216,12 @@ export class Loader {
     }
     if (this.markerCache?.objectId === entry.objectId) return this.markerCache.participants;
     const text = await this.source.readFile(entry);
-    const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
-    if (firstLine !== SUPPORTED_PROTOCOL) {
+    const protocol = markerProtocol(text);
+    if (protocol.version === null) {
       throw new SetupError(
-        `unsupported collaboration protocol: ${firstLine}`,
+        `unsupported collaboration protocol: ${protocol.line}`,
         "protocol",
-        firstLine,
+        protocol.line,
       );
     }
     const layout = markerLayout(text);

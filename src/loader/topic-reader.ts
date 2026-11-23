@@ -7,6 +7,7 @@ import {
   isTopicFolderName,
   markerLayout,
   markerParticipants,
+  markerProtocol,
   MAX_INDEX_BYTES,
   parseRootIndex,
   type TopicSummary,
@@ -16,7 +17,6 @@ import { SourceError, type DirectoryEntry, type MessageSource } from "../source/
 import { Loader, SetupError, type LoaderOptions } from "./loader";
 
 const MARKER_FILE = ".agent-collab";
-const SUPPORTED_PROTOCOL = "collab-protocol: 1";
 
 export interface TopicList {
   /** `topic` for the layout this reader serves; other layouts have no topic list. */
@@ -27,6 +27,8 @@ export interface TopicList {
 
 export interface RepositoryMetadata {
   readonly layout: string;
+  /** The rules the repository is read with: 2 for `inbox-layout: topic-v2` (protocol-v2.md). */
+  readonly protocol: 1 | 2;
   readonly participants: readonly string[];
   readonly formerParticipants: readonly string[];
   readonly rosterKnown: boolean;
@@ -85,9 +87,13 @@ export async function readRepositoryMetadata(
     throw new SetupError(`not a collaboration repository (no ${MARKER_FILE} marker)`, "no-marker");
   }
   const text = await source.readFile(marker);
-  const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
-  if (firstLine !== SUPPORTED_PROTOCOL) {
-    throw new SetupError(`unsupported collaboration protocol: ${firstLine}`, "protocol", firstLine);
+  const protocol = markerProtocol(text);
+  if (protocol.version === null) {
+    throw new SetupError(
+      `unsupported collaboration protocol: ${protocol.line}`,
+      "protocol",
+      protocol.line,
+    );
   }
   const layout = markerLayout(text);
   if (!isKnownLayout(layout)) {
@@ -95,6 +101,7 @@ export async function readRepositoryMetadata(
   }
   return {
     layout,
+    protocol: protocol.version,
     ...markerParticipants(text),
     rosterKnown: source.participantsKnown !== false,
   };

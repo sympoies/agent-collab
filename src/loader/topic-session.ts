@@ -6,8 +6,11 @@
 
 import {
   MAX_GENERATED_BYTES,
+  parseId,
+  parseIndexMonthLinks,
   parseTopicIndex,
   parseTopicOpen,
+  type IndexRow,
   type OpenItem,
   type TopicIndex,
 } from "../message/generated-index";
@@ -25,7 +28,32 @@ export interface TopicDigest {
   readonly fromIndex: boolean;
   /** Every message id of the topic, sorted, when the index could be trusted (for unread counts). */
   readonly ids?: readonly string[] | null;
+  /**
+   * False when `ids` holds only the recent rows of a protocol v2 `index.md` whose older months
+   * live in `index/YYYY-MM.md`: `count` is then null and `ids` is the newest part of the list.
+   */
+  readonly idsComplete?: boolean;
 }
+
+/** One attachment of a protocol v2 topic, from a `files/YYYY-MM/` listing. */
+export interface TopicFileEntry {
+  readonly path: string;
+  readonly name: string;
+  /** Size in bytes, or null when the source does not know it. */
+  readonly size: number | null;
+  /** Path of the one-line `<name>.md` description next to a data file, if there is one. */
+  readonly sidecar: string | null;
+}
+
+/** The attachments of one month of a topic, and the next older month that has any. */
+export interface TopicFilesPage {
+  readonly month: string;
+  readonly files: readonly TopicFileEntry[];
+  readonly older: string | null;
+}
+
+const MONTH_RE = /^\d{4}-\d{2}$/;
+const MONTH_FILE_RE = /^(\d{4}-\d{2})\.md$/;
 
 interface TopicState {
   readonly summary: TopicSummary;
@@ -53,7 +81,10 @@ export class TopicSession {
     { treeId: string | null; items: readonly OpenItem[] | null }
   >();
   private indexCache: { objectId: string; rows: ReturnType<typeof parseRootIndex> } | null = null;
+  /** Rows of `topics/<topic>/index/YYYY-MM.md`, keyed by topic and object id. */
+  private readonly monthIndexCache = new Map<string, readonly IndexRow[]>();
   private layout = "";
+  private protocol: 1 | 2 = 1;
 
   constructor(
     private readonly source: MessageSource,
@@ -210,8 +241,27 @@ export class TopicSession {
     const entries = await this.optional(revision, `topics/${topic}`);
     const index = entries.find((entry) => entry.kind === "file" && entry.name === "index.md");
     let parsed: TopicIndex | null = null;
+    let text = "";
     if (index !== undefined && (index.size ?? 0) <= MAX_GENERATED_BYTES) {
-      parsed = parseTopicIndex(await this.source.readFile(index).catch(() => ""), topic);
+      text = await this.source.readFile(index).catch(() => "");
+      parsed = parseTopicIndex(text, topic);
+    }
+    if (parsed !== null && parsed.count !== null && this.protocol === 2) {
+      // A v2 index.md holds the newest month (and more, up to its minimum of rows) and links the
+      // month files; a link to a month older than its newest row means older rows live elsewhere.
+      const newestMonth = parsed.newestId?.slice(0, 7) ?? null;
+      const partial = parseIndexMonthLinks(text).some(
+        (month) => newestMonth === null || month < newestMonth,
+      );
+      if (partial) {
+        return {
+          count: null,
+          newestId: parsed.newestId,
+          fromIndex: true,
+          ids: parsed.rows.map((row) => row.id),
+          idsComplete: false,
+        };
+      }
     }
     if (parsed !== null && parsed.count !== null) {
       return {
@@ -222,6 +272,95 @@ export class TopicSession {
       };
     }
     return { count: null, newestId: await this.newestListed(revision, topic), fromIndex: false };
+  }
+
+  /**
+   * Protocol v2: the index rows older than `before`, from the newest `index/YYYY-MM.md` that has
+   * any, read on demand when paging back past what `index.md` covers. Untrusted like every
+   * generated file (6.5): the size cap and row checks apply per file, and a row whose id is not in
+   * the file's month is dropped. Null when nothing older is indexed, and always in protocol v1.
+   */
+  async olderIndexRows(
+    topic: string,
+    before: string,
+  ): Promise<{ readonly month: string; readonly rows: readonly IndexRow[] } | null> {
+    const state = this.states.get(topic);
+    const head = this.head;
+    const beforeMonth = parseId(before)?.month;
+    if (
+      this.protocol !== 2 ||
+      state?.treeId == null ||
+      head === null ||
+      !isTopicFolderName(topic) ||
+      beforeMonth === undefined
+    ) {
+      return null;
+    }
+    const files = (await this.optional(head.revision, `topics/${topic}/index`))
+      .flatMap((entry) => {
+        const month = MONTH_FILE_RE.exec(entry.name)?.[1];
+        return entry.kind === "file" && month !== undefined && month <= beforeMonth
+          ? [{ entry, month }]
+          : [];
+      })
+      .sort((a, b) => (a.month < b.month ? 1 : -1));
+    for (const { entry, month } of files) {
+      if ((entry.size ?? 0) > MAX_GENERATED_BYTES) continue;
+      const key = `${topic}\0${entry.objectId}`;
+      let rows = this.monthIndexCache.get(key);
+      if (rows === undefined) {
+        const parsed = parseTopicIndex(await this.source.readFile(entry), topic);
+        // A file cut short by the row cap is skipped like an oversized one, never served as a
+        // complete month.
+        rows = parsed.truncated
+          ? []
+          : parsed.rows.filter((row) => parseId(row.id)?.month === month);
+        this.monthIndexCache.set(key, rows);
+      }
+      const older = rows.filter((row) => row.id < before);
+      if (older.length > 0) return { month, rows: older };
+    }
+    return null;
+  }
+
+  /**
+   * Protocol v2: one month of the topic's attachments from `files/YYYY-MM/` (the newest month when
+   * none is given), with each data file's sidecar attached rather than listed. Listings only, no
+   * file is read. Null when the month has no folder, and always in protocol v1.
+   */
+  async files(topic: string, month?: string): Promise<TopicFilesPage | null> {
+    const state = this.states.get(topic);
+    const head = this.head;
+    if (
+      this.protocol !== 2 ||
+      state?.treeId == null ||
+      head === null ||
+      !isTopicFolderName(topic) ||
+      (month !== undefined && !MONTH_RE.test(month))
+    ) {
+      return null;
+    }
+    const months = (await this.optional(head.revision, `topics/${topic}/files`))
+      .filter((entry) => entry.kind === "directory" && MONTH_RE.test(entry.name))
+      .map((entry) => entry.name)
+      .sort()
+      .reverse();
+    const chosen = month ?? months[0];
+    if (chosen === undefined || !months.includes(chosen)) return null;
+    const entries = (await this.optional(head.revision, `topics/${topic}/files/${chosen}`)).filter(
+      (entry) => entry.kind === "file",
+    );
+    const byName = new Map(entries.map((entry) => [entry.name, entry]));
+    const files = entries
+      .filter((entry) => !(entry.name.endsWith(".md") && byName.has(entry.name.slice(0, -3))))
+      .map((entry) => ({
+        path: entry.path,
+        name: entry.name,
+        size: entry.size ?? null,
+        sidecar: byName.get(`${entry.name}.md`)?.path ?? null,
+      }))
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    return { month: chosen, files, older: months.find((name) => name < chosen) ?? null };
   }
 
   /** The newest message file name by listing: the newest month of the topic, newest file in it. */
@@ -252,6 +391,7 @@ export class TopicSession {
     const metadata = await readRepositoryMetadata(this.source, root);
     const layout = metadata.layout;
     this.layout = layout;
+    this.protocol = metadata.protocol;
     const states = new Map<string, TopicState>();
     if (layout === "topic") {
       const folders = await this.optional(head.revision, "topics");
