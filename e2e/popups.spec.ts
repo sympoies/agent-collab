@@ -43,6 +43,11 @@ const OPENERS: Record<string, (page: Page) => Promise<void>> = {
   ".topic-menu-body": async (page) => {
     await page.locator(".topic-menu summary").click();
   },
+  ".topic-preference-items": async (page) => {
+    const back = page.getByRole("button", { name: en["nav.back"], exact: true });
+    if (await back.isVisible()) await back.click();
+    await page.locator(".topic-preference-menu summary").first().click();
+  },
   ".time-tooltip": async (page) => {
     await page.locator(".meta time").last().hover();
   },

@@ -140,7 +140,7 @@ describe("the tree in the left list", () => {
     );
     const heading = order.findIndex((entry) => entry === "H2:Topics");
     expect(heading).toBeGreaterThan(2);
-    // All, Questions and Files come before it; the topic entries after it.
+    // All, Questions and Files come before it; Attention is only available for repositories.
     expect(
       [...(nav?.children ?? [])]
         .slice(0, heading)

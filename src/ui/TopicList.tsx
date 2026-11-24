@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
+import type { TopicList as PreferenceList } from "../identity/topic-preferences";
 import { visibleTopics } from "../loader/topic-activity";
 import type { TopicSummary } from "../message/topic-layout";
 import { useLocale } from "../i18n/LocaleProvider";
+import { TopicPreferencesMenu, type TopicPreferenceFlags } from "./TopicPreferencesMenu";
 
 interface TopicListProps {
   /** Sorted: pinned topics first (not built yet), then by recent activity, closed topics last. */
@@ -11,6 +13,9 @@ interface TopicListProps {
   readonly loadedTopics: ReadonlySet<string>;
   /** Topics that remain visible even when their name and title do not match the query. */
   readonly pinnedTopics?: ReadonlySet<string>;
+  readonly preferenceFlags?: (topic: string) => TopicPreferenceFlags;
+  readonly unreadCounts?: ReadonlyMap<string, number | null>;
+  readonly onTogglePreference?: (topic: string, list: PreferenceList, on: boolean) => void;
   readonly onLoadAll: () => void;
   /** The topic that is open; it is listed even beyond the visible limit. */
   readonly selected: string | null;
@@ -29,6 +34,9 @@ export function TopicList({
   topics,
   loadedTopics,
   pinnedTopics = new Set(),
+  preferenceFlags,
+  unreadCounts,
+  onTogglePreference,
   onLoadAll,
   selected,
   pressed,
@@ -72,17 +80,42 @@ export function TopicList({
   const pulled = closedOpen ? undefined : closed.find((topic) => topic.name === selected);
 
   const row = (topic: TopicSummary) => (
-    <button
-      key={topic.name}
-      type="button"
-      aria-pressed={pressed === topic.name}
-      title={topic.title ?? undefined}
-      onClick={(event) => {
-        onSelect(topic, event.currentTarget);
-      }}
-    >
-      <span className="topic-name">{t("topic.label", { topic: topic.name })}</span>
-    </button>
+    <Fragment key={topic.name}>
+      <button
+        type="button"
+        className={onTogglePreference === undefined ? undefined : "topic-entry-button"}
+        aria-pressed={pressed === topic.name}
+        aria-description={
+          unreadCounts?.has(topic.name) === true
+            ? unreadCounts.get(topic.name) === null
+              ? t("topic.unreadUnknown")
+              : t("topic.unread", { count: unreadCounts.get(topic.name) ?? 0 })
+            : undefined
+        }
+        title={topic.title ?? undefined}
+        onClick={(event) => {
+          onSelect(topic, event.currentTarget);
+        }}
+      >
+        <span className="topic-name">{t("topic.label", { topic: topic.name })}</span>
+        {unreadCounts?.has(topic.name) === true && (
+          <span
+            className="count"
+            data-count={unreadCounts.get(topic.name) ?? "•"}
+            aria-hidden="true"
+          />
+        )}
+      </button>
+      {onTogglePreference !== undefined && preferenceFlags !== undefined && (
+        <TopicPreferencesMenu
+          topic={topic.name}
+          flags={preferenceFlags(topic.name)}
+          onToggle={(list, on) => {
+            onTogglePreference(topic.name, list, on);
+          }}
+        />
+      )}
+    </Fragment>
   );
 
   return (

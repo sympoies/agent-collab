@@ -814,6 +814,8 @@ test.beforeEach(async ({ context }) => {
 test("long chat adapts across themes and viewports", async ({ page, context }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   const assertRequests = await openViewer(page, "long");
+  await page.locator('.topic-preference-menu summary[aria-label="Options for #api"]').click();
+  await page.getByRole("button", { name: "Follow #api" }).click();
   await expect(page.locator(".message")).toHaveCount(30);
   await expect(page.locator(".day")).toHaveCount(2);
   await expect(page.locator(".group").first().locator(".message")).toHaveCount(2);
@@ -1003,9 +1005,9 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   expect(focused.outlineStyle).toBe("solid");
   expect(focused.outlineWidth).toBe("3px");
 
-  // The identity button, Local folder, language, theme, Settings, Questions, Files, All, then the first topic.
+  // The identity button, Local folder, language, theme, Settings, Questions, Files, All, Attention, then the first topic.
   // The signed-in banner's Remove token button is one more stop before the topics.
-  for (let tab = 0; tab < 10; tab += 1) await page.keyboard.press("Tab");
+  for (let tab = 0; tab < 11; tab += 1) await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "#release" })).toHaveAttribute(
     "aria-pressed",
@@ -2752,9 +2754,11 @@ for (const code of LOCALES) {
       await page.getByRole("menuitemradio", { name: LOCALE_NAMES[code], exact: true }).click();
       await expect(page.locator("html")).toHaveAttribute("lang", code);
     }
-    const long = page.locator(".topics button", { hasText: "anextraordinarilylongtopic" });
+    const long = page.locator(".topics > button.topic-entry-button", {
+      hasText: "anextraordinarilylongtopic",
+    });
     await expect(long).toBeVisible();
-    const fit = await page.locator(".topics button").evaluateAll((nodes) =>
+    const fit = await page.locator(".topics > button").evaluateAll((nodes) =>
       nodes.map((node) => {
         const box = node.getBoundingClientRect();
         const count = node.querySelector(".count")?.getBoundingClientRect();
@@ -3721,6 +3725,8 @@ test("the page stays put while the message pane and the list scroll inside it @c
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const assertRequests = await openViewer(page, "long");
+  await page.locator('.topic-preference-menu summary[aria-label="Options for #api"]').click();
+  await page.getByRole("button", { name: "Follow #api" }).click();
   await expect(page.locator(".message")).toHaveCount(30);
   const pane = page.getByRole("main");
   const metrics = await page.evaluate(() => {

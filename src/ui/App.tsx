@@ -4,6 +4,7 @@ import type { Loader } from "../loader/loader";
 import { Poller } from "../loader/poller";
 import { sameTopics, sortTopicSummaries } from "../loader/topic-activity";
 import { TopicSession } from "../loader/topic-session";
+import { loadAttention, type Attention } from "../loader/attention";
 import {
   DEFAULT_QUESTIONS,
   readViewState,
@@ -34,6 +35,15 @@ import { deriveQuestionStates } from "../message/questions";
 import { buildReceipts, groupQuestions } from "../message/receipts";
 import type { Message } from "../message/types";
 import type { TopicSummary } from "../message/topic-layout";
+import {
+  markSeen,
+  readTopicPreferences,
+  toggleTopic,
+  unreadOf,
+  writeTopicPreferences,
+  type TopicList as PreferenceList,
+  type TopicPreferences,
+} from "../identity/topic-preferences";
 import { SourceError, type MessageSource } from "../source/types";
 import { FilesView, type AttachmentContext } from "./Attachments";
 import { ChatView } from "./ChatView";
@@ -62,6 +72,8 @@ import {
 } from "./question-expansion";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
+import { TopicPreferencesMenu, type TopicPreferenceFlags } from "./TopicPreferencesMenu";
+import { AttentionView } from "./AttentionView";
 import { mergeRosterSnapshot, useMergedSnapshot } from "./merged-snapshot";
 import { mapLimit } from "../source/map-limit";
 import { useTopicDigests } from "./useTopicDigests";
@@ -225,6 +237,7 @@ export function App({
     saved.topic === null ? [] : [saved.topic],
   );
   const [closedOpen, setClosedOpen] = useState(false);
+  const [hiddenOpen, setHiddenOpen] = useState(false);
   // What is loaded: the topics opened so far in the topic layout, the one loader otherwise.
   // The topics the All view has read so far. Only a topic that was read is registered with the
   // session, so a refresh never opens (and reads a first page of) a topic nobody asked for.
@@ -322,6 +335,7 @@ export function App({
   const conversationHeading = useRef<HTMLHeadingElement | null>(null);
   const lastTopicButton = useRef<HTMLButtonElement | null>(null);
   const announcedMessages = useRef<Set<string>>(new Set());
+  const announcedCount = useRef(0);
   const [arrivalAnnouncement, setArrivalAnnouncement] = useState("");
   const [busy, setBusy] = useState(true);
   // Files scope is independent of the last chat topic, so its paging controls must follow the
@@ -330,12 +344,14 @@ export function App({
   const pagingTopic = view === "files" ? filesTopic : topic;
   const selectedLoader = useMemo(
     () =>
-      !topicLayout
-        ? loader
-        : pagingTopic !== null && topicSession !== null && openedTopics.includes(pagingTopic)
-          ? topicSession.loader(pagingTopic)
-          : null,
-    [loader, openedTopics, pagingTopic, topicLayout, topicSession],
+      view === "attention"
+        ? null
+        : !topicLayout
+          ? loader
+          : pagingTopic !== null && topicSession !== null && openedTopics.includes(pagingTopic)
+            ? topicSession.loader(pagingTopic)
+            : null,
+    [loader, openedTopics, pagingTopic, topicLayout, topicSession, view],
   );
   const pagedLoaders = useMemo(
     () => (selectedLoader === null ? [] : [selectedLoader]),
@@ -366,6 +382,15 @@ export function App({
   const [preferences, setPreferences] = useState<IdentityPreferences>(() =>
     identity.storage === null ? EMPTY_PREFERENCES : readPreferences(identity.storage, identity.key),
   );
+  const [topicPreferences, setTopicPreferences] = useState<TopicPreferences>(() =>
+    readTopicPreferences(identity.storage, identity.key),
+  );
+  const [attentionResult, setAttentionResult] = useState<{
+    readonly key: string;
+    readonly value: Attention;
+    readonly updatedAt: Date;
+  } | null>(null);
+  const [attentionAll, setAttentionAll] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [hintDismissed, setHintDismissed] = useState(() =>
     readHintDismissed(identity.storage, identity.key),
@@ -434,6 +459,22 @@ export function App({
     setPreferences(next);
     writePreferences(identity.storage, identity.key, next);
   };
+
+  const updateTopicPreferences = (next: TopicPreferences) => {
+    setTopicPreferences(next);
+    writeTopicPreferences(identity.storage, identity.key, next);
+  };
+
+  const changeTopicPreference = (name: string, list: PreferenceList, on: boolean) => {
+    updateTopicPreferences(toggleTopic(topicPreferences, list, name, on));
+  };
+
+  const topicPreferenceFlags = (name: string): TopicPreferenceFlags => ({
+    follow: topicPreferences.follow.includes(name),
+    mute: topicPreferences.mute.includes(name),
+    pin: topicPreferences.pin.includes(name),
+    hide: topicPreferences.hide.includes(name),
+  });
 
   const showError = (reason: unknown) => {
     setError(reason);
@@ -534,7 +575,54 @@ export function App({
     topicSyncs,
     setError,
   );
-  const sortedTopics = useMemo(() => sortTopicSummaries(topicList, digests), [digests, topicList]);
+  const availableTopics = useMemo<TopicSummary[]>(
+    () =>
+      topicLayout
+        ? [...topicList]
+        : topics.map((summary) => ({
+            name: summary.topic,
+            title: null,
+            status: "legacy",
+            folder: false,
+          })),
+    [topicLayout, topicList, topics],
+  );
+  const unreadCounts = useMemo(() => {
+    const counts = new Map<string, number | null>();
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" ? [item.message] : [],
+    );
+    for (const summary of availableTopics) {
+      const digest = topicLayout
+        ? digests.get(summary.name)
+        : (() => {
+            const ids = messages
+              .filter((message) => message.topic === summary.name)
+              .map((message) => message.id)
+              .sort();
+            return ids.length === 0
+              ? null
+              : {
+                  newestId: ids.at(-1) ?? null,
+                  ids,
+                  idsComplete: !snapshot.hasOlder,
+                };
+          })();
+      if (digest === undefined || digest === null) continue;
+      const unread = unreadOf(topicPreferences, summary.name, digest);
+      if (unread.unread) counts.set(summary.name, unread.count);
+    }
+    return counts;
+  }, [availableTopics, digests, snapshot.hasOlder, snapshot.items, topicLayout, topicPreferences]);
+  const sortedTopics = useMemo(
+    () =>
+      sortTopicSummaries(topicList, digests).sort(
+        (left, right) =>
+          Number(topicPreferences.pin.includes(right.name)) -
+          Number(topicPreferences.pin.includes(left.name)),
+      ),
+    [digests, topicList, topicPreferences.pin],
+  );
   // The list does not reorder under the pointer or the keyboard focus: a new order waits until the
   // reader leaves it.
   const [listHeld, setListHeld] = useState({ pointer: false, focus: false });
@@ -542,6 +630,26 @@ export function App({
   if (!listHeld.pointer && !listHeld.focus && listedTopics !== sortedTopics) {
     setListedTopics(sortedTopics);
   }
+  const visibleTopicNames = useMemo(() => new Set(topicPreferences.hide), [topicPreferences.hide]);
+  const listedVisibleTopics = useMemo(
+    () => listedTopics.filter((summary) => !visibleTopicNames.has(summary.name)),
+    [listedTopics, visibleTopicNames],
+  );
+  const visibleLegacyTopics = useMemo(
+    () =>
+      [...topics]
+        .filter((summary) => !visibleTopicNames.has(summary.topic))
+        .sort(
+          (left, right) =>
+            Number(topicPreferences.pin.includes(right.topic)) -
+            Number(topicPreferences.pin.includes(left.topic)),
+        ),
+    [topicPreferences.pin, topics, visibleTopicNames],
+  );
+  const hiddenTopics = useMemo(
+    () => availableTopics.filter((summary) => visibleTopicNames.has(summary.name)),
+    [availableTopics, visibleTopicNames],
+  );
   // All, Questions, and Files in All-topics scope read every open topic in the background (at most
   // four at a time), plus any closed topic the viewer opened. Until every one is read the view says
   // how many are, so a partial list is never taken for the whole. On a phone it waits for the
@@ -628,6 +736,64 @@ export function App({
     lastTopicButton.current = button;
     setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
   };
+  const openAttentionItem = (name: string, id: string) => {
+    if (topicLayout && topicSession !== null) {
+      const selectedLoader = topicSession.loader(name);
+      setBusy(true);
+      void (async () => {
+        await selectedLoader.openWithHead(topicSession.currentHead);
+        const hasTarget = () =>
+          selectedLoader
+            .getSnapshot()
+            .items.some((item) => item.kind === "message" && item.message.id === id);
+        if (!hasTarget()) {
+          await selectedLoader.jumpTo(id.slice(0, 10));
+        }
+        while (!hasTarget() && selectedLoader.getSnapshot().hasOlder) {
+          await selectedLoader.loadOlder();
+        }
+        if (!hasTarget()) {
+          showError({ key: "attention.itemUnavailable" });
+          return;
+        }
+        setOpenedTopics((previous) => (previous.includes(name) ? previous : [...previous, name]));
+        rememberSearchLoaded(name);
+        pendingJump.current = id;
+        setView("chat");
+        setTopic(name);
+        setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+      })()
+        .catch(showError)
+        .finally(() => {
+          setBusy(false);
+        });
+      return;
+    }
+    pendingJump.current = id;
+    setView("chat");
+    setTopic(name);
+    setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+  };
+  const openAttentionMessage = (message: Message) => {
+    if (topicLayout && topicSession !== null) {
+      setOpenedTopics((previous) =>
+        previous.includes(message.topic) ? previous : [...previous, message.topic],
+      );
+      void topicSession
+        .loader(message.topic)
+        .openWithHead(topicSession.currentHead)
+        .then(() => {
+          rememberSearchLoaded(message.topic);
+          pendingJump.current = message.id;
+          setView("chat");
+          setTopic(message.topic);
+          setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+        })
+        .catch(showError);
+    } else {
+      jumpToMessage(message, message.topic);
+    }
+  };
   const order = useMemo(
     () =>
       colorOrder(
@@ -642,6 +808,107 @@ export function App({
     () => resolveViewer(preferences, viewingAsParticipants, [...selfNames]),
     [preferences, selfNames, viewingAsParticipants],
   );
+  const attentionKey = JSON.stringify([
+    topicLayout,
+    viewer,
+    topicPreferences.follow,
+    topicPreferences.mute,
+    attentionAll,
+    topicSyncs,
+    availableTopics.map((summary) => [summary.name, summary.status]),
+    snapshot.items.flatMap((item) => (item.kind === "message" ? [item.message.id] : [])),
+  ]);
+  const attention = attentionResult?.key === attentionKey ? attentionResult.value : null;
+  const attentionUpdatedAt =
+    attentionResult?.key === attentionKey ? attentionResult.updatedAt : null;
+  const attentionLoading = view === "attention" && attention === null;
+  useEffect(() => {
+    if (view !== "attention") return;
+    let active = true;
+    const load = async () => {
+      await Promise.resolve();
+      try {
+        let result: Attention;
+        if (topicLayout && topicSession !== null) {
+          result = await loadAttention(topicSession, {
+            viewer,
+            preferences: topicPreferences,
+            all: attentionAll,
+          });
+        } else {
+          const known = new Set(availableTopics.map((summary) => summary.name));
+          const followed = topicPreferences.follow.filter((name) => known.has(name));
+          result = {
+            rows: [],
+            messages: snapshot.items.flatMap((item) =>
+              item.kind === "message" &&
+              followed.includes(item.message.topic) &&
+              viewer !== null &&
+              item.message.to.includes(viewer)
+                ? [{ topic: item.message.topic, message: item.message }]
+                : [],
+            ),
+            covered: [],
+            skipped: [],
+            withoutOpenFile: availableTopics.map((summary) => summary.name),
+            followed,
+          };
+        }
+        if (active) setAttentionResult({ key: attentionKey, value: result, updatedAt: new Date() });
+      } catch (reason) {
+        if (active) {
+          setError(reason);
+          setAttentionResult({
+            key: attentionKey,
+            updatedAt: new Date(),
+            value: {
+              rows: [],
+              messages: [],
+              covered: [],
+              skipped: [],
+              withoutOpenFile: [],
+              followed: [],
+            },
+          });
+        }
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [
+    attentionKey,
+    attentionAll,
+    availableTopics,
+    snapshot.items,
+    topicLayout,
+    topicPreferences,
+    topicSession,
+    view,
+    viewer,
+  ]);
+  useEffect(() => {
+    if (view !== "chat" || topic === null) return;
+    const newest = snapshot.items
+      .flatMap((item) => (item.kind === "message" ? [item.message] : []))
+      .filter((message) => message.topic === topic)
+      .reduce<string | null>(
+        (latest, message) => (latest === null || message.id > latest ? message.id : latest),
+        null,
+      );
+    if (newest === null) return;
+    const timer = window.setTimeout(() => {
+      setTopicPreferences((current) => {
+        const next = markSeen(current, topic, newest);
+        if (next !== current) writeTopicPreferences(identity.storage, identity.key, next);
+        return next;
+      });
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [identity.key, identity.storage, snapshot.items, topic, view]);
   const people = useMemo(
     () => buildPeople(order, preferences, viewer),
     [order, preferences, viewer],
@@ -773,13 +1040,27 @@ export function App({
     [loader, messages, openedLoaders, selectedLoader, topic, view],
   );
   useEffect(() => {
-    const arrivals = [...snapshot.fresh].filter((path) => !announcedMessages.current.has(path));
+    const fresh = [...snapshot.fresh].filter((path) => !announcedMessages.current.has(path));
     for (const path of snapshot.fresh) announcedMessages.current.add(path);
-    if (arrivals.length > 0) {
-      const total = announcedMessages.current.size;
-      setArrivalAnnouncement(t("arrival.announce", { count: arrivals.length, total }));
+    const messages = new Map<string, Message>();
+    for (const item of snapshot.items) {
+      if (item.kind === "message") messages.set(item.message.path, item.message);
     }
-  }, [snapshot.fresh, t]);
+    const arrivals = fresh.filter((path) => {
+      const message = messages.get(path);
+      return (
+        message !== undefined &&
+        topicPreferences.follow.includes(message.topic) &&
+        !topicPreferences.mute.includes(message.topic)
+      );
+    });
+    if (arrivals.length > 0) {
+      announcedCount.current += arrivals.length;
+      setArrivalAnnouncement(
+        t("arrival.announce", { count: arrivals.length, total: announcedCount.current }),
+      );
+    }
+  }, [snapshot.fresh, snapshot.items, t, topicPreferences.follow, topicPreferences.mute]);
   // The first render is a load or a reload, not a navigation: nothing moves focus then, since a
   // script focus with no earlier touch or key would draw a focus ring on the heading.
   const shown = useRef(mobileConversation);
@@ -1138,11 +1419,31 @@ export function App({
                 >
                   <span>{t("nav.files")}</span>
                 </button>
+                {topicSession !== null && (
+                  <button
+                    type="button"
+                    aria-pressed={view === "attention"}
+                    aria-current={view === "attention" ? "page" : undefined}
+                    onClick={(event) => {
+                      pendingJump.current = null;
+                      setAttentionAll(false);
+                      setView("attention");
+                      lastTopicButton.current = event.currentTarget;
+                      setMobileConversation(window.matchMedia("(max-width: 720px)").matches);
+                    }}
+                  >
+                    <span>{t("nav.attention")}</span>
+                  </button>
+                )}
                 <h2 className="topics-heading">{t("nav.topics")}</h2>
                 {topicLayout ? (
                   <TopicList
-                    topics={listedTopics}
+                    topics={listedVisibleTopics}
                     loadedTopics={searchRead}
+                    pinnedTopics={new Set(topicPreferences.pin)}
+                    preferenceFlags={topicPreferenceFlags}
+                    unreadCounts={unreadCounts}
+                    onTogglePreference={changeTopicPreference}
                     onLoadAll={() => {
                       setSearchLoadRequest((request) => request + 1);
                     }}
@@ -1153,11 +1454,21 @@ export function App({
                     onSelect={openTopic}
                   />
                 ) : (
-                  topics.map((summary) => (
+                  visibleLegacyTopics.flatMap((summary) => [
                     <button
                       key={summary.topic}
                       type="button"
+                      className="topic-entry-button"
                       aria-pressed={view === "chat" && topic === summary.topic}
+                      aria-description={
+                        unreadCounts.has(summary.topic)
+                          ? unreadCounts.get(summary.topic) === null
+                            ? t("topic.unreadUnknown")
+                            : t("topic.unread", {
+                                count: unreadCounts.get(summary.topic) ?? 0,
+                              })
+                          : undefined
+                      }
                       onClick={(event) => {
                         pendingJump.current = null;
                         setView("chat");
@@ -1170,11 +1481,56 @@ export function App({
                         {t("topic.label", { topic: summary.topic })}
                       </span>
                       <span className="count">{summary.count}</span>
+                      {unreadCounts.has(summary.topic) && (
+                        <span
+                          className="count"
+                          data-count={unreadCounts.get(summary.topic) ?? "•"}
+                          aria-hidden="true"
+                        />
+                      )}
                       {summary.fresh > 0 && (
                         <span className="fresh">{t("nav.fresh", { count: summary.fresh })}</span>
                       )}
-                    </button>
-                  ))
+                    </button>,
+                    <TopicPreferencesMenu
+                      key={`${summary.topic}:preferences`}
+                      topic={summary.topic}
+                      flags={topicPreferenceFlags(summary.topic)}
+                      onToggle={(list, on) => {
+                        changeTopicPreference(summary.topic, list, on);
+                      }}
+                    />,
+                  ])
+                )}
+                {hiddenTopics.length > 0 && (
+                  <details
+                    className="hidden-topics"
+                    open={hiddenOpen}
+                    onToggle={(event) => {
+                      setHiddenOpen(event.currentTarget.open);
+                    }}
+                  >
+                    <summary>{t("topic.hiddenCount", { count: hiddenTopics.length })}</summary>
+                    {hiddenTopics.map((summary) => (
+                      <div key={summary.name} className="hidden-topic-row">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            changeTopicPreference(summary.name, "hide", false);
+                          }}
+                        >
+                          {t("topic.label", { topic: summary.name })}
+                        </button>
+                        <TopicPreferencesMenu
+                          topic={summary.name}
+                          flags={topicPreferenceFlags(summary.name)}
+                          onToggle={(list, on) => {
+                            changeTopicPreference(summary.name, list, on);
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </details>
                 )}
               </nav>
             </aside>
@@ -1191,10 +1547,12 @@ export function App({
             >
               <TopicBar
                 className={
-                  view === "questions" || view === "files" ? "content-column-bar" : undefined
+                  view === "questions" || view === "files" || view === "attention"
+                    ? "content-column-bar"
+                    : undefined
                 }
                 headingClass={
-                  view === "questions" || view === "files"
+                  view === "questions" || view === "files" || view === "attention"
                     ? "content-column-heading"
                     : topicLayout && topic !== null
                       ? "topic-heading"
@@ -1209,17 +1567,19 @@ export function App({
                   <>
                     {view === "questions"
                       ? t("heading.questions")
-                      : view === "files"
-                        ? filesTopic === null
-                          ? t("heading.files")
-                          : t("heading.filesIn", { topic: filesTopic })
-                        : topic === null
-                          ? t("heading.all")
-                          : `#${topic}`}
+                      : view === "attention"
+                        ? t("heading.attention")
+                        : view === "files"
+                          ? filesTopic === null
+                            ? t("heading.files")
+                            : t("heading.filesIn", { topic: filesTopic })
+                          : topic === null
+                            ? t("heading.all")
+                            : `#${topic}`}
                   </>
                 }
               />
-              {topicLayout && loadedTopics.length === 0 && (
+              {topicLayout && view === "chat" && loadedTopics.length === 0 && (
                 <p className="topic-prompt">{t("topic.selectPrompt")}</p>
               )}
               {showingAll && (allLoading || closedHidden) && (
@@ -1248,6 +1608,21 @@ export function App({
                   expansionChoices={questionExpansions}
                   onExpansionChange={changeQuestionExpansion}
                   onOpen={openQuestion}
+                />
+              )}
+              {view === "attention" && (
+                <AttentionView
+                  attention={attention}
+                  updatedAt={attentionUpdatedAt}
+                  loading={attentionLoading}
+                  topicCount={availableTopics.filter((summary) => summary.status === "open").length}
+                  legacy={!topicLayout}
+                  hasFollowed={topicPreferences.follow.length > 0}
+                  onLoadAll={() => {
+                    setAttentionAll(true);
+                  }}
+                  onOpenItem={openAttentionItem}
+                  onOpenMessage={openAttentionMessage}
                 />
               )}
               {!narrow && range}

@@ -15,5 +15,6 @@ export const POPUPS: readonly PopupEntry[] = [
   { selector: ".menu", margin: 8 },
   { selector: "#profile-panel", margin: 0 },
   { selector: ".topic-menu-body", margin: 8 },
+  { selector: ".topic-preference-items", margin: 8 },
   { selector: ".time-tooltip", margin: 8 },
 ];

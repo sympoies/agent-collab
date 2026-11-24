@@ -46,6 +46,22 @@ describe("view state", () => {
     });
   });
 
+  it("restores the Attention view when the snapshot remembers the current view", () => {
+    const storage = memory();
+    expect(
+      writeViewState(storage, "hosted:a", {
+        view: "attention",
+        topic: null,
+        conversation: true,
+      }),
+    ).toBe(true);
+    expect(readViewState(storage, "hosted:a")).toEqual({
+      view: "attention",
+      topic: null,
+      conversation: true,
+    });
+  });
+
   it("ignores damaged or foreign values", () => {
     for (const text of [
       "{",
