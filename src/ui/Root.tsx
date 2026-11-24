@@ -209,6 +209,7 @@ export function Root(props: RootProps) {
   const [localMessage, setLocalMessage] = useState<MessageRef | null>(null);
   /** Why Reopen failed; shown with the remembered folder, apart from the other folder messages. */
   const [reopenMessage, setReopenMessage] = useState<MessageRef | null>(null);
+  const [localFileInputKey, setLocalFileInputKey] = useState(0);
   const localFileInput = useRef<HTMLInputElement>(null);
   const pendingFilePick = useRef<{
     readonly operation: number;
@@ -616,6 +617,7 @@ export function Root(props: RootProps) {
 
   const folderInput = (
     <input
+      key={localFileInputKey}
       ref={localFileInput}
       type="file"
       multiple
@@ -624,7 +626,12 @@ export function Root(props: RootProps) {
       {...({ webkitdirectory: "" } as Record<string, string>)}
       onChange={(event) => {
         const files = event.currentTarget.files;
-        if (files !== null) acceptFilePick(files);
+        if (files !== null) {
+          acceptFilePick(files);
+          // Replace the native input after a selection so WebKit does not reuse stale
+          // directory-picker state when the reader chooses another snapshot.
+          setLocalFileInputKey((key) => key + 1);
+        }
         event.currentTarget.value = "";
       }}
     />

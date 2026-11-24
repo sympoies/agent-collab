@@ -2848,24 +2848,27 @@ test("a browser without a folder picker gets an explanation instead of a broken 
   await expect(page.getByRole("button", { name: "Local folder", exact: true })).toBeVisible();
 });
 
-test("a file input opens a local snapshot in each language on a phone without network requests @csp", async ({
-  page,
-  browserName,
-}) => {
-  expect(["chromium", "webkit"]).toContain(browserName);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.addInitScript(() => Reflect.deleteProperty(window, "showDirectoryPicker"));
-  await page.goto("/");
-  const requests: string[] = [];
-  page.on("request", (request) => requests.push(request.url()));
-  const input = page.locator('input[type="file"][webkitdirectory]');
-  const fixturePath = fileURLToPath(new URL("./fixtures/local-folder", import.meta.url));
-  const updatedFixturePath = fileURLToPath(
-    new URL("./fixtures/local-folder-updated", import.meta.url),
-  );
+for (const locale of ["en", "ja", "zh-TW"] as const) {
+  test(`a file input opens a local snapshot in ${LOCALE_NAMES[locale]} on a phone without network requests @csp`, async ({
+    page,
+    browserName,
+  }) => {
+    // Give each locale fresh browser state; reloading before another directory pick can leave
+    // Playwright's file chooser pending on WebKit CI.
+    // This timeout is a secondary runner-load guard; the assertions remain the synchronization.
+    test.setTimeout(60_000);
+    expect(["chromium", "webkit"]).toContain(browserName);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => Reflect.deleteProperty(window, "showDirectoryPicker"));
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    const requests: string[] = [];
+    page.on("request", (request) => requests.push(request.url()));
+    const input = page.locator('input[type="file"][webkitdirectory]');
+    const fixturePath = fileURLToPath(new URL("./fixtures/local-folder", import.meta.url));
+    const updatedFixturePath = fileURLToPath(
+      new URL("./fixtures/local-folder-updated", import.meta.url),
+    );
 
-  for (const locale of ["en", "ja", "zh-TW"] as const) {
-    if (locale !== "en") await page.reload();
     await page.getByRole("combobox").first().selectOption(locale);
     requests.length = 0;
     await expect(page.locator("h1")).toHaveCount(1);
@@ -2931,16 +2934,18 @@ test("a file input opens a local snapshot in each language on a phone without ne
       await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
     ).toBeLessThanOrEqual(0);
     expect(requests).toEqual([]);
-  }
-});
+  });
+}
 
 test("a topic folder snapshot keeps questions visible when WebKit omits the marker @csp", async ({
   page,
   browserName,
 }) => {
+  // Keep the same secondary guard for native folder selection under WebKit CI runner contention.
+  test.setTimeout(60_000);
   expect(["chromium", "webkit"]).toContain(browserName);
   await page.addInitScript(() => Reflect.deleteProperty(window, "showDirectoryPicker"));
-  await page.goto("/");
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const requests: string[] = [];
   page.on("request", (request) => requests.push(request.url()));
   const input = page.locator('input[type="file"][webkitdirectory]');
