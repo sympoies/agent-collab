@@ -4,6 +4,7 @@ import type { MessageKey } from "../i18n/catalog";
 
 import { Secret } from "../credentials/secret";
 import type { CredentialStore } from "../credentials/store";
+import { parseParticipantNames } from "../identity/preferences";
 import {
   loadSettings,
   saveSettings,
@@ -22,6 +23,8 @@ export interface SettingsDeps {
 export interface OpenSettings {
   readonly settings: ViewerSettings;
   readonly token: Secret;
+  /** Setup-entered display names, omitted when the settings are restored later. */
+  readonly setupDisplayNames?: Readonly<Record<string, string>>;
 }
 
 interface StoredToken {
@@ -97,7 +100,16 @@ export async function apply(
     await store.set("access-token", tokenRecord(result.settings.endpoint, result.token));
   }
   saveSettings(deps.storage, result.settings);
-  return { ok: true, open: { settings: result.settings, token }, warning };
+  const parsedNames = parseParticipantNames(draft.selfNames);
+  return {
+    ok: true,
+    open: {
+      settings: result.settings,
+      token,
+      setupDisplayNames: parsedNames?.displayNames ?? {},
+    },
+    warning,
+  };
 }
 
 /** Clears every store; rejects after trying all of them if one could not be cleared. */

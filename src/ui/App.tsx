@@ -25,6 +25,7 @@ import {
   resetProfile,
   resolveViewer,
   withColor,
+  withDefaultDisplayNames,
   withDisplayName,
   withViewingAs,
   writePreferences,
@@ -172,6 +173,8 @@ export interface AppProps {
   readonly titleLink?: string;
   /** Configured own names; the first participant among them is the default "Viewing as". */
   readonly selfNames: ReadonlySet<string>;
+  /** Display-name defaults received from setup, retained in memory if storage is unavailable. */
+  readonly initialDisplayNames?: Readonly<Record<string, string>>;
   /** Where identity preferences live; null keeps them in memory for this view only. */
   readonly identity: { readonly storage: PreferenceStorage | null; readonly key: string };
   /** A one-off message from opening the viewer, such as a settings warning. */
@@ -203,6 +206,7 @@ export function App({
   title,
   titleLink,
   selfNames,
+  initialDisplayNames = {},
   identity,
   notice,
   pollIntervalMs,
@@ -383,7 +387,12 @@ export function App({
   }, [rememberSearchLoaded, saved.topic, topicSession]);
   const [readyRetryAt, setReadyRetryAt] = useState<Date | null>(null);
   const [preferences, setPreferences] = useState<IdentityPreferences>(() =>
-    identity.storage === null ? EMPTY_PREFERENCES : readPreferences(identity.storage, identity.key),
+    withDefaultDisplayNames(
+      identity.storage === null
+        ? EMPTY_PREFERENCES
+        : readPreferences(identity.storage, identity.key),
+      initialDisplayNames,
+    ),
   );
   const [topicPreferences, setTopicPreferences] = useState<TopicPreferences>(() =>
     readTopicPreferences(identity.storage, identity.key),

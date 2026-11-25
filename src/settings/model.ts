@@ -3,6 +3,7 @@ import type { MessageKey } from "../i18n/catalog";
 // non-secret values; the token goes to a CredentialStore.
 
 import { Secret } from "../credentials/secret";
+import { parseParticipantNames } from "../identity/preferences";
 
 export type Platform = "github" | "gitlab";
 
@@ -71,18 +72,10 @@ export const DEFAULT_DRAFT: SettingsDraft = {
   token: "",
 };
 
-const NAME_RE = /^[a-z0-9-]+$/;
 const REPOSITORY_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 // Git ref rules that matter for a typed branch name.
 const BRANCH_RE = /^(?!\/)(?!.*\/$)(?!.*\.\.)[^\s~^:?*[\\]+$/;
 const SETTINGS_KEY = "agent-collab-viewer.settings";
-
-function splitNames(value: string): string[] {
-  return value
-    .split(",")
-    .map((name) => name.trim())
-    .filter((name) => name !== "");
-}
 
 function normalizeEndpoint(value: string, errors: DraftErrors): string {
   let url: URL;
@@ -122,8 +115,8 @@ export function validateDraft(draft: SettingsDraft, context: DraftContext): Vali
   if (!REPOSITORY_RE.test(repository)) errors.repository = "settings.error.repository";
   const branch = draft.branch.trim();
   if (branch !== "" && !BRANCH_RE.test(branch)) errors.branch = "settings.error.branch";
-  const selfNames = splitNames(draft.selfNames);
-  if (selfNames.some((name) => !NAME_RE.test(name))) {
+  const parsedNames = parseParticipantNames(draft.selfNames);
+  if (parsedNames === null) {
     errors.selfNames = "settings.error.names";
   }
   const token = draft.token.trim();
@@ -139,7 +132,7 @@ export function validateDraft(draft: SettingsDraft, context: DraftContext): Vali
       endpoint,
       repository,
       branch,
-      selfNames,
+      selfNames: parsedNames?.ids ?? [],
       credentialStorage: draft.credentialStorage,
     },
     token: token === "" ? null : new Secret(token),

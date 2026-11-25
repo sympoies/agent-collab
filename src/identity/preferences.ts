@@ -12,6 +12,31 @@ const PERSON_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** The stored value of "Observer", which no participant name can equal. */
 const OBSERVER = "";
 
+export interface ParsedParticipantNames {
+  readonly ids: readonly string[];
+  /** Typed values that differ from their normalized ids; first occurrence wins. */
+  readonly displayNames: Readonly<Record<string, string>>;
+}
+
+/** Parses comma-separated setup names as participant ids, matching ids without case. */
+export function parseParticipantNames(value: string): ParsedParticipantNames | null {
+  const ids: string[] = [];
+  const displayNames: Record<string, string> = {};
+  for (const entry of value.split(",")) {
+    const typed = entry.trim();
+    if (typed === "") continue;
+    const id = typed.toLowerCase();
+    if (!PERSON_RE.test(id)) return null;
+    if (ids.includes(id)) {
+      if (typed !== id && displayNames[id] === undefined) displayNames[id] = typed;
+      continue;
+    }
+    ids.push(id);
+    if (typed !== id) displayNames[id] = typed;
+  }
+  return { ids, displayNames };
+}
+
 export type PreferenceStorage = Pick<Storage, "getItem" | "setItem">;
 
 export interface IdentityPreferences {
@@ -126,6 +151,18 @@ export function withDisplayName(
   const others = Object.entries(preferences.names).filter(([key]) => key !== person);
   const entries = cleaned === "" ? others : [...others, [person, cleaned]];
   return { ...preferences, names: Object.fromEntries(entries) as Record<string, string> };
+}
+
+/** Adds setup-provided defaults while retaining display names the viewer already chose. */
+export function withDefaultDisplayNames(
+  preferences: IdentityPreferences,
+  names: Readonly<Record<string, string>>,
+): IdentityPreferences {
+  return Object.entries(names).reduce(
+    (current, [person, name]) =>
+      current.names[person] === undefined ? withDisplayName(current, person, name) : current,
+    preferences,
+  );
 }
 
 /** Restores default colors and display names; "Viewing as" is a different choice and stays. */

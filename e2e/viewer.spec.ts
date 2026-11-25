@@ -533,6 +533,7 @@ async function installApiStub(
     | "long-topic"
     | "history"
     | "history-monthly",
+  participants = "alice-agent, bob-agent",
 ) {
   const messages =
     mode === "long"
@@ -575,7 +576,7 @@ async function installApiStub(
     "all",
   );
   const blobs = new Map<string, string>([
-    ["marker", "collab-protocol: 1\nparticipants: alice-agent, bob-agent\n"],
+    ["marker", `collab-protocol: 1\nparticipants: ${participants}\n`],
   ]);
   const unhandled: string[] = [];
   const topicBlobRequests: string[] = [];
@@ -957,6 +958,77 @@ test("empty repositories and provider errors have clear states", async ({ page }
   await expect(failedPage.getByRole("alert")).toContainText(en["error.unexpected"]);
   await saveScreenshot(failedPage, "error-state.png");
   assertErrorRequests();
+});
+
+for (const viewport of [
+  { label: "desktop", width: 1280, height: 800 },
+  { label: "mobile", width: 390, height: 844 },
+]) {
+  test(`setup accepts a capitalised participant id and uses its display name at ${viewport.label} width @csp`, async ({
+    page,
+    browserName,
+  }) => {
+    const assertRequests = await installApiStub(page, "empty", "alice, bob");
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto("/");
+    await page.getByRole("button", { name: en["welcome.openAnother"] }).click();
+
+    const names = page.getByLabel(en["settings.myNames"]);
+    await expect(names).toHaveAttribute("placeholder", en["settings.myNamesPlaceholder"]);
+    await expect(names).toHaveAccessibleDescription(en["settings.myNamesHint"]);
+    if (browserName === "chromium") {
+      await saveScreenshot(page, `setup-${viewport.label}.png`);
+    }
+
+    await names.fill("Alice");
+    await page.getByLabel(en["settings.repository"]).fill("alice-agent/fixture-repo");
+    await page.getByLabel(en["settings.branch"]).fill("main");
+    await page.getByLabel(en["settings.token"]).fill("fake-token");
+    await page.getByRole("button", { name: en["settings.saveOpen"] }).click();
+
+    await expect(page.getByText(en["error.unexpected"])).toHaveCount(0);
+    await expect(page.locator(".identity-name")).toHaveText("Alice");
+    await identityButton(page).click();
+    const panel = page.getByRole("region", { name: "Profile & colors" });
+    await expect(panel.getByLabel("Viewing as")).toHaveValue("alice");
+    await expect(panel.getByLabel("Display name for alice")).toHaveValue("Alice");
+    assertRequests();
+  });
+}
+
+test("capitalised setup keeps its display name when identity storage throws @csp", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    const originalSet = Storage.prototype.setItem.bind(localStorage);
+    const originalGet = Storage.prototype.getItem.bind(localStorage);
+    Storage.prototype.setItem = function (key: string, value: string) {
+      if (key.startsWith("agent-collab-viewer.identity:")) {
+        throw new DOMException("Identity preferences are read-only", "QuotaExceededError");
+      }
+      originalSet(key, value);
+    };
+    Storage.prototype.getItem = function (key: string) {
+      if (key.startsWith("agent-collab-viewer.identity:")) {
+        throw new DOMException("Identity preferences are unreadable", "SecurityError");
+      }
+      return originalGet(key);
+    };
+  });
+  const assertRequests = await installApiStub(page, "empty", "alice, bob");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/");
+  await page.getByRole("button", { name: en["welcome.openAnother"] }).click();
+  await page.getByLabel(en["settings.myNames"]).fill("Alice");
+  await page.getByLabel(en["settings.repository"]).fill("alice-agent/fixture-repo");
+  await page.getByLabel(en["settings.branch"]).fill("main");
+  await page.getByLabel(en["settings.token"]).fill("fake-token");
+  await page.getByRole("button", { name: en["settings.saveOpen"] }).click();
+  await expect(page.locator(".identity-name")).toHaveText("Alice");
+  expect(errors).toEqual([]);
+  assertRequests();
 });
 
 test("welcome screen exposes live-demo, saved-repository, and theme controls", async ({ page }) => {
@@ -2823,8 +2895,8 @@ test("settings have one h1 and fields named without their hints, with errors con
   await page.getByRole("button", { name: "Open another repository" }).click();
   await expect(page.locator("h1")).toHaveCount(1);
   // The hint is a description, not part of the field's name.
-  const names = page.getByRole("textbox", { name: "My names", exact: true });
-  await expect(names).toHaveAccessibleDescription(/default "Viewing as" person/);
+  const names = page.getByRole("textbox", { name: en["settings.myNames"], exact: true });
+  await expect(names).toHaveAccessibleDescription(/participant IDs; matching ignores case/i);
   const repository = page.getByRole("textbox", { name: "Repository", exact: true });
   await expect(repository).not.toHaveAttribute("aria-invalid", "true");
   await page.getByRole("button", { name: "Save and open" }).click();
