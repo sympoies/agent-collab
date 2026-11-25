@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_TOPIC_PREFERENCES,
   forExistingTopics,
+  legacyUnreadDigest,
   markSeen,
   readTopicPreferences,
   toggleTopic,
@@ -26,6 +27,8 @@ function memory(): PreferenceStorage & { readonly values: Map<string, string> } 
   };
 }
 
+const marker = (id: string, ids: readonly string[] = [id]) => ({ id, ids });
+
 const throwing: PreferenceStorage = {
   getItem: () => {
     throw new DOMException("blocked", "SecurityError");
@@ -43,7 +46,7 @@ const prefs = (over: Partial<TopicPreferences>): TopicPreferences => ({
 describe("topic preferences storage", () => {
   it("saves and restores, one record per repository", () => {
     const storage = memory();
-    const a = prefs({ follow: ["api"], pin: ["ops"], seen: { api: ID(3) } });
+    const a = prefs({ follow: ["api"], pin: ["ops"], seen: { api: marker(ID(3)) } });
     expect(writeTopicPreferences(storage, "github:one", a)).toBe(true);
     expect(readTopicPreferences(storage, "github:one")).toEqual(a);
     // Another repository with the same topic names stays separate.
@@ -78,7 +81,12 @@ describe("topic preferences storage", () => {
         pin: [{}],
         hide: ["ops"],
         // Message text or anything else that is not an id is never kept.
-        seen: { api: "a secret message body", ops: ID(2, "ops"), Bad: ID(1), x: 5 },
+        seen: {
+          api: "a secret message body",
+          ops: marker(ID(2, "ops")),
+          Bad: marker(ID(1)),
+          x: 5,
+        },
         extra: { text: "kept nowhere" },
       }),
     );
@@ -87,8 +95,17 @@ describe("topic preferences storage", () => {
       mute: [],
       pin: [],
       hide: ["ops"],
-      seen: { ops: ID(2, "ops") },
+      seen: { ops: marker(ID(2, "ops")) },
     });
+  });
+
+  it("preserves last-seen IDs from the previous string marker format", () => {
+    const storage = memory();
+    storage.setItem(
+      "agent-collab-viewer.topics:k",
+      JSON.stringify({ follow: [], mute: [], pin: [], hide: [], seen: { api: ID(3) } }),
+    );
+    expect(readTopicPreferences(storage, "k").seen).toEqual({ api: marker(ID(3)) });
   });
 
   it("caps what it reads, and the follow/mute and pin/hide pairs cannot both be set", () => {
@@ -107,14 +124,14 @@ describe("topic preferences storage", () => {
 
   it("stores only names and ids, never text", () => {
     const storage = memory();
-    writeTopicPreferences(storage, "k", markSeen(EMPTY_TOPIC_PREFERENCES, "api", ID(3)));
+    writeTopicPreferences(storage, "k", markSeen(EMPTY_TOPIC_PREFERENCES, "api", ID(3), [ID(3)]));
     expect([...storage.values.values()].join()).not.toMatch(/Synthetic|body|summary/);
     expect(JSON.parse([...storage.values.values()][0] ?? "{}")).toEqual({
       follow: [],
       mute: [],
       pin: [],
       hide: [],
-      seen: { api: ID(3) },
+      seen: { api: marker(ID(3)) },
     });
   });
 });
@@ -154,23 +171,29 @@ describe("changing topic preferences", () => {
   });
 
   it("moves the last-seen marker only forward, and only to a real id", () => {
-    let p = markSeen(EMPTY_TOPIC_PREFERENCES, "api", ID(5));
-    expect(markSeen(p, "api", ID(3))).toBe(p);
-    expect(markSeen(p, "api", ID(5))).toBe(p);
-    p = markSeen(p, "api", ID(6));
-    expect(p.seen).toEqual({ api: ID(6) });
-    expect(markSeen(p, "api", "not an id")).toBe(p);
-    expect(markSeen(p, "Bad Name", ID(7))).toBe(p);
+    let p = markSeen(EMPTY_TOPIC_PREFERENCES, "api", ID(5), [ID(5)]);
+    expect(markSeen(p, "api", ID(3), [ID(3)])).toBe(p);
+    expect(markSeen(p, "api", ID(5), [ID(5)])).toBe(p);
+    p = markSeen(p, "api", ID(6), [ID(6)]);
+    expect(p.seen).toEqual({ api: marker(ID(6)) });
+    expect(markSeen(p, "api", "not an id", [])).toBe(p);
+    expect(markSeen(p, "Bad Name", ID(7), [ID(7)])).toBe(p);
   });
 
   it("ignores a topic that disappeared without forgetting it", () => {
     const stored = prefs({
       follow: ["api", "gone"],
       pin: ["gone"],
-      seen: { gone: ID(2, "gone"), api: ID(1) },
+      seen: { gone: marker(ID(2, "gone")), api: marker(ID(1)) },
     });
     const visible = forExistingTopics(stored, ["api", "ops"]);
-    expect(visible).toEqual({ follow: ["api"], mute: [], pin: [], hide: [], seen: { api: ID(1) } });
+    expect(visible).toEqual({
+      follow: ["api"],
+      mute: [],
+      pin: [],
+      hide: [],
+      seen: { api: marker(ID(1)) },
+    });
     // The stored record is untouched, so the topic's state returns with it.
     expect(stored.follow).toEqual(["api", "gone"]);
     expect(forExistingTopics(stored, ["api", "gone"]).follow).toEqual(["api", "gone"]);
@@ -179,15 +202,21 @@ describe("changing topic preferences", () => {
 
 describe("topic names that are also object property names", () => {
   it("keeps the last-seen marker of a topic named constructor", () => {
+    const constructorId = ID(3, "constructor");
     expect(
-      unreadOf(EMPTY_TOPIC_PREFERENCES, "constructor", { newestId: ID(3), ids: [ID(3)] }),
+      unreadOf(EMPTY_TOPIC_PREFERENCES, "constructor", {
+        newestId: constructorId,
+        ids: [constructorId],
+      }),
     ).toEqual({
       unread: true,
       count: 1,
     });
-    const seen = markSeen(EMPTY_TOPIC_PREFERENCES, "constructor", ID(3));
-    expect(seen.seen).toEqual({ constructor: ID(3) });
-    expect(unreadOf(seen, "constructor", { newestId: ID(3), ids: [ID(3)] })).toEqual({
+    const seen = markSeen(EMPTY_TOPIC_PREFERENCES, "constructor", constructorId, [constructorId]);
+    expect(seen.seen).toEqual({ constructor: marker(constructorId) });
+    expect(
+      unreadOf(seen, "constructor", { newestId: constructorId, ids: [constructorId] }),
+    ).toEqual({
       unread: false,
       count: 0,
     });
@@ -202,7 +231,7 @@ describe("topic names that are also object property names", () => {
       });
       // Through storage too: a stored record never hands out an inherited value.
       const storage = memory();
-      writeTopicPreferences(storage, "k", markSeen(EMPTY_TOPIC_PREFERENCES, "api", ID(1)));
+      writeTopicPreferences(storage, "k", markSeen(EMPTY_TOPIC_PREFERENCES, "api", ID(1), [ID(1)]));
       expect(unreadOf(readTopicPreferences(storage, "k"), name, { newestId: ID(3) }).unread).toBe(
         true,
       );
@@ -211,20 +240,46 @@ describe("topic names that are also object property names", () => {
 
   it("stores and restores a topic named constructor", () => {
     const storage = memory();
-    writeTopicPreferences(storage, "k", markSeen(EMPTY_TOPIC_PREFERENCES, "constructor", ID(2)));
-    expect(readTopicPreferences(storage, "k").seen).toEqual({ constructor: ID(2) });
+    const constructorId = ID(2, "constructor");
+    writeTopicPreferences(
+      storage,
+      "k",
+      markSeen(EMPTY_TOPIC_PREFERENCES, "constructor", constructorId, [constructorId]),
+    );
+    expect(readTopicPreferences(storage, "k").seen).toEqual({
+      constructor: marker(constructorId),
+    });
   });
 });
 
 describe("unread counters", () => {
   const ids = [ID(1), ID(2), ID(3)];
 
+  it("builds the legacy digest from loaded topic messages", () => {
+    expect(
+      legacyUnreadDigest(
+        [
+          { topic: "api", id: ID(2) },
+          { topic: "ops", id: ID(3, "ops") },
+          { topic: "api", id: ID(1) },
+        ],
+        "api",
+        false,
+      ),
+    ).toEqual({ newestId: ID(2), ids: [ID(1), ID(2)], idsComplete: false });
+    expect(legacyUnreadDigest([], "api", true)).toBeNull();
+  });
+
   it("compares the newest id with the last-seen marker", () => {
-    expect(unreadOf(prefs({ seen: { api: ID(3) } }), "api", { newestId: ID(3), ids })).toEqual({
+    expect(
+      unreadOf(prefs({ seen: { api: marker(ID(3)) } }), "api", { newestId: ID(3), ids }),
+    ).toEqual({
       unread: false,
       count: 0,
     });
-    expect(unreadOf(prefs({ seen: { api: ID(1) } }), "api", { newestId: ID(3), ids })).toEqual({
+    expect(
+      unreadOf(prefs({ seen: { api: marker(ID(1)) } }), "api", { newestId: ID(3), ids }),
+    ).toEqual({
       unread: true,
       count: 2,
     });
@@ -243,14 +298,14 @@ describe("unread counters", () => {
 
   it("is not unread when the marker is newer than the digest, and orders ids across months and senders", () => {
     expect(
-      unreadOf(prefs({ seen: { api: ID(5) } }), "api", { newestId: ID(3), ids: [ID(3)] }),
+      unreadOf(prefs({ seen: { api: marker(ID(5)) } }), "api", { newestId: ID(3), ids: [ID(3)] }),
     ).toEqual({
       unread: false,
       count: 0,
     });
     const october = "2026-10-31T2359-alice-agent-api-01";
     expect(
-      unreadOf(prefs({ seen: { api: october } }), "api", {
+      unreadOf(prefs({ seen: { api: marker(october) } }), "api", {
         newestId: ID(1),
         ids: [october, ID(1)],
       }),
@@ -258,30 +313,33 @@ describe("unread counters", () => {
       unread: true,
       count: 1,
     });
-    // The same timestamp from two senders: the id is the order, so a later one is unread.
-    const first = "2026-11-02T0900-alice-agent-api-01";
-    const second = "2026-11-02T0900-bob-agent-api-01";
+    // A same-minute message from an earlier-sorting sender is still newer when it was not in the
+    // IDs recorded when the topic was viewed.
+    const seenId = "2026-11-02T0900-bob-agent-api-01";
+    const laterArrival = "2026-11-02T0900-alice-agent-api-02";
+    const seen = markSeen(EMPTY_TOPIC_PREFERENCES, "api", seenId, [seenId]);
     expect(
-      unreadOf(prefs({ seen: { api: first } }), "api", { newestId: second, ids: [first, second] }),
-    ).toEqual({
-      unread: true,
-      count: 1,
-    });
+      unreadOf(prefs(seen), "api", {
+        newestId: seenId,
+        ids: [laterArrival, seenId],
+      }),
+    ).toEqual({ unread: true, count: 1 });
+    const afterViewing = markSeen(seen, "api", seenId, [seenId, laterArrival]);
     expect(
-      unreadOf(prefs({ seen: { api: second } }), "api", { newestId: second, ids: [first, second] }),
-    ).toEqual({
-      unread: false,
-      count: 0,
-    });
+      unreadOf(afterViewing, "api", {
+        newestId: seenId,
+        ids: [laterArrival, seenId],
+      }),
+    ).toEqual({ unread: false, count: 0 });
   });
 
   it("knows only that something is new when the index could not give the ids", () => {
-    expect(unreadOf(prefs({ seen: { api: ID(1) } }), "api", { newestId: ID(3) })).toEqual({
+    expect(unreadOf(prefs({ seen: { api: marker(ID(1)) } }), "api", { newestId: ID(3) })).toEqual({
       unread: true,
       count: null,
     });
     expect(
-      unreadOf(prefs({ seen: { api: ID(1) } }), "api", { newestId: ID(3), ids: null }),
+      unreadOf(prefs({ seen: { api: marker(ID(1)) } }), "api", { newestId: ID(3), ids: null }),
     ).toEqual({
       unread: true,
       count: null,

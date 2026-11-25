@@ -10,6 +10,7 @@ import { FixtureSource } from "../src/source/fixture";
 import { SourceError } from "../src/source/types";
 import { writeViewState } from "../src/identity/view-state";
 import type { PreferenceStorage } from "../src/identity/preferences";
+import { readTopicPreferences } from "../src/identity/topic-preferences";
 import { App } from "../src/ui/App";
 import { ThemeProvider } from "../src/ui/ThemeProvider";
 import { messageText } from "./support";
@@ -88,6 +89,91 @@ describe("topic list screen", () => {
     await settle();
   }
 
+  it("opens the Attention view from the topic list", async () => {
+    await mount(new FixtureSource(files));
+    const attention = [...host.querySelectorAll("button")].find((button) =>
+      button.textContent.startsWith("Attention"),
+    );
+    if (attention === undefined) throw new Error("Attention control is missing.");
+    await click(attention);
+    expect(host.querySelector(".conversation h2")?.textContent).toBe("Attention");
+    expect(host.textContent).toContain("Follow a topic to include its recent messages.");
+  });
+
+  it("does not advance last-seen when opening a topic message fails", async () => {
+    const storageValues = new Map<string, string>();
+    const storage: PreferenceStorage = {
+      getItem: (key) => storageValues.get(key) ?? null,
+      setItem: (key, value) => storageValues.set(key, value),
+    };
+    const source = new FixtureSource(files);
+    source.failReads([`topics/api/inbox/2026-10/${API_ID}.md`]);
+    await mount(source, "topic-open-failed", undefined, storage);
+    for (
+      let round = 0;
+      round < 8 && !source.listings.includes("topics/api/inbox/2026-10");
+      round++
+    ) {
+      await settle();
+    }
+    expect(source.listings).toContain("topics/api/inbox/2026-10");
+
+    await click(entry("#api"));
+    expect(source.reads).toContain(`topics/api/inbox/2026-10/${API_ID}.md`);
+    expect(readTopicPreferences(storage, "topic-open-failed").seen.api).toBeUndefined();
+  });
+
+  it("bounds paging when an Attention row points to a missing message", async () => {
+    const rows = Array.from({ length: 12 }, (_, index) => {
+      const minute = String(index + 1).padStart(2, "0");
+      const id = `2026-10-01T09${minute}-alice-agent-api-01`;
+      return [id, messageText(id, "alice-agent", "api", {}, `Message ${minute}`)] as const;
+    });
+    const missingId = "2026-10-01T0900-alice-agent-api-01";
+    const repository: Record<string, string> = {
+      ".agent-collab": MARKER,
+      "index.md": "| topic | title | status |\n|---|---|---|\n| api | API | open |",
+      "topics/api/open.md": [
+        "# Open items",
+        "",
+        "## Unanswered questions",
+        "",
+        "| id | from | to | needs | due | summary |",
+        "|---|---|---|---|---|---|",
+        `| ${missingId} | alice-agent | bob-agent | review | | Missing target |`,
+      ].join("\n"),
+    };
+    for (const [id, body] of rows) {
+      repository[`topics/api/inbox/2026-10/${id}.md`] = body;
+    }
+    const source = new FixtureSource(repository);
+    const session = new TopicSession(source, { pageSize: 1 });
+    await session.open();
+    const identityKey = "topic-attention-stale-row";
+    const values = new Map([
+      [
+        `agent-collab-viewer.identity:${identityKey}`,
+        JSON.stringify({ viewingAs: "bob-agent", colors: {}, names: {} }),
+      ],
+    ]);
+    const storage: PreferenceStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+    };
+    await mount(source, identityKey, session, storage);
+
+    await click(action("Attention"));
+    const itemButton = host.querySelector(".attention-view section button");
+    if (itemButton === null) throw new Error("The Attention item is missing.");
+    await click(itemButton);
+
+    expect(host.textContent).toContain("This open item no longer points to a readable message.");
+    const loadedMessagePaths = new Set(
+      source.reads.filter((path) => path.startsWith("topics/api/inbox/")),
+    );
+    expect(loadedMessagePaths.size).toBeLessThanOrEqual(6);
+  });
+
   const entries = () => [...host.querySelectorAll<HTMLButtonElement>(".topics button")];
   const entry = (label: string) => {
     const found = entries().find((button) => button.textContent.startsWith(label));
@@ -103,8 +189,8 @@ describe("topic list screen", () => {
   };
   const rowLabels = () =>
     [...host.querySelectorAll(".topics > button:not(.show-all-topics)")]
-      .map((button) => button.textContent)
-      .filter((text) => text !== "");
+      .map((button) => button.querySelector(".topic-name")?.textContent ?? button.textContent)
+      .filter((text) => text !== "" && text !== "Attention");
 
   async function click(button: Element): Promise<void> {
     act(() => {
@@ -136,7 +222,7 @@ describe("topic list screen", () => {
     // Most recent activity first, the closed topic only in its collapsed group.
     expect(rowLabels().slice(3)).toEqual(["#docs", "#ops", "#api"]);
     expect(host.querySelector<HTMLDetailsElement>(".closed-topics")?.open).toBe(false);
-    expect(host.querySelector(".closed-topics summary")?.textContent).toBe("Closed (1)");
+    expect(host.querySelector(".closed-topics > summary")?.textContent).toBe("Closed (1)");
 
     await click(entry("#api"));
     expect(host.querySelector("h2.topic-heading")?.textContent).toBe("#api");
@@ -452,7 +538,7 @@ describe("topic list screen", () => {
       const source = new FixtureSource(files);
       await mount(source);
       act(() => {
-        (host.querySelector(".closed-topics summary") as HTMLElement).click();
+        (host.querySelector(".closed-topics > summary") as HTMLElement).click();
       });
       await settle();
       await click(entry("#archive"));

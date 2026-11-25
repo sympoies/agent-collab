@@ -22,6 +22,7 @@ const TEXT = {
     showAll: "Show all 14 topics",
     showFewer: "Show fewer",
     entries: ["All", "Questions", "Files"],
+    attention: "Attention",
     language: "English",
   },
   ja: {
@@ -30,6 +31,7 @@ const TEXT = {
     showAll: "14 件のトピックをすべて表示",
     showFewer: "表示を減らす",
     entries: ["すべて", "質問", "ファイル"],
+    attention: "要確認",
     language: "日本語",
   },
   "zh-TW": {
@@ -38,6 +40,7 @@ const TEXT = {
     showAll: "顯示全部 14 個主題",
     showFewer: "顯示較少",
     entries: ["全部", "問題", "檔案"],
+    attention: "待關注",
     language: "繁體中文",
   },
 } as const;
@@ -233,21 +236,23 @@ test.describe("topic list navigation", () => {
           }
 
           const list = page.locator(".topics-pane");
-          const rows = list.locator(".topics > button");
-          await expect(page.locator(".closed-topics summary")).toHaveText(text.closed);
+          const views = list.locator(".topics > button:not(.topic-entry-button)");
+          const rows = list.locator(".topics > button.topic-entry-button");
+          await expect(page.locator(".closed-topics > summary")).toHaveText(text.closed);
           await expect(page.locator("h1")).toHaveCount(1);
           await expect(page.locator("html")).toHaveAttribute("lang", locale);
           await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 
-          // All, Questions and Files come first, then the topics, most recently active first.
+          // The views come first; Attention is followed by the topic heading and topic rows.
           for (const [index, label] of text.entries.entries()) {
-            await expect(rows.nth(index)).toContainText(label);
+            await expect(views.nth(index)).toContainText(label);
           }
+          await expect(views.nth(3)).toContainText(text.attention);
           // The list does not reorder under the pointer: keep it out of the list.
           await page.mouse.move(width - 20, 300);
           // Activity arrives after the list: the topic with a message moves up.
-          await expect(rows.nth(3)).toHaveText("#api");
-          await expect(rows.nth(4)).toHaveText(`#${LONG_TOPIC}`);
+          await expect(rows.nth(0)).toHaveText("#api");
+          await expect(rows.nth(1)).toHaveText(`#${LONG_TOPIC}`);
           if (width === 390) {
             await expect(page.locator(".conversation")).toBeHidden();
           } else {
@@ -297,7 +302,7 @@ test.describe("topic list navigation", () => {
           await expect(hidden).toHaveAttribute("aria-pressed", "true");
 
           // Opening the closed group reads that topic's activity, never its messages.
-          const closedGroup = page.locator(".closed-topics summary");
+          const closedGroup = page.locator(".closed-topics > summary");
           await closedGroup.focus();
           await page.keyboard.press("Enter");
           const archive = list.getByRole("button", { name: "#archive", exact: true });
@@ -454,13 +459,13 @@ test.describe("the topic list holds still for the reader", () => {
     const list = page.locator(".topics-pane");
     await expect(list.getByRole("button", { name: "#api", exact: true })).toBeVisible();
     await page.mouse.move(1260, 300);
-    await expect(list.locator(".topics > button").nth(3)).toHaveText("#api");
+    await expect(list.locator(".topics > button.topic-entry-button").nth(0)).toHaveText("#api");
     await list.getByRole("button", { name: "Show all 14 topics" }).click();
     return { list, requests };
   }
 
   const order = (list: ReturnType<Page["locator"]>) =>
-    list.locator(".topics > button").allTextContents();
+    list.locator(".topics > button.topic-entry-button").allTextContents();
 
   test("the order waits while the pointer is in the list", async ({ page }) => {
     const state: RepositoryState = { bumped: false };
@@ -498,7 +503,9 @@ test.describe("the topic list holds still for the reader", () => {
     expect(await order(list)).toEqual(before);
 
     await page.mouse.move(1260, 300);
-    await expect(list.locator(".topics > button").nth(3)).toHaveText(`#${BUMPED_TOPIC}`);
+    await expect(list.locator(".topics > button.topic-entry-button").nth(0)).toHaveText(
+      `#${BUMPED_TOPIC}`,
+    );
   });
 
   test("the selection and the scroll position stay when the list re-sorts", async ({ page }) => {
@@ -522,7 +529,9 @@ test.describe("the topic list holds still for the reader", () => {
     state.bumped = true;
     await page.keyboard.press("Enter");
     await expect.poll(() => requests.includes("/git/trees/month:new")).toBe(true);
-    await expect(list.locator(".topics > button").nth(3)).toHaveText(`#${BUMPED_TOPIC}`);
+    await expect(list.locator(".topics > button.topic-entry-button").nth(0)).toHaveText(
+      `#${BUMPED_TOPIC}`,
+    );
 
     await expect(selected).toHaveAttribute("aria-pressed", "true");
     expect(await list.evaluate((pane) => pane.scrollTop)).toBe(scrolled);

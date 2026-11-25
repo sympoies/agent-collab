@@ -85,7 +85,8 @@ for (const scheme of ["light", "dark"] as const) {
             nodes.map((node) => (node.tagName === "H2" ? "#heading" : node.textContent)),
           );
         const heading = labels.indexOf("#heading");
-        expect(heading).toBe(3);
+        expect(labels[3]).toContain("Attention");
+        expect(heading).toBe(4);
         expect(labels.slice(0, 3).map((text) => text.replace(/\d.*$/, "").trim())).toEqual([
           "All",
           "Questions",

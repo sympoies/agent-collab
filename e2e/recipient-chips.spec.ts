@@ -113,7 +113,7 @@ for (const scheme of ["light", "dark"] as const) {
         );
         expect(new Set(styles).size).toBe(1);
         if (width < 721) await page.getByRole("button", { name: en["nav.back"] }).click();
-        await page.locator(".topics button", { hasText: "#api" }).click();
+        await page.locator(".topics > button.topic-entry-button", { hasText: "#api" }).click();
         await expect(page.locator(".message").first()).toBeVisible();
         await expect(page.locator(".group .topic")).toHaveCount(0);
       });

@@ -10,7 +10,7 @@ import type { PreferenceStorage } from "./preferences";
 
 const KEY_PREFIX = "agent-collab-viewer.view:";
 
-export type ViewName = "chat" | "questions" | "files";
+export type ViewName = "chat" | "questions" | "files" | "attention";
 
 export interface ViewState {
   readonly view: ViewName;
@@ -44,7 +44,8 @@ function sanitize(value: unknown): ViewState {
   const parsed = sanitizeQuestions(saved);
   // The Questions node is part of the state only when it differs from the default.
   const questions = parsed.open || parsed.filter !== null ? { questions: parsed } : {};
-  if (view !== "chat" && view !== "questions" && view !== "files") return DEFAULT_STATE;
+  if (view !== "chat" && view !== "questions" && view !== "files" && view !== "attention")
+    return DEFAULT_STATE;
   if (topic === null) return { view, topic: null, conversation, ...questions };
   return typeof topic === "string" && isTopicFolderName(topic)
     ? { view, topic, conversation, ...questions }
