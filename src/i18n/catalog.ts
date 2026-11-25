@@ -297,9 +297,11 @@ export const en = {
   "settings.repositoryPlaceholder": "owner/repository",
   "settings.branch": "Branch",
   "settings.branchPlaceholder": "default branch",
-  "settings.myNames": "My names",
+  "settings.advanced": "Advanced",
+  "settings.myNames": "My names (participant IDs)",
   "settings.myNamesPlaceholder": "alice, alice-agent",
-  "settings.myNamesHint": 'These names are used as the default "Viewing as" person.',
+  "settings.myNamesHint":
+    "Enter comma-separated participant IDs; matching ignores case. You can change display names later in identity settings.",
   "settings.token": "Access token",
   "settings.tokenStored": "stored; leave empty to keep it",
   "settings.tokenHint": "A fine-grained token for this one repository with Contents: read-only.",
@@ -344,7 +346,8 @@ export const en = {
   "settings.error.gitlab": "GitLab support is not available yet.",
   "settings.error.repository": "Use the form owner/repository.",
   "settings.error.branch": "This is not a valid branch name.",
-  "settings.error.names": "Names are lowercase letters, digits and hyphens.",
+  "settings.error.names":
+    "After case normalization, IDs may contain only letters, digits and hyphens.",
   "settings.error.tokenMissing": "Enter a read-only access token.",
   "settings.error.tokenEndpoint": "Enter the token for this endpoint.",
   "settings.error.tokenSpaces": "A token has no spaces.",

@@ -9,6 +9,7 @@ import {
   resetProfile,
   resolveViewer,
   withColor,
+  withDefaultDisplayNames,
   withDisplayName,
   withViewingAs,
   writePreferences,
@@ -86,6 +87,24 @@ describe("identity preferences storage", () => {
       viewingAs: undefined,
       colors: { "carol-agent": 2 },
       names: { "carol-agent": "x".repeat(40) },
+    });
+  });
+});
+
+describe("setup display names", () => {
+  it("adds a setup default without replacing a chosen display name", () => {
+    const chosen = withDisplayName(EMPTY_PREFERENCES, "alice", "Ally");
+    expect(withDefaultDisplayNames(chosen, { alice: "Alice", bob: "Bob" })).toEqual({
+      viewingAs: undefined,
+      colors: {},
+      names: { alice: "Ally", bob: "Bob" },
+    });
+    expect(withDefaultDisplayNames(EMPTY_PREFERENCES, {})).toEqual(EMPTY_PREFERENCES);
+  });
+
+  it("keeps setup defaults within the display-name limit", () => {
+    expect(withDefaultDisplayNames(EMPTY_PREFERENCES, { alice: "A".repeat(64) }).names).toEqual({
+      alice: "A".repeat(40),
     });
   });
 });

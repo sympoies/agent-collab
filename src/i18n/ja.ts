@@ -291,9 +291,11 @@ export const ja: Messages = {
   "settings.repositoryPlaceholder": "owner/repository",
   "settings.branch": "ブランチ",
   "settings.branchPlaceholder": "デフォルトブランチ",
-  "settings.myNames": "自分の名前",
+  "settings.advanced": "詳細設定",
+  "settings.myNames": "自分の名前（参加者 ID）",
   "settings.myNamesPlaceholder": "alice, alice-agent",
-  "settings.myNamesHint": "これらの名前は、「閲覧者」の初期値として使われます。",
+  "settings.myNamesHint":
+    "参加者 ID をカンマ区切りで入力してください。大文字と小文字は区別されません。表示名は後で ID 設定から変更できます。",
   "settings.token": "アクセストークン",
   "settings.tokenStored": "保存済み。変更しない場合は空のままにします",
   "settings.tokenHint":
@@ -341,7 +343,8 @@ export const ja: Messages = {
   "settings.error.gitlab": "GitLab にはまだ対応していません。",
   "settings.error.repository": "owner/repository の形式で入力してください。",
   "settings.error.branch": "有効なブランチ名ではありません。",
-  "settings.error.names": "名前に使えるのは小文字、数字、ハイフンだけです。",
+  "settings.error.names":
+    "大文字と小文字を統一した後、ID には英字、数字、ハイフンのみ使用できます。",
   "settings.error.tokenMissing": "読み取り専用のアクセストークンを入力してください。",
   "settings.error.tokenEndpoint": "このエンドポイント用のトークンを入力してください。",
   "settings.error.tokenSpaces": "トークンに空白を含めないでください。",

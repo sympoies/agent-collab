@@ -205,9 +205,11 @@ async function openRepository(page: Page) {
     .getByRole("textbox", { name: "Repository", exact: true })
     .fill("alice-agent/fixture-repo");
   await page.getByLabel("Branch").fill("main");
-  await page.getByLabel("My names").fill("alice-agent");
   await page.getByLabel("Access token").fill("fake-token");
   await page.getByRole("button", { name: "Save and open" }).click();
+  await page.locator(".identity-button").click();
+  await page.locator("#profile-panel select").selectOption("alice-agent");
+  await page.keyboard.press("Escape");
 }
 
 test.describe("topic list navigation", () => {

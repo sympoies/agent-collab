@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { Secret } from "../src/credentials/secret";
+import { parseParticipantNames } from "../src/identity/preferences";
 import {
   DEFAULT_DRAFT,
   draftFromSettings,
@@ -60,6 +61,17 @@ describe("validateDraft", () => {
     expect(result).toMatchObject({ ok: true, token: null });
   });
 
+  it("matches capitalised setup names case-insensitively", () => {
+    const result = validateDraft(draft({ selfNames: "Alice" }), {
+      tokenStored: false,
+      savedEndpoint: null,
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      settings: { selfNames: ["alice"] },
+    });
+  });
+
   it("removes a trailing slash from the endpoint", () => {
     const result = validateDraft(draft({ endpoint: "https://github.example.com/api/v3/" }), {
       tokenStored: false,
@@ -109,7 +121,7 @@ describe("validateDraft", () => {
     ],
     ["a branch with spaces", { branch: "my branch" }, { branch: "settings.error.branch" }],
     ["a branch with ..", { branch: "a..b" }, { branch: "settings.error.branch" }],
-    ["an invalid name", { selfNames: "Alice" }, { selfNames: "settings.error.names" }],
+    ["an invalid name", { selfNames: "Bad Name" }, { selfNames: "settings.error.names" }],
     ["a missing token", { token: "" }, { token: "settings.error.tokenMissing" }],
     ["a token with spaces", { token: "two words" }, { token: "settings.error.tokenSpaces" }],
   ])("rejects %s", (_name, overrides, errors) => {
@@ -117,6 +129,25 @@ describe("validateDraft", () => {
       ok: false,
       errors,
     });
+  });
+});
+
+describe("parseParticipantNames", () => {
+  it("normalizes uppercase and mixed-case ids and keeps the first typed display name", () => {
+    expect(parseParticipantNames("Alice, aLiCe-agent, alice, BOB")).toEqual({
+      ids: ["alice", "alice-agent", "bob"],
+      displayNames: { alice: "Alice", "alice-agent": "aLiCe-agent", bob: "BOB" },
+    });
+  });
+
+  it("ignores empty entries and rejects invalid characters after lowercasing", () => {
+    expect(parseParticipantNames(",, Alice ,, bob-2,")).toEqual({
+      ids: ["alice", "bob-2"],
+      displayNames: { alice: "Alice" },
+    });
+    expect(parseParticipantNames("Alice Smith")).toBeNull();
+    expect(parseParticipantNames("Alice!")).toBeNull();
+    expect(parseParticipantNames(`${"a".repeat(64)}A`)).toBeNull();
   });
 });
 

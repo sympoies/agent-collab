@@ -39,7 +39,12 @@ import { SourceError, type MessageSource } from "../source/types";
 import { LanguageSwitcher, useLocale } from "../i18n/LocaleProvider";
 import { errorText, say } from "./errorText";
 import { App, type AppProps, type SourceIndicator } from "./App";
-import { EMPTY_PREFERENCES, writePreferences } from "../identity/preferences";
+import {
+  EMPTY_PREFERENCES,
+  readPreferences,
+  withDefaultDisplayNames,
+  writePreferences,
+} from "../identity/preferences";
 import { writeViewState } from "../identity/view-state";
 import type { FolderMemory, RememberedFolder } from "../source/folder-memory";
 import { readLastSource, writeLastSource } from "../settings/last-source";
@@ -85,6 +90,8 @@ interface ViewerScreen {
   readonly loader: Loader;
   readonly title: AppProps["title"];
   readonly selfNames: ReadonlySet<string>;
+  /** Setup-provided display names stay available if browser identity storage is blocked. */
+  readonly initialDisplayNames: Readonly<Record<string, string>>;
   readonly identity: AppProps["identity"];
   readonly notice: string | MessageRef | null;
   readonly pollIntervalMs: number | undefined;
@@ -177,6 +184,8 @@ type Screen =
       readonly focusToken: boolean;
       /** Why the saved repository could not be reopened. */
       readonly message: string | MessageRef | null;
+      /** Existing connections expose settings that are not needed during first-run setup. */
+      readonly showAdvanced: boolean;
     }
   | ViewerScreen;
 
@@ -237,6 +246,7 @@ export function Root(props: RootProps) {
         | "folder"
         | "topicSource"
         | "initialTopicSession"
+        | "initialDisplayNames"
       >
     > = {},
   ): ViewerScreen => {
@@ -247,6 +257,7 @@ export function Root(props: RootProps) {
       loader,
       title,
       selfNames: new Set(selfNames),
+      initialDisplayNames: extras.initialDisplayNames ?? {},
       identity,
       notice,
       pollIntervalMs,
@@ -265,7 +276,7 @@ export function Root(props: RootProps) {
   };
 
   const open = (
-    { settings, token }: OpenSettings,
+    { settings, token, setupDisplayNames }: OpenSettings,
     notice: string | MessageRef | null = null,
     prepared?: {
       readonly source: MessageSource;
@@ -288,6 +299,7 @@ export function Root(props: RootProps) {
       null,
       {
         signedIn: true,
+        initialDisplayNames: setupDisplayNames ?? {},
         github: true,
         repositoryUrl: repositoryWebUrl(settings.platform, settings.endpoint, settings.repository),
         topicSource: source,
@@ -355,6 +367,7 @@ export function Root(props: RootProps) {
       back,
       focusToken: options.focusToken === true,
       message: options.message ?? null,
+      showAdvanced: settings !== null || back?.github === true,
     });
   };
 
@@ -863,6 +876,16 @@ export function Root(props: RootProps) {
     if (operation !== navigation.current) return null;
     if (!result.ok) return result.errors;
     rememberToken(result.open);
+    const setupDisplayNames = result.open.setupDisplayNames ?? {};
+    if (Object.keys(setupDisplayNames).length > 0) {
+      const identityKey = `${result.open.settings.platform}:${result.open.settings.endpoint}/${result.open.settings.repository}`;
+      const preferences = readPreferences(props.storage, identityKey);
+      writePreferences(
+        props.storage,
+        identityKey,
+        withDefaultDisplayNames(preferences, setupDisplayNames),
+      );
+    }
     setScreen(open(result.open, result.warning === null ? null : { key: result.warning }));
     return null;
   };
@@ -1054,6 +1077,7 @@ export function Root(props: RootProps) {
                     returnFromSettings(back);
                   }
             }
+            showAdvanced={screen.showAdvanced}
             focusToken={screen.focusToken}
           />
           <ForgetSection onForget={forgetEverything} />
@@ -1074,6 +1098,7 @@ export function Root(props: RootProps) {
             title={screen.title}
             {...(screen.repositoryUrl === null ? {} : { titleLink: screen.repositoryUrl })}
             selfNames={screen.selfNames}
+            initialDisplayNames={screen.initialDisplayNames}
             identity={screen.identity}
             rememberView={screen.rememberView}
             notice={screen.notice}
