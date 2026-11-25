@@ -746,9 +746,11 @@ async function openViewer(
     .getByRole("textbox", { name: "Repository", exact: true })
     .fill("alice-agent/fixture-repo");
   await page.getByLabel("Branch").fill("main");
-  await page.getByLabel("My names").fill("alice-agent");
   await page.getByLabel("Access token").fill("fake-token");
   await page.getByRole("button", { name: "Save and open" }).click();
+  if (mode !== "error") {
+    await chooseViewer(page, "alice-agent");
+  }
   return assertRequests;
 }
 
@@ -972,6 +974,18 @@ for (const viewport of [
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto("/");
     await page.getByRole("button", { name: en["welcome.openAnother"] }).click();
+    await expect(page.getByLabel(en["settings.myNames"])).toHaveCount(0);
+    await expect(page.getByText(en["settings.advanced"], { exact: true })).toHaveCount(0);
+    await page.getByLabel(en["settings.repository"]).fill("alice-agent/fixture-repo");
+    await page.getByLabel(en["settings.branch"]).fill("main");
+    await page.getByLabel(en["settings.token"]).fill("fake-token");
+    await page.getByRole("button", { name: en["settings.saveOpen"] }).click();
+
+    await expect(page.getByText(en["identity.hint"])).toBeVisible();
+    await expect(page.locator(".identity-name")).toHaveText("Observer");
+    await chooseViewer(page, "alice");
+    await toolbarAction(page, "Settings");
+    await page.getByText(en["settings.advanced"], { exact: true }).click();
 
     const names = page.getByLabel(en["settings.myNames"]);
     await expect(names).toHaveAttribute("placeholder", en["settings.myNamesPlaceholder"]);
@@ -979,14 +993,9 @@ for (const viewport of [
     if (browserName === "chromium") {
       await saveScreenshot(page, `setup-${viewport.label}.png`);
     }
-
     await names.fill("Alice");
-    await page.getByLabel(en["settings.repository"]).fill("alice-agent/fixture-repo");
-    await page.getByLabel(en["settings.branch"]).fill("main");
-    await page.getByLabel(en["settings.token"]).fill("fake-token");
     await page.getByRole("button", { name: en["settings.saveOpen"] }).click();
 
-    await expect(page.getByText(en["error.unexpected"])).toHaveCount(0);
     await expect(page.locator(".identity-name")).toHaveText("Alice");
     await identityButton(page).click();
     const panel = page.getByRole("region", { name: "Profile & colors" });
@@ -1021,10 +1030,17 @@ test("capitalised setup keeps its display name when identity storage throws @csp
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/");
   await page.getByRole("button", { name: en["welcome.openAnother"] }).click();
-  await page.getByLabel(en["settings.myNames"]).fill("Alice");
+  await expect(page.getByLabel(en["settings.myNames"])).toHaveCount(0);
+  await expect(page.getByText(en["settings.advanced"], { exact: true })).toHaveCount(0);
   await page.getByLabel(en["settings.repository"]).fill("alice-agent/fixture-repo");
   await page.getByLabel(en["settings.branch"]).fill("main");
   await page.getByLabel(en["settings.token"]).fill("fake-token");
+  await page.getByRole("button", { name: en["settings.saveOpen"] }).click();
+  await expect(page.getByText(en["identity.hint"])).toBeVisible();
+  await chooseViewer(page, "alice");
+  await toolbarAction(page, "Settings");
+  await page.getByText(en["settings.advanced"], { exact: true }).click();
+  await page.getByLabel(en["settings.myNames"]).fill("Alice");
   await page.getByRole("button", { name: en["settings.saveOpen"] }).click();
   await expect(page.locator(".identity-name")).toHaveText("Alice");
   expect(errors).toEqual([]);
@@ -1061,9 +1077,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
   const assertRequests = await openViewer(page, "long");
   await expect(page.locator(".message").first()).toBeVisible();
-
-  await page.keyboard.press("Tab");
   const repositoryLink = page.locator(".bar h1 a");
+  await repositoryLink.focus();
   await expect(repositoryLink).toBeFocused();
   await page.keyboard.press("Tab");
   const focused = await page.evaluate(() => ({
@@ -1331,6 +1346,8 @@ for (const code of LOCALES) {
       await expectNoClipping(page, ".notice, .notice-action, .notice-action button");
       await saveScreenshot(page, `token-action-${code}-${view.label}.png`);
       await action.click();
+      await expect(page.getByText(messages["settings.advanced"], { exact: true })).toHaveCount(0);
+      await expect(page.getByLabel(messages["settings.myNames"])).toHaveCount(0);
       await expect(page.locator("#token-section")).toBeVisible();
       await expect(page.locator('input[type="password"]')).toBeFocused();
       await expect(page.getByText(messages["settings.tokenWhy"])).toBeVisible();
@@ -1348,7 +1365,6 @@ for (const code of LOCALES) {
         .getByRole("textbox", { name: messages["settings.repository"], exact: true })
         .fill("alice-agent/fixture-repo");
       await page.getByLabel(messages["settings.branch"]).fill("main");
-      await page.getByLabel(messages["settings.myNames"]).fill("alice-agent");
       await page.locator('input[type="password"]').fill("fake-token");
       await page.getByRole("button", { name: messages["settings.saveOpen"] }).click();
       const banner = page.locator(".signed-in");
@@ -1422,7 +1438,7 @@ for (const identity of identityCases) {
       "Refresh",
     );
 
-    // "My names" makes alice the default viewer: her groups carry the You tag.
+    // The first-run identity prompt lets the reader choose alice; her groups carry the You tag.
     const firstGroup = page.locator(".timeline .group").first();
     await expectViewer(page, "alice-agent");
     await expect(page.locator('.group[data-own="true"] .you').first()).toHaveText("You");
@@ -2663,9 +2679,9 @@ test("no inline style attribute and no CSP violation of ours @csp", async ({
     .getByRole("textbox", { name: "Repository", exact: true })
     .fill("alice-agent/fixture-repo");
   await page.getByLabel("Branch").fill("main");
-  await page.getByLabel("My names").fill("alice-agent");
   await page.getByLabel("Access token").fill("fake-token");
   await page.getByRole("button", { name: "Save and open" }).click();
+  await chooseViewer(page, "alice-agent");
   await page.getByRole("button", { name: /^#api/ }).click();
   const first = page.locator("#msg-2026-10-08T0900-alice-agent-api-01");
   await first.locator(".file-card", { hasText: "wide.csv" }).locator("summary").click();
@@ -2887,16 +2903,15 @@ test("activating a message link with the keyboard moves focus to the message", a
   assertRequests();
 });
 
-test("settings have one h1 and fields named without their hints, with errors connected", async ({
+test("first-run settings omit advanced participant IDs and connect validation errors", async ({
   page,
 }) => {
   await installApiStub(page, "empty");
   await page.goto("/");
   await page.getByRole("button", { name: "Open another repository" }).click();
   await expect(page.locator("h1")).toHaveCount(1);
-  // The hint is a description, not part of the field's name.
-  const names = page.getByRole("textbox", { name: en["settings.myNames"], exact: true });
-  await expect(names).toHaveAccessibleDescription(/participant IDs; matching ignores case/i);
+  await expect(page.getByLabel(en["settings.myNames"])).toHaveCount(0);
+  await expect(page.getByText(en["settings.advanced"], { exact: true })).toHaveCount(0);
   const repository = page.getByRole("textbox", { name: "Repository", exact: true });
   await expect(repository).not.toHaveAttribute("aria-invalid", "true");
   await page.getByRole("button", { name: "Save and open" }).click();
@@ -3908,7 +3923,6 @@ for (const code of LOCALES) {
       .getByRole("textbox", { name: messages["settings.repository"], exact: true })
       .fill("alice-agent/fixture-repo");
     await page.getByLabel(messages["settings.branch"]).fill("main");
-    await page.getByLabel(messages["settings.myNames"]).fill("alice-agent");
     await page.getByLabel(messages["settings.token"]).fill("fake-token");
     await page.getByRole("button", { name: messages["settings.saveOpen"] }).click();
     await page.getByRole("button", { name: messages["nav.all"] }).click();
@@ -3977,7 +3991,6 @@ for (const code of LOCALES) {
         .getByRole("textbox", { name: messages["settings.repository"], exact: true })
         .fill("alice-agent/fixture-repo");
       await page.getByLabel(messages["settings.branch"]).fill("main");
-      await page.getByLabel(messages["settings.myNames"]).fill("alice-agent");
       await page.getByLabel(messages["settings.token"]).fill("fake-token");
       await page.getByRole("button", { name: messages["settings.saveOpen"] }).click();
       if (view.label === "phone") {

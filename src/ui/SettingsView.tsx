@@ -21,6 +21,8 @@ export interface SettingsViewProps {
   readonly onSave: (draft: SettingsDraft) => Promise<DraftErrors | null>;
   readonly onRemoveCredentials: () => Promise<void>;
   readonly onCancel: (() => void) | null;
+  /** Shows settings that apply after a repository has already been connected. */
+  readonly showAdvanced?: boolean;
   /** Scroll to the token section and focus its field when the screen opens. */
   readonly focusToken?: boolean;
 }
@@ -171,21 +173,26 @@ export function SettingsView(props: SettingsViewProps) {
           }}
         />
       ))}
-      {field(
-        "selfNames",
-        t("settings.myNames"),
-        (aria) => (
-          <input
-            {...aria}
-            type="text"
-            placeholder={t("settings.myNamesPlaceholder")}
-            value={draft.selfNames}
-            onChange={(event) => {
-              update("selfNames")(event.target.value);
-            }}
-          />
-        ),
-        t("settings.myNamesHint"),
+      {props.showAdvanced === true && (
+        <details className="settings-advanced">
+          <summary>{t("settings.advanced")}</summary>
+          {field(
+            "selfNames",
+            t("settings.myNames"),
+            (aria) => (
+              <input
+                {...aria}
+                type="text"
+                placeholder={t("settings.myNamesPlaceholder")}
+                value={draft.selfNames}
+                onChange={(event) => {
+                  update("selfNames")(event.target.value);
+                }}
+              />
+            ),
+            t("settings.myNamesHint"),
+          )}
+        </details>
       )}
       <section id="token-section" className="token-help">
         <p>{t("settings.tokenWhy")}</p>

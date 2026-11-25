@@ -297,6 +297,7 @@ export const en = {
   "settings.repositoryPlaceholder": "owner/repository",
   "settings.branch": "Branch",
   "settings.branchPlaceholder": "default branch",
+  "settings.advanced": "Advanced",
   "settings.myNames": "My names (participant IDs)",
   "settings.myNamesPlaceholder": "alice, alice-agent",
   "settings.myNamesHint":

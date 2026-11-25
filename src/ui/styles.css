@@ -1487,6 +1487,22 @@ span.chip {
   padding-top: 12px;
 }
 
+.settings-advanced {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.settings-advanced > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.settings-advanced[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .settings h1,
 .settings h2 {
   margin: 0;

@@ -184,6 +184,8 @@ type Screen =
       readonly focusToken: boolean;
       /** Why the saved repository could not be reopened. */
       readonly message: string | MessageRef | null;
+      /** Existing connections expose settings that are not needed during first-run setup. */
+      readonly showAdvanced: boolean;
     }
   | ViewerScreen;
 
@@ -365,6 +367,7 @@ export function Root(props: RootProps) {
       back,
       focusToken: options.focusToken === true,
       message: options.message ?? null,
+      showAdvanced: settings !== null || back?.github === true,
     });
   };
 
@@ -1074,6 +1077,7 @@ export function Root(props: RootProps) {
                     returnFromSettings(back);
                   }
             }
+            showAdvanced={screen.showAdvanced}
             focusToken={screen.focusToken}
           />
           <ForgetSection onForget={forgetEverything} />

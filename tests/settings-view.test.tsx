@@ -10,6 +10,7 @@ function render(
   inStore: CredentialStorage = "memory",
   endpoint = DEFAULT_DRAFT.endpoint,
   selectedStorage: CredentialStorage = "memory",
+  showAdvanced = true,
 ): string {
   const stored = tokenStored ? "https://api.github.com" : null;
   return renderToStaticMarkup(
@@ -24,11 +25,24 @@ function render(
       onSave={() => Promise.resolve(null)}
       onRemoveCredentials={() => Promise.resolve()}
       onCancel={null}
+      showAdvanced={showAdvanced}
     />,
   );
 }
 
 describe("SettingsView", () => {
+  it("shows participant ID settings only in Advanced", () => {
+    expect(render(false, "memory", DEFAULT_DRAFT.endpoint, "memory", false)).not.toContain(
+      en["settings.myNames"],
+    );
+    expect(render(false, "memory", DEFAULT_DRAFT.endpoint, "memory", true)).toContain(
+      en["settings.myNames"],
+    );
+    expect(render(false, "memory", DEFAULT_DRAFT.endpoint, "memory", true)).toContain(
+      en["settings.advanced"],
+    );
+  });
+
   it("masks the token input and leaves it empty", () => {
     const secretInputs = render(true).match(/<input[^>]*type="password"[^>]*>/g) ?? [];
     expect(secretInputs).toHaveLength(1);

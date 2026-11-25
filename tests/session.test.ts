@@ -48,6 +48,12 @@ const draft = (overrides: Partial<SettingsDraft> = {}): SettingsDraft => ({
 const reveal = (secret: Secret | null | undefined) => secret?.reveal();
 
 describe("settings session", () => {
+  it("restores participant IDs saved by an earlier setup form", async () => {
+    const d = deps();
+    await apply(d, draft({ selfNames: "alice-agent" }));
+    expect((await restore(d))?.settings.selfNames).toEqual(["alice-agent"]);
+  });
+
   it("saves settings without secrets and restores them with the token", async () => {
     const d = deps();
     const result = await apply(d, draft());

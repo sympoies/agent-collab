@@ -276,6 +276,7 @@ export const zhTW: Messages = {
   "settings.repositoryPlaceholder": "owner/repository",
   "settings.branch": "分支",
   "settings.branchPlaceholder": "預設分支",
+  "settings.advanced": "進階設定",
   "settings.myNames": "我的名稱（參與者 ID）",
   "settings.myNamesPlaceholder": "alice, alice-agent",
   "settings.myNamesHint":

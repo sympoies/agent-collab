@@ -291,6 +291,7 @@ export const ja: Messages = {
   "settings.repositoryPlaceholder": "owner/repository",
   "settings.branch": "ブランチ",
   "settings.branchPlaceholder": "デフォルトブランチ",
+  "settings.advanced": "詳細設定",
   "settings.myNames": "自分の名前（参加者 ID）",
   "settings.myNamesPlaceholder": "alice, alice-agent",
   "settings.myNamesHint":
