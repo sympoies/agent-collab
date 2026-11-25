@@ -174,7 +174,7 @@ export function SettingsView(props: SettingsViewProps) {
         />
       ))}
       {props.showAdvanced === true && (
-        <details className="settings-advanced">
+        <details className="settings-advanced" open={errors.selfNames !== undefined || undefined}>
           <summary>{t("settings.advanced")}</summary>
           {field(
             "selfNames",

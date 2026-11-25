@@ -1078,7 +1078,8 @@ test("keyboard focus, topic filtering, reduced motion, and unavailable storage w
   const assertRequests = await openViewer(page, "long");
   await expect(page.locator(".message").first()).toBeVisible();
   const repositoryLink = page.locator(".bar h1 a");
-  await repositoryLink.focus();
+  await page.locator("body").click({ position: { x: 1, y: 1 } });
+  await page.keyboard.press("Tab");
   await expect(repositoryLink).toBeFocused();
   await page.keyboard.press("Tab");
   const focused = await page.evaluate(() => ({
