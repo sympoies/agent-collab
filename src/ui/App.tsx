@@ -37,6 +37,7 @@ import type { Message } from "../message/types";
 import type { TopicSummary } from "../message/topic-layout";
 import {
   markSeen,
+  legacyUnreadDigest,
   readTopicPreferences,
   toggleTopic,
   unreadOf,
@@ -72,6 +73,7 @@ import {
 } from "./question-expansion";
 import { useFollowLatest, type DateLanding } from "./follow-latest";
 import { TopicList } from "./TopicList";
+import { TopicStateCue } from "./TopicStateCue";
 import { TopicPreferencesMenu, type TopicPreferenceFlags } from "./TopicPreferencesMenu";
 import { AttentionView } from "./AttentionView";
 import { mergeRosterSnapshot, useMergedSnapshot } from "./merged-snapshot";
@@ -81,6 +83,7 @@ import { buildRows, topicSummaries } from "./timeline";
 
 /** Topics the All view reads at once, like the topic activity reads. */
 const ALL_CONCURRENCY = 4;
+const ATTENTION_ITEM_PAGE_LIMIT = 5;
 
 /** Names a source that is not a repository, so it is always visible which data is shown. */
 export interface SourceIndicator {
@@ -595,19 +598,7 @@ export function App({
     for (const summary of availableTopics) {
       const digest = topicLayout
         ? digests.get(summary.name)
-        : (() => {
-            const ids = messages
-              .filter((message) => message.topic === summary.name)
-              .map((message) => message.id)
-              .sort();
-            return ids.length === 0
-              ? null
-              : {
-                  newestId: ids.at(-1) ?? null,
-                  ids,
-                  idsComplete: !snapshot.hasOlder,
-                };
-          })();
+        : legacyUnreadDigest(messages, summary.name, !snapshot.hasOlder);
       if (digest === undefined || digest === null) continue;
       const unread = unreadOf(topicPreferences, summary.name, digest);
       if (unread.unread) counts.set(summary.name, unread.count);
@@ -749,8 +740,21 @@ export function App({
         if (!hasTarget()) {
           await selectedLoader.jumpTo(id.slice(0, 10));
         }
-        while (!hasTarget() && selectedLoader.getSnapshot().hasOlder) {
+        let olderPages = 0;
+        while (
+          !hasTarget() &&
+          selectedLoader.getSnapshot().hasOlder &&
+          olderPages < ATTENTION_ITEM_PAGE_LIMIT
+        ) {
+          const oldestId = selectedLoader
+            .getSnapshot()
+            .items.reduce<string | null>((oldest, item) => {
+              if (item.kind !== "message") return oldest;
+              return oldest === null || item.message.id < oldest ? item.message.id : oldest;
+            }, null);
+          if (oldestId !== null && oldestId < id) break;
           await selectedLoader.loadOlder();
+          olderPages += 1;
         }
         if (!hasTarget()) {
           showError({ key: "attention.itemUnavailable" });
@@ -890,17 +894,23 @@ export function App({
   ]);
   useEffect(() => {
     if (view !== "chat" || topic === null) return;
-    const newest = snapshot.items
-      .flatMap((item) => (item.kind === "message" ? [item.message] : []))
-      .filter((message) => message.topic === topic)
-      .reduce<string | null>(
-        (latest, message) => (latest === null || message.id > latest ? message.id : latest),
-        null,
-      );
-    if (newest === null) return;
+    const messages = snapshot.items.flatMap((item) =>
+      item.kind === "message" && item.message.topic === topic ? [item.message] : [],
+    );
+    const newestTime = messages.reduce<string | null>(
+      (latest, message) =>
+        latest === null || message.id.slice(0, 13) > latest ? message.id.slice(0, 13) : latest,
+      null,
+    );
+    if (newestTime === null) return;
+    const newest = messages.find((message) => message.id.slice(0, 13) === newestTime)?.id;
+    if (newest === undefined) return;
+    const visibleIds = messages
+      .filter((message) => message.id.slice(0, 13) === newestTime)
+      .map((message) => message.id);
     const timer = window.setTimeout(() => {
       setTopicPreferences((current) => {
-        const next = markSeen(current, topic, newest);
+        const next = markSeen(current, topic, newest, visibleIds);
         if (next !== current) writeTopicPreferences(identity.storage, identity.key, next);
         return next;
       });
@@ -1048,11 +1058,7 @@ export function App({
     }
     const arrivals = fresh.filter((path) => {
       const message = messages.get(path);
-      return (
-        message !== undefined &&
-        topicPreferences.follow.includes(message.topic) &&
-        !topicPreferences.mute.includes(message.topic)
-      );
+      return message !== undefined && !topicPreferences.mute.includes(message.topic);
     });
     if (arrivals.length > 0) {
       announcedCount.current += arrivals.length;
@@ -1060,7 +1066,7 @@ export function App({
         t("arrival.announce", { count: arrivals.length, total: announcedCount.current }),
       );
     }
-  }, [snapshot.fresh, snapshot.items, t, topicPreferences.follow, topicPreferences.mute]);
+  }, [snapshot.fresh, snapshot.items, t, topicPreferences.mute]);
   // The first render is a load or a reload, not a navigation: nothing moves focus then, since a
   // script focus with no earlier touch or key would draw a focus ring on the heading.
   const shown = useRef(mobileConversation);
@@ -1480,6 +1486,7 @@ export function App({
                       <span className="topic-name">
                         {t("topic.label", { topic: summary.topic })}
                       </span>
+                      <TopicStateCue flags={topicPreferenceFlags(summary.topic)} />
                       <span className="count">{summary.count}</span>
                       {unreadCounts.has(summary.topic) && (
                         <span
@@ -1515,11 +1522,30 @@ export function App({
                       <div key={summary.name} className="hidden-topic-row">
                         <button
                           type="button"
+                          onClick={(event) => {
+                            if (topicLayout) {
+                              openTopic(summary, event.currentTarget);
+                            } else {
+                              pendingJump.current = null;
+                              setView("chat");
+                              setTopic(summary.name);
+                              lastTopicButton.current = event.currentTarget;
+                              setMobileConversation(
+                                window.matchMedia("(max-width: 720px)").matches,
+                              );
+                            }
+                          }}
+                        >
+                          {t("topic.label", { topic: summary.name })}
+                        </button>
+                        <button
+                          type="button"
+                          className="hidden-topic-restore"
                           onClick={() => {
                             changeTopicPreference(summary.name, "hide", false);
                           }}
                         >
-                          {t("topic.label", { topic: summary.name })}
+                          {t("topic.restore", { topic: summary.name })}
                         </button>
                         <TopicPreferencesMenu
                           topic={summary.name}

@@ -528,19 +528,27 @@ button:hover {
   padding-right: 48px;
 }
 
+.topic-state-icons {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  margin-left: auto;
+  color: var(--secondary);
+}
+
 .topic-preference-menu {
   position: relative;
   z-index: 2;
   align-self: flex-end;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   margin-top: -46px;
 }
 
 .topic-preference-menu summary {
   display: grid;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   place-items: center;
   border-radius: 8px;
   color: var(--muted);
@@ -573,6 +581,23 @@ button:hover {
   border-radius: 10px;
   background: var(--floating);
   box-shadow: var(--popover-shadow);
+}
+
+.hidden-topic-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hidden-topic-row > button:first-child {
+  flex: 1;
+  min-height: 44px;
+  text-align: left;
+}
+
+.hidden-topic-row .hidden-topic-restore {
+  min-height: 44px;
+  padding-inline: 10px;
 }
 
 .topic-preference-items button {

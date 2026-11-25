@@ -814,8 +814,6 @@ test.beforeEach(async ({ context }) => {
 test("long chat adapts across themes and viewports", async ({ page, context }) => {
   await page.emulateMedia({ colorScheme: "dark" });
   const assertRequests = await openViewer(page, "long");
-  await page.locator('.topic-preference-menu summary[aria-label="Options for #api"]').click();
-  await page.getByRole("button", { name: "Follow #api" }).click();
   await expect(page.locator(".message")).toHaveCount(30);
   await expect(page.locator(".day")).toHaveCount(2);
   await expect(page.locator(".group").first().locator(".message")).toHaveCount(2);
@@ -3725,8 +3723,6 @@ test("the page stays put while the message pane and the list scroll inside it @c
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const assertRequests = await openViewer(page, "long");
-  await page.locator('.topic-preference-menu summary[aria-label="Options for #api"]').click();
-  await page.getByRole("button", { name: "Follow #api" }).click();
   await expect(page.locator(".message")).toHaveCount(30);
   const pane = page.getByRole("main");
   const metrics = await page.evaluate(() => {

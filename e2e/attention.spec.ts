@@ -137,6 +137,47 @@ async function openTopicOptions(page: Page, topic: string): Promise<void> {
   }
 }
 
+test("topic options restore focus, show selected states, and meet the phone touch target @csp", async ({
+  page,
+}) => {
+  await deploy(page, () => topicRepository("r1", [{ name: "api", open: [] }]));
+  await page.setViewportSize({ width: 390, height: 844 });
+  const menu = page.locator('.topic-preference-menu:has(> summary[aria-label="Options for #api"])');
+  const summary = menu.locator("summary");
+  const box = await summary.boundingBox();
+  expect(box?.width).toBeGreaterThanOrEqual(44);
+  expect(box?.height).toBeGreaterThanOrEqual(44);
+
+  await summary.click();
+  await menu.getByRole("button", { name: "Follow #api" }).click();
+  await expect(summary).toBeFocused();
+  await expect(
+    page.locator('.topic-entry-button:has-text("#api") .topic-state-label'),
+  ).toContainText("Following");
+  await expect(
+    page.locator('.topic-entry-button:has-text("#api") .topic-state-icons'),
+  ).toBeVisible();
+
+  await summary.click();
+  await menu.getByRole("button", { name: "Unfollow #api" }).click();
+  await summary.click();
+  await menu.getByRole("button", { name: "Mute #api" }).click();
+  await expect(
+    page.locator('.topic-entry-button:has-text("#api") .topic-state-label'),
+  ).toContainText("Muted");
+  await summary.click();
+  await menu.getByRole("button", { name: "Pin #api" }).click();
+  await expect(
+    page.locator('.topic-entry-button:has-text("#api") .topic-state-label'),
+  ).toContainText("Pinned");
+
+  await summary.click();
+  await menu.getByRole("button", { name: "Unpin #api" }).focus();
+  await page.keyboard.press("Escape");
+  await expect(menu).not.toHaveAttribute("open", "");
+  await expect(summary).toBeFocused();
+});
+
 test("follow and unfollow control which messages Attention loads @csp", async ({
   page,
   browserName,
@@ -150,6 +191,10 @@ test("follow and unfollow control which messages Attention loads @csp", async ({
   await page.getByRole("button", { name: "Follow #api" }).click();
   await page.getByRole("button", { name: "Attention", exact: true }).click();
   await expect(page.getByText("Followed API message.")).toBeVisible();
+  const messageButton = page
+    .locator(".attention-view section button")
+    .filter({ hasText: "Followed API message." });
+  await expect(messageButton).toHaveAccessibleName(/#api.*alice-agent.*Followed API message\./);
   await expect(
     page.getByRole("heading", { name: "Recent messages in followed topics" }),
   ).toBeVisible();
@@ -222,13 +267,14 @@ test("unread counts follow new messages and clear after viewing the topic @csp",
   await expect(page.locator('.topics .count[data-count="1"]')).toHaveCount(0);
 });
 
-test("only followed topics produce wake-up announcements @csp", async ({ page }) => {
+test("every unmuted arrival is announced, including the open topic @csp", async ({ page }) => {
   let body = topicRepository("r1", [
     { name: "api", messages: [{ day: 1, body: "Initial API message." }], open: [] },
   ]);
   await deploy(page, () => body);
   const liveRegion = page.locator('.sr-only[role="status"]');
   await expect(liveRegion).toHaveText("");
+  await page.locator(".topics > button.topic-entry-button").filter({ hasText: "#api" }).click();
 
   body = topicRepository("r2", [
     {
@@ -242,10 +288,8 @@ test("only followed topics produce wake-up announcements @csp", async ({ page })
   ]);
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(page.getByText("Unfollowed arrival.")).toBeVisible();
-  await expect(liveRegion).toHaveText("");
-
-  await openTopicOptions(page, "api");
-  await page.getByRole("button", { name: "Follow #api" }).click();
+  await expect(liveRegion).toContainText("1 new message arrived.");
+  const announcement = await liveRegion.textContent();
   body = topicRepository("r3", [
     {
       name: "api",
@@ -258,9 +302,12 @@ test("only followed topics produce wake-up announcements @csp", async ({ page })
     },
   ]);
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("Followed arrival.", { exact: true })).toBeVisible();
   await expect(liveRegion).toContainText("1 new message arrived.");
-  const announcement = await liveRegion.textContent();
+  await expect(liveRegion).toContainText("2 new messages since opening this view.");
+  const followedAnnouncement = await liveRegion.textContent();
 
+  await page.getByRole("button", { name: "All", exact: true }).click();
   await openTopicOptions(page, "api");
   await page.getByRole("button", { name: "Mute #api" }).click();
   body = topicRepository("r4", [
@@ -276,8 +323,11 @@ test("only followed topics produce wake-up announcements @csp", async ({ page })
     },
   ]);
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(page.getByText("Muted arrival.")).toBeVisible();
-  await expect(liveRegion).toHaveText(announcement ?? "");
+  await expect(page.getByText("Muted arrival.", { exact: true })).toBeVisible();
+  await expect(
+    page.locator('.topics > button.topic-entry-button[aria-description="1 unread"]'),
+  ).toBeVisible();
+  await expect(liveRegion).toHaveText(followedAnnouncement ?? announcement ?? "");
 });
 
 test("mute, pin, hide, and restore update topic visibility and Attention @csp", async ({
@@ -301,17 +351,23 @@ test("mute, pin, hide, and restore update topic visibility and Attention @csp", 
   await page.getByRole("button", { name: "Pin #api" }).click();
   await page.getByRole("button", { name: "Refresh", exact: true }).focus();
   await page.mouse.move(1200, 50);
-  await expect(page.locator(".topics > button").nth(4)).toHaveText("#api");
+  await expect(page.locator(".topics > button").nth(4).locator(".topic-name")).toHaveText("#api");
   await openTopicOptions(page, "api");
   await page.getByRole("button", { name: "Mute #api" }).click();
   await expect(
     page.locator(".topics > button.topic-entry-button").filter({ hasText: "#api" }),
   ).toHaveAttribute("aria-description", "1 unread");
   await page.getByRole("button", { name: "Attention", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Open item in #api" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Open item in #ops" })).toBeVisible();
+  await expect(
+    page.locator(".attention-view section button").filter({ hasText: "API item." }),
+  ).toHaveCount(0);
+  await expect(
+    page.locator(".attention-view section button").filter({ hasText: "Ops item." }),
+  ).toBeVisible();
   await expect(page.locator(".attention-coverage-list")).toContainText("#ops");
   await expect(page.locator(".attention-coverage-list")).toContainText("Open-item files read at");
+  const opsItem = page.locator(".attention-view section button").filter({ hasText: "Ops item." });
+  await expect(opsItem).toHaveAccessibleName(/#ops.*Unanswered questions.*Ops item\..*alice-agent/);
 
   await openTopicOptions(page, "api");
   await page.getByRole("button", { name: "Hide #api" }).click();
@@ -319,8 +375,13 @@ test("mute, pin, hide, and restore update topic visibility and Attention @csp", 
     page.locator(".topics > button.topic-entry-button").filter({ hasText: "#api" }),
   ).toHaveCount(0);
   await page.getByText("Hidden (1)").click();
-  await expect(page.locator(".hidden-topic-row > button")).toHaveText("#api");
-  await page.locator(".hidden-topic-row > button").click();
+  await expect(page.locator(".hidden-topic-row > button").first()).toHaveText("#api");
+  await page.locator(".hidden-topic-row > button").first().click();
+  await expect(page.locator(".conversation h2")).toHaveText("#api");
+  await expect(
+    page.locator(".topics > button.topic-entry-button").filter({ hasText: "#api" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Restore #api" }).click();
   await expect(
     page.locator(".topics > button.topic-entry-button").filter({ hasText: "#api" }),
   ).toBeVisible();
@@ -359,9 +420,13 @@ test("Attention loads the 30 most recent open topics and offers an explicit load
   await expect(page.locator(".attention-coverage-list")).toContainText(
     "Open-item files not read as of",
   );
-  await expect(page.getByRole("button", { name: "Open item in #topic-00" })).toHaveCount(0);
+  await expect(
+    page.locator(".attention-view section button").filter({ hasText: "Oldest open item." }),
+  ).toHaveCount(0);
   await page.getByRole("button", { name: "Load all open topics" }).click();
-  await expect(page.getByRole("button", { name: "Open item in #topic-00" })).toBeVisible();
+  await expect(
+    page.locator(".attention-view section button").filter({ hasText: "Oldest open item." }),
+  ).toBeVisible();
   await expect(page.locator(".attention-coverage-list")).toContainText("#topic-00");
 });
 
@@ -376,7 +441,7 @@ test("opening a same-day older Attention item loads its real message @csp", asyn
     ]),
   );
   await page.getByRole("button", { name: "Attention", exact: true }).click();
-  await page.getByRole("button", { name: "Open item in #api" }).click();
+  await page.locator(".attention-view section button").filter({ hasText: "Older item." }).click();
   await expect(page.getByText("Older verified message body.")).toBeVisible();
 });
 

@@ -246,6 +246,8 @@ export function parseIndexMonthLinks(text: string): readonly string[] {
 export interface OpenItem extends IndexRow {
   /** The section of the file the row is in (plain text), for example "Unanswered questions". */
   readonly section: string;
+  /** The item's untrusted but plain-text summary from the generated open file. */
+  readonly summary: string;
 }
 
 /**
@@ -262,6 +264,7 @@ export function parseTopicOpen(text: string, topic: string): readonly OpenItem[]
     const iFrom = table.header.indexOf("from");
     const iTo = table.header.indexOf("to");
     const iNeeds = table.header.indexOf("needs");
+    const iSummary = table.header.indexOf("summary");
     if (iId === -1 || iFrom === -1) continue;
     for (const cells of table.rows) {
       const from = cells[iFrom] ?? "";
@@ -276,6 +279,7 @@ export function parseTopicOpen(text: string, topic: string): readonly OpenItem[]
         type: "",
         needs: iNeeds === -1 ? "" : (cells[iNeeds] ?? "").slice(0, 80),
         section: table.heading,
+        summary: iSummary === -1 ? "" : (cells[iSummary] ?? "").slice(0, 240),
       });
     }
   }

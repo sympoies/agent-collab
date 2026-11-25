@@ -86,13 +86,13 @@ export function AttentionView({
               <li key={`${topic}:${item.id}`}>
                 <button
                   type="button"
-                  aria-label={t("attention.openItem", { topic })}
                   onClick={() => {
                     onOpenItem(topic, item.id);
                   }}
                 >
                   <span>{t("topic.label", { topic })}</span>
                   <span>{item.section}</span>
+                  {item.summary !== "" && <span>{item.summary}</span>}
                   <span>{item.from}</span>
                   {item.needs !== "" && <span>{item.needs}</span>}
                   <code>{item.id}</code>
@@ -110,7 +110,6 @@ export function AttentionView({
               <li key={message.path}>
                 <button
                   type="button"
-                  aria-label={t("attention.messageFrom", { name: message.from, topic })}
                   onClick={() => {
                     onOpenMessage(message);
                   }}

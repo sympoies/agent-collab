@@ -169,7 +169,7 @@ describe("the per-topic open file", () => {
         [
           `## ${title}`,
           "",
-          "| id | from | to | needs | due | 摘要 |",
+          "| id | from | to | needs | due | summary |",
           "|---|---|---|---|---|---|",
           ...rows,
           "",
@@ -177,7 +177,7 @@ describe("the per-topic open file", () => {
       )
       .join("\n");
   const line = (id: string, from = "alice-agent", to = "bob-agent") =>
-    `| ${id} | ${from} | ${to} | answer by friday | 2026-11-10 | s |`;
+    `| ${id} | ${from} | ${to} | answer by friday | 2026-11-10 | Summary for ${id} |`;
 
   it("lists the items with their section, validated like the index", () => {
     const items = parseTopicOpen(
@@ -187,9 +187,9 @@ describe("the per-topic open file", () => {
       }),
       "api",
     );
-    expect(items.map((item) => [item.section, item.id, item.to])).toEqual([
-      ["Unanswered questions", ID(1), ["bob-agent"]],
-      ["Overdue", ID(1), ["bob-agent"]],
+    expect(items.map((item) => [item.section, item.id, item.to, item.summary])).toEqual([
+      ["Unanswered questions", ID(1), ["bob-agent"], `Summary for ${ID(1)}`],
+      ["Overdue", ID(1), ["bob-agent"], `Summary for ${ID(1)}`],
     ]);
     expect(parseTopicOpen("", "api")).toEqual([]);
     expect(parseTopicOpen(open({ S: [line(ID(1))] }), "../x")).toEqual([]);

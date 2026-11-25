@@ -5,6 +5,7 @@ import { visibleTopics } from "../loader/topic-activity";
 import type { TopicSummary } from "../message/topic-layout";
 import { useLocale } from "../i18n/LocaleProvider";
 import { TopicPreferencesMenu, type TopicPreferenceFlags } from "./TopicPreferencesMenu";
+import { TopicStateCue } from "./TopicStateCue";
 
 interface TopicListProps {
   /** Sorted: pinned topics first (not built yet), then by recent activity, closed topics last. */
@@ -98,6 +99,7 @@ export function TopicList({
         }}
       >
         <span className="topic-name">{t("topic.label", { topic: topic.name })}</span>
+        {preferenceFlags !== undefined && <TopicStateCue flags={preferenceFlags(topic.name)} />}
         {unreadCounts?.has(topic.name) === true && (
           <span
             className="count"

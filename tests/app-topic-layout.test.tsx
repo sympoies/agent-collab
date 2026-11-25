@@ -123,6 +123,57 @@ describe("topic list screen", () => {
     expect(readTopicPreferences(storage, "topic-open-failed").seen.api).toBeUndefined();
   });
 
+  it("bounds paging when an Attention row points to a missing message", async () => {
+    const rows = Array.from({ length: 12 }, (_, index) => {
+      const minute = String(index + 1).padStart(2, "0");
+      const id = `2026-10-01T09${minute}-alice-agent-api-01`;
+      return [id, messageText(id, "alice-agent", "api", {}, `Message ${minute}`)] as const;
+    });
+    const missingId = "2026-10-01T0900-alice-agent-api-01";
+    const repository: Record<string, string> = {
+      ".agent-collab": MARKER,
+      "index.md": "| topic | title | status |\n|---|---|---|\n| api | API | open |",
+      "topics/api/open.md": [
+        "# Open items",
+        "",
+        "## Unanswered questions",
+        "",
+        "| id | from | to | needs | due | summary |",
+        "|---|---|---|---|---|---|",
+        `| ${missingId} | alice-agent | bob-agent | review | | Missing target |`,
+      ].join("\n"),
+    };
+    for (const [id, body] of rows) {
+      repository[`topics/api/inbox/2026-10/${id}.md`] = body;
+    }
+    const source = new FixtureSource(repository);
+    const session = new TopicSession(source, { pageSize: 1 });
+    await session.open();
+    const identityKey = "topic-attention-stale-row";
+    const values = new Map([
+      [
+        `agent-collab-viewer.identity:${identityKey}`,
+        JSON.stringify({ viewingAs: "bob-agent", colors: {}, names: {} }),
+      ],
+    ]);
+    const storage: PreferenceStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => values.set(key, value),
+    };
+    await mount(source, identityKey, session, storage);
+
+    await click(action("Attention"));
+    const itemButton = host.querySelector(".attention-view section button");
+    if (itemButton === null) throw new Error("The Attention item is missing.");
+    await click(itemButton);
+
+    expect(host.textContent).toContain("This open item no longer points to a readable message.");
+    const loadedMessagePaths = new Set(
+      source.reads.filter((path) => path.startsWith("topics/api/inbox/")),
+    );
+    expect(loadedMessagePaths.size).toBeLessThanOrEqual(6);
+  });
+
   const entries = () => [...host.querySelectorAll<HTMLButtonElement>(".topics button")];
   const entry = (label: string) => {
     const found = entries().find((button) => button.textContent.startsWith(label));

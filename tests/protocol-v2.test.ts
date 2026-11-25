@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { EMPTY_TOPIC_PREFERENCES, unreadOf } from "../src/identity/topic-preferences";
+import { EMPTY_TOPIC_PREFERENCES, markSeen, unreadOf } from "../src/identity/topic-preferences";
 import { Loader } from "../src/loader/loader";
 import { readTopicList, topicLoader } from "../src/loader/topic-reader";
 import { TopicSession } from "../src/loader/topic-session";
@@ -187,7 +187,7 @@ describe("the month-split topic index", () => {
       ids: [id("2026-10", 3), id("2026-11", 1), id("2026-11", 2)],
       idsComplete: false,
     };
-    const seenAt = (seen: string) => ({ ...EMPTY_TOPIC_PREFERENCES, seen: { api: seen } });
+    const seenAt = (seen: string) => markSeen(EMPTY_TOPIC_PREFERENCES, "api", seen, [seen]);
     expect(unreadOf(seenAt(id("2026-10", 3)), "api", digest)).toEqual({ unread: true, count: 2 });
     expect(unreadOf(seenAt(id("2026-10", 1)), "api", digest)).toEqual({
       unread: true,
